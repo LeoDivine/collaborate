@@ -4,7 +4,7 @@ import React from "react";
 
 export default function SideDisplay() {
 	return (
-		<div className=" text-a px-[40px] py-[20px]  rounded-xl shadow w-[30%] bg-linear-to-br from-[#222222] to-[#383838]">
+		<div className=" text-a px-[40px] py-[20px] hidden md:inline  rounded-xl shadow w-[30%] bg-linear-to-br from-[#222222] to-[#383838]">
 			<div className=" flex justify-between flex-col items-center h-full">
 				<Image
 					className=" w-[50%] object-cover"
