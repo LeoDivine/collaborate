@@ -7,7 +7,7 @@ export default function IndividualSignUpLayout({
 }) {
 	return (
 		<div className={` px-[20px] py-[20px] h-screen gap-5   flex w-full`}>
-			<SideDisplay mode="INDIVIDUAL" />
+			<SideDisplay mode="WORKSPACE" />
 			<div className=" grow flex  items-center ">{children}</div>
 		</div>
 	);
