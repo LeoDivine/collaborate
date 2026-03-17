@@ -2,7 +2,7 @@
 
 import { SignUpValues } from "@/components/forms/individual-sign-up";
 import bcrypt from "bcrypt";
-import { signIn } from "../../../auth";
+import { auth, signIn } from "../../../auth";
 import { db } from "../db";
 import { signInSchema, signUpSchema } from "../schemas/auth";
 import { generateSlug } from "../utils";
@@ -53,7 +53,7 @@ export const individualSignUp = async (values: SignUpValues) => {
 		},
 	});
 
-	await db.member.create({
+	const member = await db.member.create({
 		data: {
 			role: "OWNER",
 			userId: user.id,
@@ -74,6 +74,9 @@ export const individualSignUp = async (values: SignUpValues) => {
 	return {
 		success: true,
 		message: "Account created successfully",
+		user,
+		workspace,
+		member,
 	};
 };
 
@@ -124,7 +127,7 @@ export const workspaceSignUp = async (
 		},
 	});
 
-	await db.member.create({
+	const member = await db.member.create({
 		data: {
 			role: "OWNER",
 			userId: user.id,
@@ -144,6 +147,9 @@ export const workspaceSignUp = async (
 
 	return {
 		success: true,
+		user,
+		workspace,
+		member,
 		message: "Account created successfully",
 	};
 };
@@ -158,26 +164,40 @@ export const getUserByEmail = async (email: string) => {
 };
 
 export const updateUserName = async (userName: string, userId: string) => {
-	const user = await db.user.update({
-		data: {
-			userName: userName,
-		},
+	const hasUserName = await db.user.findUnique({
 		where: {
-			id: userId,
+			userName,
 		},
 	});
-	if (user) {
+	if (hasUserName) {
 		return {
-			success: true,
-			message: "Username updated successfully.",
-			user,
+			success: false,
+			message: "A user with this username already exists.",
+			user: null,
+		};
+	} else {
+		const user = await db.user.update({
+			data: {
+				userName: userName,
+				lastLogin: new Date(),
+			},
+			where: {
+				id: userId,
+			},
+		});
+		if (user) {
+			return {
+				success: true,
+				message: "Username added successfully.",
+				user,
+			};
+		}
+		return {
+			success: false,
+			message: "Username was not added.",
+			user: null,
 		};
 	}
-	return {
-		success: false,
-		message: "Username was not updated successfully.",
-		user: null,
-	};
 };
 
 export const login = async (values: SignInValues) => {
@@ -194,15 +214,13 @@ export const login = async (values: SignInValues) => {
 		const res = await signIn("credentials", {
 			email,
 			password,
-			redirectTo: "/sign-in/my-workspaces",
+			redirect: false,
 		});
 
-		console.log({ res });
-
-		if (!res) {
+		if (!res || res.error) {
 			return {
 				success: false,
-				message: "You were not able to sign in successfully",
+				message: "Invalid email or password",
 			};
 		} else {
 			return {
@@ -217,7 +235,7 @@ export const login = async (values: SignInValues) => {
 				case "CredentialsSignin":
 					return {
 						success: false,
-						message: "No account exist with this email address",
+						message: "Invalid email or password",
 					};
 				default:
 					return {

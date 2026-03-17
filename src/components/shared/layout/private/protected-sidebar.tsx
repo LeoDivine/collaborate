@@ -2,6 +2,7 @@
 
 import { PROTECTEDPERSONALNAVBAR } from "@/lib/const";
 import { LogOut } from "lucide-react";
+import { signOut } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -10,7 +11,7 @@ import React from "react";
 export default function ProtectedSidebar() {
 	const pathName = usePathname();
 	return (
-		<div className=" bg-primary rounded-[20px]  py-[20px] flex flex-col items-center justify-between  h-[calc(100vh-30px)] ">
+		<div className=" hidden  bg-primary rounded-[20px]  py-[20px] md:flex flex-col items-center justify-between  h-[calc(100vh-30px)] ">
 			<div className="flex flex-col gap-11 items-start">
 				<div className=" flex items-center justify-center">
 					<Image
@@ -42,7 +43,12 @@ export default function ProtectedSidebar() {
 					</div>
 				</div>
 			</div>
-			<div className=" flex items-center gap-3 cursor-pointer">
+			<div
+				onClick={async () => {
+					await signOut({ redirectTo: "/sign-in" });
+				}}
+				className=" flex items-center gap-3 cursor-pointer"
+			>
 				<LogOut className=" w-4 h-4" />
 				<p className=" text-[13px]">Log Out</p>
 			</div>
