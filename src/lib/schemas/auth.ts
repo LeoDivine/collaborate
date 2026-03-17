@@ -30,3 +30,10 @@ export const userNameSchema = z.object({
 				"Username can only contain letters, numbers, underscores and dots",
 		}),
 });
+
+export const signInSchema = z.object({
+	email: z.email({ error: "Email is required" }),
+	password: z
+		.string({ error: "Password is required" })
+		.min(2, { error: "Password should be greater than two characters" }),
+});

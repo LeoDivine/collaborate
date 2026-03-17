@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -43,19 +38,70 @@ model Session {
 }
 
 model User {
-  id            String   @id @default(uuid())
-  email         String   @unique
+  id            String      @id @default(uuid())
+  email         String      @unique
   password      String?
   fullName      String
-  userName      String?   @unique
+  userName      String?     @unique
   timezone      String?
   lastLogin     DateTime?
-  emailVerified Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  emailVerified Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  workspaces    Workspace[]
+  members       Member[]
 
   accounts Account[]
   sessions Session[]
 
   @@map("users")
+}
+
+model Workspace {
+  id           String   @id @default(uuid())
+  name         String
+  slug         String   @unique
+  mode         DeskMode
+  industryType String?
+  teamSize     String?
+  createdBy    User     @relation(fields: [createdById], references: [id])
+  createdById  String
+  members      Member[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("workspaces")
+}
+
+model Member {
+  id          String         @id @default(uuid())
+  user        User           @relation(fields: [userId], references: [id])
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id])
+  workspaceId String
+  userId      String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  role        WorkspaceRoles
+
+  @@unique([userId, workspaceId])
+  @@map("members")
+}
+
+enum DeskMode {
+  WORKSPACE
+  INDIVIDUAL
+}
+
+enum WorkspaceRoles {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ProjectAccess {
+  PROJECT_LEAD
+  PROJECT_MANAGER
+  CONTRIBUTER
+  VIEWER
 }

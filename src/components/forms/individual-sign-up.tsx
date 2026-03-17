@@ -3,20 +3,20 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { signUpSchema } from "@/lib/schemas/sign-up";
+import { signUpSchema } from "@/lib/schemas/auth";
+import { individualSignUp } from "@/lib/services/auth.services";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { LoaderCircle } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { AiOutlineGoogle } from "react-icons/ai";
 import { FaRegEyeSlash } from "react-icons/fa";
 import { MdOutlineRemoveRedEye } from "react-icons/md";
-import z from "zod";
-import { Form, FormField, FormItem, FormLabel, FormMessage } from "../ui/form";
-import { LoaderCircle } from "lucide-react";
-import { register } from "@/lib/services/auth.services";
 import { toast } from "sonner";
-import Link from "next/link";
+import z from "zod";
+import { Form, FormField, FormItem, FormMessage } from "../ui/form";
 
 export type SignUpValues = z.infer<typeof signUpSchema>;
 export default function IndividualSignUp() {
@@ -43,7 +43,7 @@ export default function IndividualSignUp() {
 	const handleSubmit = async (values: SignUpValues) => {
 		setLoading(true);
 		try {
-			const res = await register({
+			const res = await individualSignUp({
 				email: values.email,
 				fullName: values.fullName,
 				password: values.password,
@@ -54,6 +54,7 @@ export default function IndividualSignUp() {
 				toast.error(res.message);
 			}
 			form.reset();
+			router.push("/individual-auth/username");
 			toast.success(res.message);
 		} catch (e: any) {
 			toast.error("Something went wrong");

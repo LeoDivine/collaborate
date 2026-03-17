@@ -1,19 +1,33 @@
 "use client";
 
-import { userNameSchema } from "@/lib/schemas/sign-up";
+import { userNameSchema } from "@/lib/schemas/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import React from "react";
+import { AtSign, MoveRight } from "lucide-react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import z from "zod";
-import { Form, FormField, FormItem, FormMessage } from "../ui/form";
-import { Label } from "../ui/label";
-import { Input } from "../ui/input";
-import { AtSign, MoveRight } from "lucide-react";
 import { Button } from "../ui/button";
-import Link from "next/link";
+import { Form, FormField, FormItem, FormMessage } from "../ui/form";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { useSession } from "next-auth/react";
+import { updateUserName } from "@/lib/services/auth.services";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { useState } from "react";
 
 export type UsernameValue = z.infer<typeof userNameSchema>;
+
 export default function UsernameForm() {
+	const [loading, setLoading] = useState(false);
+	const { update, data } = useSession();
+	const user = data?.user;
+
+	const router = useRouter();
+	// if (!user) {
+	// 	router.push("/individual-auth");
+	// }
+
 	const form = useForm<UsernameValue>({
 		defaultValues: {
 			username: "",
@@ -21,6 +35,24 @@ export default function UsernameForm() {
 		resolver: zodResolver(userNameSchema),
 		mode: "all",
 	});
+
+	const handleSubmit = async (value: UsernameValue) => {
+		try {
+			const res = await updateUserName(user?.id!, value.username);
+			if (!res.success) {
+				toast.error(res.message);
+				form.reset();
+			} else {
+				toast.success(res.message);
+			}
+		} catch (e: any) {
+		} finally {
+		}
+
+		await update({
+			userName: value.username,
+		});
+	};
 
 	return (
 		<Form {...form}>
