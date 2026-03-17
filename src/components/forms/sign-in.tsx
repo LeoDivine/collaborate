@@ -44,12 +44,12 @@ export default function SignInForm() {
 		setLoading(true);
 		try {
 			const res = await login(values);
-			console.log({ client: res });
-			if (res.success) {
-				toast.success(res.message);
+			if (!res.success) {
+				toast.error(res.message);
+				form.reset();
 			}
-			toast.error(res.message);
-			form.reset();
+			toast.success(res.message);
+			router.push("/sign-in/my-workspaces");
 		} catch (e: any) {
 			toast.error("Something went wrong");
 		} finally {
@@ -162,7 +162,7 @@ export default function SignInForm() {
 												<LoaderCircle className=" animate-spin" />
 												Signing in...
 											</div>
-										:	"Sign Up"}
+										:	"Sign In"}
 									</Button>
 									<Button className="  py-[20px] bg-accent rounded-full text-secondary">
 										<AiOutlineGoogle className=" w-60 h-60" />

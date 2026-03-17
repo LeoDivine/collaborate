@@ -1,7 +1,14 @@
 import UsernameForm from "@/components/forms/username";
 import React from "react";
+import { auth } from "../../../../../../auth";
+import { redirect } from "next/navigation";
 
-export default function Username() {
+export default async function Username() {
+	const session = await auth();
+	const user = session?.user;
+	// if (user) {
+	// 	redirect("/sign-up");
+	// }
 	return (
 		<div className=" w-full   ">
 			<div className=" flex h-full flex-col items-center justify-between">
@@ -9,7 +16,7 @@ export default function Username() {
 					<p className="text-[25px] text-primary">
 						Choose a username
 					</p>
-					<UsernameForm />
+					<UsernameForm user={user} />
 				</div>
 			</div>
 		</div>

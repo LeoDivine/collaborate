@@ -7,6 +7,7 @@ import { signUpSchema } from "@/lib/schemas/auth";
 import { individualSignUp } from "@/lib/services/auth.services";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LoaderCircle } from "lucide-react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -22,6 +23,8 @@ export type SignUpValues = z.infer<typeof signUpSchema>;
 export default function IndividualSignUp() {
 	const [password, setPassword] = useState(false);
 	const [loading, setLoading] = useState(false);
+
+	const { update } = useSession();
 
 	const form = useForm<SignUpValues>({
 		defaultValues: {
@@ -53,8 +56,13 @@ export default function IndividualSignUp() {
 				form.reset();
 				toast.error(res.message);
 			}
+			await update({
+				currenWorkspaceId: res.workspace?.id,
+				currentWorkspaceMode: res.workspace?.mode,
+				currentWorkspaceRole: res.member?.role,
+			});
 			form.reset();
-			router.push("/individual-auth/username");
+			router.push("/sign-up/individual-auth/username");
 			toast.success(res.message);
 		} catch (e: any) {
 			toast.error("Something went wrong");

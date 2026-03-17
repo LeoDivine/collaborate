@@ -9,6 +9,7 @@ declare module "next-auth" {
 			userName: string;
 			currenWorkspaceId?: string;
 			currentWorkspaceMode?: string;
+			currentWorkspaceRole?: string;
 		} & DefaultSession["user"];
 		error?: string;
 	}
@@ -20,6 +21,7 @@ declare module "next-auth" {
 		userName: string;
 		currentWorkspaceMode?: string;
 		currenWorkspaceId?: string;
+		currentWorkspaceRole?: string;
 	}
 }
 
@@ -30,6 +32,7 @@ declare module "next-auth/jwt" {
 		fullName: string;
 		userName: string;
 		currenWorkspaceId?: string;
+		currentWorkspaceRole?: string;
 		currentWorkspaceMode?: string;
 	}
 }

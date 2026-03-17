@@ -15,6 +15,7 @@ export const { signIn, signOut, auth, handlers } = NextAuth({
 				token.userName = user.userName;
 				token.currenWorkspaceId = user.currenWorkspaceId;
 				token.currentWorkspaceMode = user.currentWorkspaceMode;
+				token.currentWorkspaceRole = user.currentWorkspaceRole;
 			}
 
 			if (trigger === "update") {
@@ -26,6 +27,9 @@ export const { signIn, signOut, auth, handlers } = NextAuth({
 				}
 				if (session?.currentWorkspaceMode) {
 					token.currentWorkspaceMode = session.currentWorkspaceMode;
+				}
+				if (session?.currentWorkspaceRole) {
+					token.currentWorkspaceRole = session.currentWorkspaceRole;
 				}
 			}
 
@@ -40,6 +44,9 @@ export const { signIn, signOut, auth, handlers } = NextAuth({
 					email: token.email as string,
 					fullName: token.fullName as string,
 					userName: token.userName as string,
+					currenWorkspaceId: token.currenWorkspaceId as string,
+					currentWorkspaceMode: token.currentWorkspaceMode as string,
+					currentWorkspaceRole: token.currentWorkspaceRole as string,
 				};
 
 				session.user = sessionUser;

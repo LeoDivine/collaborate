@@ -11,13 +11,17 @@ import {
 import { INDUSTRY_TYPES, TEAM_SIZE } from "@/lib/const";
 import { signUpSchema } from "@/lib/schemas/auth";
 import { workspaceCreateSchema } from "@/lib/schemas/workspace";
+import { workspaceSignUp } from "@/lib/services/auth.services";
 import { generateSlug } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { FaRegEyeSlash } from "react-icons/fa";
 import { MdOutlineRemoveRedEye } from "react-icons/md";
+import { toast } from "sonner";
 import z from "zod";
 import { Button } from "../ui/button";
 import { Form, FormField, FormItem, FormMessage } from "../ui/form";
@@ -25,12 +29,24 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { SignUpValues } from "./individual-sign-up";
+import { LoaderCircle } from "lucide-react";
 
 export type WorkspaceCreateValues = z.infer<typeof workspaceCreateSchema>;
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
+
 type UserSignUpValues = SignUpValues;
-export default function WorkspaceSignUp() {
+export default function WorkspaceSignUp({
+	initialTab,
+}: {
+	initialTab: string;
+}) {
 	const [password, setPassword] = useState(false);
 	const [loading, setLoading] = useState(false);
+
+	const { update } = useSession();
+	const router = useRouter();
+	const searchParams = useSearchParams();
+	const tab = searchParams.get("tab") || initialTab;
 
 	const workspaceForm = useForm<WorkspaceCreateValues>({
 		defaultValues: {
@@ -54,9 +70,17 @@ export default function WorkspaceSignUp() {
 		mode: "all",
 	});
 
+	const handleChange = (value: string) => {
+		if (value === tab) return;
+		const params = new URLSearchParams(searchParams.toString());
+		params.set("tab", value);
+		router.push(`?${params.toString()}`, { scroll: false });
+	};
+
 	const handlePassword = () => {
 		setPassword(!password);
 	};
+	const name = workspaceForm.getValues("name");
 
 	const handleGenerateSlug = () => {
 		const name = workspaceForm.getValues("name");
@@ -67,9 +91,44 @@ export default function WorkspaceSignUp() {
 		}
 	};
 
+	const handleSubmit = async ({
+		workspaceData,
+		userData,
+	}: {
+		workspaceData: WorkspaceCreateValues;
+		userData: UserSignUpValues;
+	}) => {
+		setLoading(true);
+		try {
+			const res = await workspaceSignUp(userData, workspaceData);
+			if (!res.success) {
+				ownerForm.reset();
+				workspaceForm.reset();
+				toast.error(res.message);
+			}
+			await update({
+				currenWorkspaceId: res.workspace?.id,
+				currentWorkspaceMode: res.workspace?.mode,
+				currentWorkspaceRole: res.member?.role,
+			});
+			ownerForm.reset();
+			workspaceForm.reset();
+			router.push("/sign-up/workspace-auth/username");
+			toast.success(res.message);
+		} catch (e: any) {
+			toast.error("Something went wrong");
+		} finally {
+			setLoading(false);
+		}
+	};
+
 	return (
 		<div className=" w-full">
-			<Tabs defaultValue="owner" className=" w-full mt-[10px]">
+			<Tabs
+				onValueChange={handleChange}
+				value={tab}
+				className=" w-full mt-[10px]"
+			>
 				<TabsList className=" md:w-[50%] w-full">
 					<TabsTrigger value="owner">Owner</TabsTrigger>
 					<TabsTrigger value="workspace">Workspace</TabsTrigger>
@@ -194,6 +253,20 @@ export default function WorkspaceSignUp() {
 									</span>
 								</div>
 							</div>
+							<div className=" items-center justify-end w-full flex mt-[20px]">
+								<Button
+									disabled={loading}
+									type="button"
+									onClick={() => {
+										router.push(
+											"/sign-up/workspace-auth?tab=workspace",
+										);
+									}}
+									className="py-[20px] w-full md:w-[40%] rounded-full text-secondary"
+								>
+									Create Workspace
+								</Button>
+							</div>
 						</form>
 					</Form>
 				</TabsContent>
@@ -235,9 +308,20 @@ export default function WorkspaceSignUp() {
 													className=" text-primary py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
 												/>
 												<Button
-													onClick={() =>
-														handleGenerateSlug()
-													}
+													onClick={() => {
+														const name =
+															workspaceForm.getValues(
+																"name",
+															);
+
+														if (!name) {
+															toast.error(
+																"Enter workspace name first",
+															);
+															return;
+														}
+														handleGenerateSlug();
+													}}
 													type="button"
 													className="py-[20px] rounded-[10px] text-secondary"
 												>
@@ -321,15 +405,41 @@ export default function WorkspaceSignUp() {
 									)}
 								/>
 							</div>
+							<div className=" items-center justify-end w-full flex mt-[20px]">
+								<Button
+									disabled={loading}
+									type="button"
+									onClick={async () => {
+										const userValid =
+											await ownerForm.trigger();
+										const workspaceValid =
+											await workspaceForm.trigger();
+
+										if (!userValid || !workspaceValid)
+											return;
+
+										const userData = ownerForm.getValues();
+										const workspaceData =
+											workspaceForm.getValues();
+										handleSubmit({
+											userData,
+											workspaceData,
+										});
+									}}
+									className="py-[20px] w-full md:w-[40%] rounded-full text-secondary"
+								>
+									{loading ?
+										<div className=" flex items-center gap-3">
+											<LoaderCircle className=" animate-spin" />
+											Submitting...
+										</div>
+									:	"Submit"}
+								</Button>
+							</div>
 						</form>
 					</Form>
 				</TabsContent>
 			</Tabs>
-			<div className=" items-center justify-end w-full flex mt-[20px]">
-				<Button className="py-[20px] w-full md:w-[40%] rounded-full text-secondary">
-					Create Workspace
-				</Button>
-			</div>
 		</div>
 	);
 }
