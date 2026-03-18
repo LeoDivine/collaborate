@@ -1,31 +1,34 @@
-"use client";
+import BackButton from "@/components/shared/back-button";
 import WorkspaceView from "@/components/shared/layout/auth/workspace-view";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { WORKSPACE } from "@/lib/const";
+import { getMembersByUserID } from "@/lib/services/member.services";
+import { Plus } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { GoChevronLeft } from "react-icons/go";
-import { DeskMode } from "../../../../../generated/prisma/enums";
+import { auth } from "../../../../../auth";
+import { DeskMode } from "../../../../../generated/prisma/client";
+import { redirect } from "next/navigation";
 
-export default function MyWorkspaces() {
-	const router = useRouter();
+export default async function MyWorkspaces() {
+	const session = await auth();
+	const user = session?.user;
 
-	const WORKSPACEARRAY = WORKSPACE.filter(
-		(i) => i.mode === ("WORKSPACE" as DeskMode),
-	);
+	const { member } = await getMembersByUserID(user?.id!);
+
+	const WORKSPACES = member.filter((i) => i.workspace.mode === "WORKSPACE");
+	const INDIVIDUALS = member.filter((i) => i.workspace.mode === "INDIVIDUAL");
+
+	console.log({ user });
+
+	if (!user) {
+		redirect("/sign-in");
+	}
+
+	// console.log({ WORKSPACES, INDIVIDUALS });
 
 	return (
 		<>
-			<span
-				onClick={() => {
-					router.back();
-				}}
-				className=" absolute cursor-pointer pt-[20px] left-2 text-primary flex flex-row items-center gap-2 "
-			>
-				<GoChevronLeft />
-				<p>Go Back</p>
-			</span>
+			<BackButton />
 			<div className=" px-[10px]  flex flex-col items-center h-screen gap-10 justify-center">
 				<Image
 					className=" md:w-[15%] w-[40%] object-cover"
@@ -34,29 +37,32 @@ export default function MyWorkspaces() {
 					width={"1000"}
 					height={"1000"}
 				/>
-				<div className="">
+				<div className=" w-full md:w-[40%]">
 					<p className=" text-center text-[25px] text-primary">
-						Welcome back, Divine Onyekachukwu
+						Welcome back, {user?.fullName}
 					</p>
-					<div className=" mt-[30px]">
+					<div className=" w-full mt-[30px]">
 						<p className=" text-primary font-bold">
 							Workspace(s) you belong to:
 						</p>
-						<ScrollArea className="  h-[200px]">
-							<div className=" flex flex-col gap-2">
-								{WORKSPACEARRAY.map((i) => {
+						<ScrollArea
+							className={`${WORKSPACES.length >= 3 ? "h-[200px]" : " h-full"}`}
+						>
+							<div className="  flex flex-col gap-2">
+								{WORKSPACES.map((i) => {
 									return (
 										<WorkspaceView
+											role={i.role}
 											key={i.id}
 											id={i.id}
-											mode={i.mode as DeskMode}
-											title={i.name}
-											value={i.value}
+											mode={i.workspace.mode as DeskMode}
+											title={i.workspace.name}
+											// value={i.value}
 										/>
 									);
 								})}
 							</div>
-							<ScrollBar />
+							<ScrollBar orientation="vertical" />
 						</ScrollArea>
 						<span className=" text-[15px] mt-[10px] flex gap-2 text-primary">
 							Create a different team?
@@ -72,24 +78,35 @@ export default function MyWorkspaces() {
 						<p className=" text-primary font-bold">
 							Continue to your personal desk?
 						</p>
-						<div className=" flex flex-col gap-2">
-							<div className=" flex flex-col gap-2">
-								{WORKSPACE.filter(
-									(i) =>
-										i.mode === ("INDIVIDUAL" as DeskMode),
-								).map((i) => {
-									return (
-										<WorkspaceView
-											key={i.id}
-											id={i.id}
-											mode={i.mode as DeskMode}
-											title={i.name}
-											value={i.value}
-										/>
-									);
-								})}
+						{INDIVIDUALS.length === 0 ?
+							<Link href={""} className=" ">
+								<div className=" flex items-center justify-center gap-4 bg-transparent  px-[20px] rounded-[20px] py-[20px]  text-accent border-accent border-2 w-full ">
+									<Plus />
+									<p>Create a personal desk</p>
+								</div>
+							</Link>
+						:	<div className=" flex flex-col gap-2">
+								<div className=" flex flex-col gap-2">
+									{INDIVIDUALS.filter(
+										(i) =>
+											i.workspace.mode ===
+											("INDIVIDUAL" as DeskMode),
+									).map((i) => {
+										return (
+											<WorkspaceView
+												role={i.role}
+												key={i.id}
+												id={i.id}
+												mode={
+													i.workspace.mode as DeskMode
+												}
+												title={i.workspace.name}
+											/>
+										);
+									})}
+								</div>
 							</div>
-						</div>
+						}
 					</div>
 				</div>
 			</div>

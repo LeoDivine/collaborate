@@ -29,7 +29,7 @@ export default async function Layout({
 						}}
 					/>
 				</div>
-				<ScrollArea className="  h-screen px-[10px]  py-[10px] md:py-[15px]">
+				<ScrollArea className="  h-screen px-[10px]   py-[10px] md:py-[15px]">
 					<div className="  h-screen  ">{children}</div>
 					<ScrollBar orientation="vertical" />
 				</ScrollArea>

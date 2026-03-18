@@ -1,14 +1,14 @@
 "use server";
 
 import { SignUpValues } from "@/components/forms/individual-sign-up";
-import bcrypt from "bcrypt";
-import { auth, signIn } from "../../../auth";
+import { SignInValues } from "@/components/forms/sign-in";
+import { WorkspaceCreateValues } from "@/components/forms/workspace-sign-up";
+import bcrypt from "bcryptjs";
+import { AuthError } from "next-auth";
+import { signIn } from "../../../auth";
 import { db } from "../db";
 import { signInSchema, signUpSchema } from "../schemas/auth";
 import { generateSlug } from "../utils";
-import { AuthError } from "next-auth";
-import { WorkspaceCreateValues } from "@/components/forms/workspace-sign-up";
-import { SignInValues } from "@/components/forms/sign-in";
 
 export const individualSignUp = async (values: SignUpValues) => {
 	const validatedFields = signUpSchema.safeParse(values);

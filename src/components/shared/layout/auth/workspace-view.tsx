@@ -1,24 +1,44 @@
-import { MoveRight } from "lucide-react";
-import React from "react";
-import { DeskMode } from "../../../../../generated/prisma/enums";
-import Link from "next/link";
+"use client";
+
 import { getInitials } from "@/lib/utils";
+import { MoveRight } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import {
+	DeskMode,
+	WorkspaceRoles,
+} from "../../../../../generated/prisma/enums";
 
 export default function WorkspaceView({
 	mode,
 	title,
 	value,
+	role,
 	id,
 }: {
+	role: WorkspaceRoles;
 	id: string;
 	title: string;
-	value: number;
+	value?: number;
 	mode: DeskMode;
 }) {
+	const { update } = useSession();
+	const router = useRouter();
+
+	const handleSelectWorkspace = async () => {
+		await update({
+			currenWorkspaceId: id,
+			currentWorkspaceMode: mode,
+			currentWorkspaceRole: role,
+		});
+		router.push("/dashboard");
+	};
 	return (
-		<Link
-			href={id}
-			className=" text-primary px-[20px] rounded-[20px] py-[20px] bg-accent w-full"
+		<div
+			onClick={() => {
+				handleSelectWorkspace();
+			}}
+			className=" cursor-pointer text-primary px-[20px] rounded-[20px] py-[20px] bg-accent w-full"
 		>
 			<div className=" flex items-center justify-between ">
 				<div className=" flex items-center gap-4">
@@ -38,6 +58,6 @@ export default function WorkspaceView({
 					<MoveRight />
 				</div>
 			</div>
-		</Link>
+		</div>
 	);
 }
