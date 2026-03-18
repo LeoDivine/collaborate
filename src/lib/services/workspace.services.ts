@@ -10,3 +10,15 @@ export const getWorkspaceBByID = async (id: string) => {
 	});
 	return workspace;
 };
+
+export const getAllWorkspaceForUserUserId = async (userId: string) => {
+	const workspace = await db.user.findMany({
+		where: {
+			id: userId,
+		},
+		include: {
+			workspaces: true,
+		},
+	});
+	return workspace;
+};
