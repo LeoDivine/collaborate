@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { ALPHABET } from "./const";
 
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
@@ -24,4 +25,12 @@ export function generateSlug(text: string) {
 		.replace(/[^\w\s-]/g, "")
 		.replace(/\s+/g, "-")
 		.replace(/--+/g, "-");
+}
+
+export function generateSuffix(length = 3) {
+	let result = "";
+	for (let i = 0; i < length; i++) {
+		result += ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+	}
+	return result;
 }

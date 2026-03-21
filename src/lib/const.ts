@@ -117,3 +117,5 @@ export const PROTECTEDPERSONALNAVBAR = [
 		icon: Settings,
 	},
 ];
+
+export const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
