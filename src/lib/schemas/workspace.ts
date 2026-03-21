@@ -10,3 +10,7 @@ export const workspaceCreateSchema = z.object({
 	industryType: z.string(),
 	teamSize: z.string(),
 });
+
+export const extendedWorkspaceCreateSchema = workspaceCreateSchema.extend({
+	workspaceMode: z.string(),
+});

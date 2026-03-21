@@ -20,9 +20,9 @@ export default async function MyWorkspaces() {
 
 	console.log({ user });
 
-	if (!user) {
-		redirect("/sign-in");
-	}
+	// if (!user) {
+	// 	redirect("/sign-in");
+	// }
 
 	// console.log({ WORKSPACES, INDIVIDUALS });
 
@@ -68,7 +68,7 @@ export default async function MyWorkspaces() {
 							Create a different team?
 							<Link
 								className=" underline"
-								href={"/sign-in/individual-auth"}
+								href={"/create-workspace"}
 							>
 								Create Workspace
 							</Link>
@@ -79,7 +79,7 @@ export default async function MyWorkspaces() {
 							Continue to your personal desk?
 						</p>
 						{INDIVIDUALS.length === 0 ?
-							<Link href={""} className=" ">
+							<Link href={"/create-workspace"} className=" ">
 								<div className=" flex items-center justify-center gap-4 bg-transparent  px-[20px] rounded-[20px] py-[20px]  text-accent border-accent border-2 w-full ">
 									<Plus />
 									<p>Create a personal desk</p>

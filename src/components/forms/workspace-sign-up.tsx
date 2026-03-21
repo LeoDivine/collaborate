@@ -32,8 +32,6 @@ import { SignUpValues } from "./individual-sign-up";
 import { LoaderCircle } from "lucide-react";
 
 export type WorkspaceCreateValues = z.infer<typeof workspaceCreateSchema>;
-type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
-
 type UserSignUpValues = SignUpValues;
 export default function WorkspaceSignUp({
 	initialTab,
@@ -102,8 +100,8 @@ export default function WorkspaceSignUp({
 		try {
 			const res = await workspaceSignUp(userData, workspaceData);
 			if (!res.success) {
-				ownerForm.reset();
-				workspaceForm.reset();
+				// ownerForm.reset();
+				// workspaceForm.reset();
 				toast.error(res.message);
 			}
 			await update({

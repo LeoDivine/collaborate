@@ -12,14 +12,24 @@ import { getInitials } from "@/lib/utils";
 import { User } from "next-auth";
 import Image from "next/image";
 import { FaBell } from "react-icons/fa";
+import { DeskMode } from "../../../../../generated/prisma/enums";
 
 export default function ProtectedNavbar({ user }: { user: User }) {
+	// console.log({ user });
 	return (
 		<div className=" md:w-[calc(100%-20px)]  flex justify-between items-center py-[10px] px-[10px] md:px-[30px] rounded-[20px] bg-primary">
 			<div className="">
-				<Badge className=" hidden md:inline bg-secondary">
-					{user.currentWorkspaceMode}
-				</Badge>
+				<div className=" flex gap-3">
+					<Badge className=" hidden md:inline bg-secondary">
+						{user.currentWorkspaceMode}
+					</Badge>
+					{user.currentWorkspaceMode ===
+						("WORKSPACE" as DeskMode) && (
+						<Badge className=" hidden md:inline bg-secondary">
+							{user.currentWorkspaceRole}
+						</Badge>
+					)}
+				</div>
 				<Image
 					src={"/resources/logo.png"}
 					alt="logo"

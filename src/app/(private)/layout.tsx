@@ -26,6 +26,7 @@ export default async function Layout({
 							id: user?.id ?? "",
 							userName: user?.userName ?? "",
 							currentWorkspaceMode: user?.currentWorkspaceMode,
+							currentWorkspaceRole: user?.currentWorkspaceRole,
 						}}
 					/>
 				</div>

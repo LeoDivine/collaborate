@@ -9,6 +9,8 @@ import { signIn } from "../../../auth";
 import { db } from "../db";
 import { signInSchema, signUpSchema } from "../schemas/auth";
 import { generateSlug } from "../utils";
+import { generateUniqueSlugOnCreation } from "./workspace.services";
+import { workspaceCreateSchema } from "../schemas/workspace";
 
 export const individualSignUp = async (values: SignUpValues) => {
 	const validatedFields = signUpSchema.safeParse(values);
@@ -85,6 +87,8 @@ export const workspaceSignUp = async (
 	workspaceValues: WorkspaceCreateValues,
 ) => {
 	const validatedFields = signUpSchema.safeParse(values);
+	const validatedWorkspaceFields =
+		workspaceCreateSchema.safeParse(workspaceValues);
 
 	if (!validatedFields.success) {
 		return {
@@ -116,16 +120,40 @@ export const workspaceSignUp = async (
 		},
 	});
 
-	const workspace = await db.workspace.create({
-		data: {
-			mode: "WORKSPACE",
-			name: workspaceValues.name,
-			slug: workspaceValues.slug,
-			createdById: user.id,
-			industryType: workspaceValues.industryType,
-			teamSize: workspaceValues.teamSize,
-		},
-	});
+	if (!validatedWorkspaceFields.success) {
+		return {
+			success: false,
+			message: "Invalid workspace fields passed",
+		};
+	}
+
+	let slug = workspaceValues.slug;
+	let workspace;
+
+	try {
+		workspace = await db.workspace.create({
+			data: {
+				mode: "WORKSPACE",
+				name: workspaceValues.name,
+				slug,
+				createdById: user.id,
+				industryType: workspaceValues.industryType,
+				teamSize: workspaceValues.teamSize,
+			},
+		});
+	} catch (e) {
+		slug = await generateUniqueSlugOnCreation(workspaceValues.slug);
+		workspace = await db.workspace.create({
+			data: {
+				mode: "WORKSPACE",
+				name: workspaceValues.name,
+				slug,
+				createdById: user.id,
+				industryType: workspaceValues.industryType,
+				teamSize: workspaceValues.teamSize,
+			},
+		});
+	}
 
 	const member = await db.member.create({
 		data: {
