@@ -3,6 +3,7 @@ import ProtectedSidebar from "@/components/shared/layout/private/protected-sideb
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import React from "react";
 import { auth } from "../../../auth";
+import NextTopLoader from "nextjs-toploader";
 
 export default async function Layout({
 	children,
@@ -14,11 +15,12 @@ export default async function Layout({
 	// console.log({ exp: session?.expires });
 	return (
 		<div className=" h-screen w-full flex">
+			<NextTopLoader color="#222222" showSpinner={false} />
 			<div className=" flex items-center md:w-[20%]  h-screen md:mx-[20px] ">
-				<ProtectedSidebar />
+				<ProtectedSidebar user={user!} />
 			</div>
 			<div className=" overflow-y-clip w-full">
-				<div className=" md:flex md:justify-center mt-[15px]">
+				<div className=" md:flex md:w-full w-[96%] mx-auto md:justify-center mt-[10px]">
 					<ProtectedNavbar
 						user={{
 							email: user?.email ?? "",

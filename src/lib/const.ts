@@ -1,9 +1,13 @@
 import {
+	Bell,
+	Blocks,
 	Box,
 	CalendarDays,
 	LayoutDashboard,
 	ListTodo,
 	Settings,
+	Users,
+	Workflow,
 } from "lucide-react";
 
 export const NAVLINKS = [
@@ -110,6 +114,87 @@ export const PROTECTEDPERSONALNAVBAR = [
 		name: "Calendar",
 		link: "/calendar",
 		icon: CalendarDays,
+	},
+	{
+		name: "Settings",
+		link: "/settings",
+		icon: Settings,
+	},
+];
+
+export const PROTECTEADMINNAVBAR = [
+	{
+		name: "Dashboard",
+		link: "/dashboard",
+		icon: LayoutDashboard,
+	},
+	{
+		name: "Tasks",
+		link: "/tasks",
+		icon: ListTodo,
+	},
+	{
+		name: "Projects",
+		link: "/projects",
+		icon: Box,
+	},
+	{
+		name: "Calendar",
+		link: "/calendar",
+		icon: CalendarDays,
+	},
+	{
+		name: "Members",
+		link: "/members",
+		icon: Users,
+	},
+	{
+		name: "Activity",
+		link: "/activity",
+		icon: Workflow,
+	},
+	{
+		name: "Notifications",
+		link: "/notifications",
+		icon: Bell,
+	},
+	{
+		name: "Requests",
+		link: "/requests",
+		icon: Blocks,
+	},
+	{
+		name: "Settings",
+		link: "/settings",
+		icon: Settings,
+	},
+];
+
+export const PROTECTEDMEMBERNAVBAR = [
+	{
+		name: "Dashboard",
+		link: "/dashboard",
+		icon: LayoutDashboard,
+	},
+	{
+		name: "Tasks",
+		link: "/tasks",
+		icon: ListTodo,
+	},
+	{
+		name: "Projects",
+		link: "/projects",
+		icon: Box,
+	},
+	{
+		name: "Calendar",
+		link: "/calendar",
+		icon: CalendarDays,
+	},
+	{
+		name: "Members",
+		link: "/members",
+		icon: Users,
 	},
 	{
 		name: "Settings",

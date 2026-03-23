@@ -1,6 +1,12 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { ALPHABET } from "./const";
+import { DeskMode, WorkspaceRoles } from "../../generated/prisma/enums";
+import {
+	ALPHABET,
+	PROTECTEADMINNAVBAR,
+	PROTECTEDMEMBERNAVBAR,
+	PROTECTEDPERSONALNAVBAR,
+} from "./const";
 
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
@@ -34,3 +40,22 @@ export function generateSuffix(length = 3) {
 	}
 	return result;
 }
+
+export const renderNavigationByRole = (
+	role: WorkspaceRoles,
+	mode: DeskMode,
+) => {
+	if (role === "OWNER" && mode === "INDIVIDUAL") {
+		return PROTECTEDPERSONALNAVBAR;
+	}
+	switch (role) {
+		case "ADMIN":
+			return PROTECTEDPERSONALNAVBAR;
+		case "MEMBER":
+			return PROTECTEDMEMBERNAVBAR;
+		case "OWNER":
+			return PROTECTEADMINNAVBAR;
+		default:
+			return PROTECTEDPERSONALNAVBAR;
+	}
+};

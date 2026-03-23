@@ -1,3 +1,5 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
 import {
 	DropdownMenu,
@@ -8,13 +10,22 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getInitials } from "@/lib/utils";
+import { getInitials, renderNavigationByRole } from "@/lib/utils";
 import { User } from "next-auth";
 import Image from "next/image";
 import { FaBell } from "react-icons/fa";
-import { DeskMode } from "../../../../../generated/prisma/enums";
+import {
+	DeskMode,
+	WorkspaceRoles,
+} from "../../../../../generated/prisma/enums";
+import { LogOut } from "lucide-react";
+import { signOut } from "next-auth/react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export default function ProtectedNavbar({ user }: { user: User }) {
+	const pathName = usePathname();
+
 	// console.log({ user });
 	return (
 		<div className=" md:w-[calc(100%-20px)]  flex justify-between items-center py-[10px] px-[10px] md:px-[30px] rounded-[20px] bg-primary">
@@ -49,16 +60,50 @@ export default function ProtectedNavbar({ user }: { user: User }) {
 							{getInitials(user.fullName)}
 						</div>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent className=" mr-[20px] w-[300px]">
-						<DropdownMenuGroup>
-							<DropdownMenuLabel>My Account</DropdownMenuLabel>
-							<DropdownMenuItem>Profile</DropdownMenuItem>
-							<DropdownMenuItem>Billing</DropdownMenuItem>
+					<DropdownMenuContent className=" border-secondary shadow bg-primary  mr-[20px] w-[300px]">
+						<DropdownMenuGroup className=" flex gap-3 py-[4px] ">
+							<Badge className=" bg-secondary">
+								{user.currentWorkspaceMode}
+							</Badge>
+							{user.currentWorkspaceMode ===
+								("WORKSPACE" as DeskMode) && (
+								<Badge className=" bg-secondary">
+									{user.currentWorkspaceRole}
+								</Badge>
+							)}
 						</DropdownMenuGroup>
 						<DropdownMenuSeparator />
 						<DropdownMenuGroup>
-							<DropdownMenuItem>Team</DropdownMenuItem>
-							<DropdownMenuItem>Subscription</DropdownMenuItem>
+							{renderNavigationByRole(
+								user.currentWorkspaceRole as WorkspaceRoles,
+								user.currentWorkspaceMode as DeskMode,
+							).map((i, k) => {
+								const Icon = i.icon;
+								return (
+									<DropdownMenuItem
+										className={`${pathName.includes(i.link) ? "bg-secondary text-primary" : "text-secondary"}`}
+										asChild
+										key={k}
+									>
+										<Link href={i.link}>
+											<Icon className=" w-4 h-4" />
+											{i.name}
+										</Link>
+									</DropdownMenuItem>
+								);
+							})}
+						</DropdownMenuGroup>
+						<DropdownMenuSeparator />
+						<DropdownMenuGroup>
+							<DropdownMenuItem
+								className=" text-secondary"
+								onClick={async () => {
+									await signOut({ redirectTo: "/sign-in" });
+								}}
+							>
+								<LogOut className=" w-4 h-4" />
+								<p className=" text-[13px]">Log Out</p>
+							</DropdownMenuItem>
 						</DropdownMenuGroup>
 					</DropdownMenuContent>
 				</DropdownMenu>
