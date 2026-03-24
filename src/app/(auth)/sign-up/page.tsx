@@ -37,7 +37,7 @@ export default function SignUp() {
 					</Button>
 				</div>
 				<Link
-					href={""}
+					href={"/join-workspace"}
 					className=" text-accent flex items-center gap-2 flex-row"
 				>
 					<p className=" underline">

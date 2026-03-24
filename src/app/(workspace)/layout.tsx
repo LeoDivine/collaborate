@@ -2,7 +2,7 @@ import SideDisplay from "@/components/shared/layout/auth/side-display";
 import Image from "next/image";
 import Link from "next/link";
 
-export default function CreateWorkspaceLayout({
+export default function WorkspaceLayout({
 	children,
 }: {
 	children: React.ReactNode;

@@ -45,7 +45,7 @@ export default auth((req) => {
 	if (isProtectedRoute && isLoggedIn && !user?.currenWorkspaceId) {
 		return Response.redirect(new URL("/sign-in/my-workspaces", nextUrl));
 	}
-
+ 
 	if (isExtendedRoute && user?.currenWorkspaceId) {
 		return Response.redirect(new URL("/dashboard", nextUrl));
 	}

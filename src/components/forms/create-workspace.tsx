@@ -247,10 +247,7 @@ export default function CreateWorkspaceForm(user: User) {
 					/>
 					<span className=" text-[15px] flex gap-2 text-primary">
 						Already have a workspace?{" "}
-						<Link
-							className=" underline"
-							href={"/sign-in/individual-auth"}
-						>
+						<Link className=" underline" href={"/join-workspace"}>
 							Join Workspace
 						</Link>
 					</span>

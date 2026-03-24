@@ -10,7 +10,12 @@ export const protectedRoutes = [
 	"/settings",
 	"/tasks",
 ];
-export const authRoutes = ["/sign-in", "/sign-up"];
+export const authRoutes = [
+	"/sign-in",
+	"/sign-up",
+	"/sign-up/individual-auth",
+	"/sign-up/workspace-auth",
+];
 export const apiAuthPrefix = "/api/auth";
 export const DEFAULT_LOGIN_REDIRECT = "/dashboard";
 export const extendedRoutes = ["/sign-in/my-workspaces"];
