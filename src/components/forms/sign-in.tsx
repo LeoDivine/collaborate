@@ -19,6 +19,7 @@ import { Form, FormField, FormItem, FormMessage } from "../ui/form";
 import { LoaderCircle } from "lucide-react";
 import { login } from "@/lib/services/auth.services";
 import { toast } from "sonner";
+import { signIn } from "next-auth/react";
 
 export type SignInValues = z.infer<typeof signInSchema>;
 export default function SignInForm() {
@@ -54,6 +55,16 @@ export default function SignInForm() {
 			toast.error("Something went wrong");
 		} finally {
 			setLoading(false);
+		}
+	};
+
+	const handleOAuthUsage = (provider: "google" | "github") => {
+		try {
+			signIn(provider, {
+				redirectTo: "/sign-in/my-workspaces",
+			});
+		} catch (e) {
+			toast.error("Something went wrong");
 		}
 	};
 
@@ -164,7 +175,13 @@ export default function SignInForm() {
 											</div>
 										:	"Sign In"}
 									</Button>
-									<Button className="  py-[20px] bg-accent rounded-full text-secondary">
+									<Button
+										type="button"
+										onClick={() =>
+											handleOAuthUsage("google")
+										}
+										className="  py-[20px] bg-accent rounded-full text-secondary"
+									>
 										<AiOutlineGoogle className=" w-60 h-60" />
 										Sign in with Google
 									</Button>
