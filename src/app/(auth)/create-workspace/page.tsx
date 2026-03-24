@@ -1,10 +1,15 @@
 import CreateWorkspaceForm from "@/components/forms/create-workspace";
 import { auth } from "../../../../auth";
+import { redirect } from "next/navigation";
 
 export default async function CreateWorkspace() {
 	const session = await auth();
 	// console.log({ session });
 	const user = session?.user;
+
+	if (!session) {
+		redirect("sign-up");
+	}
 
 	return (
 		<div className=" w-full   ">

@@ -18,7 +18,7 @@ export default async function MyWorkspaces() {
 	const WORKSPACES = member.filter((i) => i.workspace.mode === "WORKSPACE");
 	const INDIVIDUALS = member.filter((i) => i.workspace.mode === "INDIVIDUAL");
 
-	console.log({ user });
+	// console.log({ user });
 
 	// if (!user) {
 	// 	redirect("/sign-in");
