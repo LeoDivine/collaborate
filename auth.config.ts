@@ -3,9 +3,18 @@ import { getUserByEmail } from "@/lib/services/auth.services";
 import bcrypt from "bcryptjs";
 import { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import { db } from "@/lib/db";
 
 export default {
+	adapter: PrismaAdapter(db),
 	providers: [
+		Google({
+			clientId: process.env.GOOGLE_CLIENT_ID!,
+			clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+			allowDangerousEmailAccountLinking: true,
+		}),
 		Credentials({
 			async authorize(credentials, _request) {
 				const validatedFields = signInSchema.safeParse(credentials);

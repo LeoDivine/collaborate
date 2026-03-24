@@ -10,9 +10,11 @@
 		"postinstall": "prisma generate"
 	},
 	"dependencies": {
+		"@auth/prisma-adapter": "^2.11.1",
 		"@hookform/resolvers": "^5.2.2",
 		"@prisma/adapter-pg": "^7.5.0",
 		"@prisma/client": "^7.5.0",
+		"@prisma/extension-accelerate": "^3.0.1",
 		"@radix-ui/react-accordion": "^1.2.12",
 		"@radix-ui/react-alert-dialog": "^1.1.15",
 		"@radix-ui/react-aspect-ratio": "^1.1.8",
@@ -67,6 +69,11 @@
 		"tailwind-merge": "^3.4.0",
 		"vaul": "^1.1.2",
 		"zod": "^4.3.5"
+	},
+	"pnpm": {
+		"overrides": {
+			"@auth/core": "0.41.1"
+		}
 	},
 	"devDependencies": {
 		"@eslint/eslintrc": "^3",
