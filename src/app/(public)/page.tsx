@@ -2,6 +2,7 @@ import MaxWidthWrapper from "@/components/shared/layout/max-width-wrapper";
 import { Button } from "@/components/ui/button";
 import { ChevronRight } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
 	return (
@@ -18,11 +19,14 @@ export default function Home() {
 						</p>
 						<div className="">
 							<Button
+								asChild
 								className="text-[13px] rounded-full"
 								variant={"secondary"}
 							>
-								Get Started
-								<ChevronRight />
+								<Link href="/sign-up">
+									Get Started
+									<ChevronRight />
+								</Link>
 							</Button>
 						</div>
 					</div>

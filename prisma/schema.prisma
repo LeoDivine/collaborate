@@ -99,8 +99,8 @@ model JoinRequest {
   workspace   Workspace @relation(fields: [workspaceId], references: [id])
   workspaceId String
 
-  user   User   @relation("RequestUser", fields: [userId], references: [id])
-  userId String
+  user   User?   @relation("RequestUser", fields: [userId], references: [id])
+  userId String?
 
   @@unique([email, workspaceId])
   @@map("join-requests")

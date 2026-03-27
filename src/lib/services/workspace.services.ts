@@ -1,12 +1,15 @@
 "use server";
 
 import { ExtendedWorkspaceCreateValues } from "@/components/forms/create-workspace";
-import { db } from "../db";
-import { DeskMode } from "../../../generated/prisma/enums";
-import { ExtendedUser } from "../types";
+import { JoinWorkspaceValues } from "@/components/forms/join-workspace";
 import { User } from "next-auth";
+import { DeskMode } from "../../../generated/prisma/enums";
+import { db } from "../db";
+import {
+	extendedWorkspaceCreateSchema,
+	joinWorkspaceSchema,
+} from "../schemas/workspace";
 import { generateSuffix } from "../utils";
-import { extendedWorkspaceCreateSchema } from "../schemas/workspace";
 
 export const getWorkspaceBByID = async (id: string) => {
 	const workspace = await db.workspace.findUnique({
@@ -133,5 +136,99 @@ export const createWorkspace = async (
 				member,
 			};
 		}
+	}
+};
+
+export const searchForWorkspace = async ({
+	limit,
+	page,
+	query,
+}: {
+	query?: string;
+	limit: number;
+	page: number;
+}) => {
+	const workspace = await db.workspace.findMany({
+		take: limit,
+		skip: (page - 1) * limit,
+		where:
+			query ?
+				{
+					OR: [
+						{
+							name: {
+								contains: query,
+								mode: "insensitive",
+							},
+						},
+						{
+							slug: {
+								contains: query,
+								mode: "insensitive",
+							},
+						},
+					],
+					AND: [{ mode: "WORKSPACE" }],
+				}
+			:	{},
+	});
+
+	if (workspace.length === 0) {
+		return {
+			success: false,
+			message: "No workspace available",
+			workspace: [],
+		};
+	}
+
+	return {
+		success: true,
+		workspace,
+		message: "Workspace fetched successfully",
+	};
+};
+
+export const workspaceRequest = async (
+	values: JoinWorkspaceValues,
+	workspaceId: string,
+	user?: User,
+) => {
+	const validatedFields = joinWorkspaceSchema.safeParse(values);
+	if (!validatedFields.success) {
+		return {
+			success: false,
+			message: "Invalid fields passed",
+		};
+	}
+	const { email, name, inviteToken, message } = validatedFields.data;
+
+	try {
+		const joinWorkspace = await db.joinRequest.create({
+			data: {
+				email,
+				fullName: name,
+				inviteCode: inviteToken,
+				message,
+				workspaceId,
+				userId: user?.id,
+			},
+		});
+		//TODO: CHECK FOR INVITE CODE CORRECTION
+		if (!joinWorkspace) {
+			return {
+				success: false,
+				message: "Request not sent",
+			};
+		}
+		return {
+			success: true,
+			message:
+				"Request successfully sent, the admin will approve your request soon.",
+		};
+	} catch (e) {
+		return {
+			success: false,
+			message: "Something went wrong",
+		};
 	}
 };
