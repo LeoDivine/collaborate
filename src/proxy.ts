@@ -42,6 +42,10 @@ export default auth((req) => {
 		return Response.redirect(new URL("/sign-in", nextUrl));
 	}
 
+	if (isLoggedIn && isPublicRoute) {
+		return Response.redirect(new URL("/dashboard", nextUrl));
+	}
+
 	if (isProtectedRoute && isLoggedIn && !user?.currentWorkspaceId) {
 		return Response.redirect(new URL("/sign-in/my-workspaces", nextUrl));
 	}
