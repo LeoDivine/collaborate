@@ -3,8 +3,12 @@
 import { db } from "../db";
 
 export const getMembersByUserID = async (userId: string) => {
-	// console.log({ userId });
-	const member = await db.member.findMany({
+	if (!userId) {
+		return {
+			members: [],
+		};
+	}
+	const members = await db.member.findMany({
 		where: {
 			userId,
 		},
@@ -12,12 +16,17 @@ export const getMembersByUserID = async (userId: string) => {
 			workspace: true,
 		},
 	});
-	if (!userId) {
-		return {
-			member: [],
-		};
-	}
+
 	return {
-		member,
+		members,
 	};
 };
+
+// export const getMemberById = async (userId: string) => {
+// 	const member = await db.member.findMany({
+// 		where: {
+// 			userId,
+// 		},
+// 	});
+// 	return member;
+// };

@@ -14,6 +14,7 @@ import { workspaceCreateSchema } from "@/lib/schemas/workspace";
 import { workspaceSignUp } from "@/lib/services/auth.services";
 import { generateSlug } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { LoaderCircle } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -29,7 +30,6 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { SignUpValues } from "./individual-sign-up";
-import { LoaderCircle } from "lucide-react";
 
 export type WorkspaceCreateValues = z.infer<typeof workspaceCreateSchema>;
 type UserSignUpValues = SignUpValues;
@@ -105,9 +105,10 @@ export default function WorkspaceSignUp({
 				toast.error(res.message);
 			}
 			await update({
-				currenWorkspaceId: res.workspace?.id,
+				currentWorkspaceId: res.workspace?.id,
 				currentWorkspaceMode: res.workspace?.mode,
 				currentWorkspaceRole: res.member?.role,
+				currentWorkspaceName: res.workspace?.name,
 			});
 			ownerForm.reset();
 			workspaceForm.reset();

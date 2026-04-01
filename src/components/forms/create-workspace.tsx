@@ -2,15 +2,19 @@
 
 import { INDUSTRY_TYPES, TEAM_SIZE } from "@/lib/const";
 import { extendedWorkspaceCreateSchema } from "@/lib/schemas/workspace";
+import { createWorkspace } from "@/lib/services/workspace.services";
 import { generateSlug } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LoaderCircle } from "lucide-react";
+import { User } from "next-auth";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import z from "zod";
+import { DeskMode } from "../../../generated/prisma/enums";
 import { Button } from "../ui/button";
 import { Form, FormField, FormItem, FormMessage } from "../ui/form";
 import { Input } from "../ui/input";
@@ -23,10 +27,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "../ui/select";
-import { DeskMode } from "../../../generated/prisma/enums";
-import Link from "next/link";
-import { createWorkspace } from "@/lib/services/workspace.services";
-import { User } from "next-auth";
 
 export type ExtendedWorkspaceCreateValues = z.infer<
 	typeof extendedWorkspaceCreateSchema
@@ -65,9 +65,10 @@ export default function CreateWorkspaceForm(user: User) {
 			// console.log({ res });
 			if (res.success) {
 				await update({
-					currenWorkspaceId: res.workspace?.id,
+					currentWorkspaceId: res.workspace?.id,
 					currentWorkspaceMode: res.workspace?.mode,
 					currentWorkspaceRole: res.member?.role,
+					currentWorkspaceName: res.workspace?.name,
 				});
 				workspaceForm.reset();
 				router.push("/dashboard");

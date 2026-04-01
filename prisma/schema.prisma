@@ -28,82 +28,210 @@ model Account {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  password      String?
-  fullName      String
-  userName      String?   @unique
-  timezone      String?
-  lastLogin     DateTime?
-  emailVerified Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  workspaces Workspace[]
-  members    Member[]
-
-  accounts Account[]
-
+  id               String        @id @default(uuid())
+  email            String        @unique
+  password         String?
+  fullName         String
+  userName         String?       @unique
+  timezone         String?
+  lastLogin        DateTime?
+  emailVerified    Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  workspaces       Workspace[]
+  members          Member[]
+  accounts         Account[]
   joinRequests     JoinRequest[] @relation("RequestUser")
   reviewedRequests JoinRequest[] @relation("ReviewUser")
+  inviteCodes      inviteCode[]
 
   @@map("users")
 }
 
 model Workspace {
-  id           String   @id @default(uuid())
+  id           String        @id @default(uuid())
   name         String
-  slug         String   @unique
+  slug         String        @unique
   mode         DeskMode
   industryType String?
   teamSize     String?
-  createdBy    User     @relation(fields: [createdById], references: [id])
+  createdBy    User          @relation(fields: [createdById], references: [id])
   createdById  String
-
-  members  Member[]
-  requests JoinRequest[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  tasks        Task[]
+  members      Member[]
+  requests     JoinRequest[]
+  inviteCodes  inviteCode[]
+  comments     Comment[]
+  projects     Project[]
+  resources    Resource[]
 
   @@map("workspaces")
 }
 
 model Member {
-  id          String         @id @default(uuid())
-  user        User           @relation(fields: [userId], references: [id])
-  workspace   Workspace      @relation(fields: [workspaceId], references: [id])
-  workspaceId String
-  userId      String
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  role        WorkspaceRoles
+  id                  String         @id @default(uuid())
+  user                User           @relation(fields: [userId], references: [id])
+  userId              String
+  workspace           Workspace      @relation(fields: [workspaceId], references: [id])
+  workspaceId         String
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  role                WorkspaceRoles
+  task                Task?          @relation(fields: [taskId], references: [id])
+  taskId              String?
+  inviteCodes         inviteCode[]
+  createdTasks        Task[]         @relation("TaskCreator")
+  comments            Comment[]
+  createdMilestones   MileStone[]    @relation("MileStoneCreator")
+  completedMilestones MileStone[]    @relation("MileStoneCompleted")
+  projects            Project[]
 
   @@unique([userId, workspaceId])
   @@map("members")
 }
 
 model JoinRequest {
-  id         String        @id @default(uuid())
-  email      String
-  fullName   String
-  inviteCode String?       @unique
-  createdAt  DateTime      @default(now())
-  status     RequestStatus @default(PENDING)
-  message    String?
-
+  id           String        @id @default(uuid())
+  email        String
+  fullName     String
+  inviteCode   String?       @unique
+  createdAt    DateTime      @default(now())
+  status       RequestStatus @default(PENDING)
+  message      String?
   reviewedById String?
-  reviewedBy   User?    @relation("ReviewUser", fields: [reviewedById], references: [id])
-  reviewedAt   DateTime @default(now())
-
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
-  workspaceId String
-
-  user   User   @relation("RequestUser", fields: [userId], references: [id])
-  userId String
+  reviewedBy   User?         @relation("ReviewUser", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime      @default(now())
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id])
+  workspaceId  String
+  user         User?         @relation("RequestUser", fields: [userId], references: [id])
+  userId       String?
 
   @@unique([email, workspaceId])
   @@map("join-requests")
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id])
+  workspaceId String
+  createdBy   Member        @relation(fields: [memberId], references: [id])
+  memberId    String
+  status      Status
+  startPeriod DateTime
+  endPeriod   DateTime
+  title       String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  priority    PriorityLevel @default(MEDIUM)
+  Labels      String[]
+  tasks       Task[]
+  comments    Comment[]
+  resources   Resource[]
+
+  @@map("projects")
+}
+
+model Task {
+  id          String        @id @default(uuid())
+  title       String
+  description String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  startPeriod DateTime
+  endPeriod   DateTime
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id])
+  workspaceId String
+  project     Project       @relation(fields: [projectId], references: [id])
+  projectId   String
+  createdBy   Member        @relation("TaskCreator", fields: [createdById], references: [id])
+  createdById String
+  priority    PriorityLevel @default(MEDIUM)
+  status      Status
+  assignee    Member[]
+  Labels      String[]
+  milestones  MileStone[]
+  comments    Comment[]
+  resources   Resource[]
+
+  @@map("tasks")
+}
+
+model Resource {
+  id          String    @id @default(uuid())
+  name        String
+  url         String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  workspaceId String
+  project     Project   @relation(fields: [projectId], references: [id])
+  projectId   String
+  task        Task      @relation(fields: [taskId], references: [id])
+  taskId      String
+
+  @@map("recources")
+}
+
+model Comment {
+  id             String    @id @default(uuid())
+  member         Member    @relation(fields: [memberId], references: [id])
+  memberId       String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  message        String
+  replyCommentId String?
+  workspace      Workspace @relation(fields: [workspaceId], references: [id])
+  workspaceId    String
+  task           Task      @relation(fields: [taskId], references: [id])
+  taskId         String
+  project        Project   @relation(fields: [projectId], references: [id])
+  projectId      String
+
+  @@map("comments")
+}
+
+model MileStone {
+  id            String          @id @default(uuid())
+  task          Task            @relation(fields: [taskId], references: [id])
+  taskId        String
+  title         String
+  description   String
+  status        MileStoneStatus
+  dueDate       DateTime?
+  createdBy     Member          @relation("MileStoneCreator", fields: [createdById], references: [id])
+  createdById   String
+  completedBy   Member?         @relation("MileStoneCompleted", fields: [completedById], references: [id])
+  completedById String?
+
+  @@map("milestones")
+}
+
+model Activity {
+  id          String       @id @default(uuid())
+  type        ActivityType
+  title       String
+  description String
+  updatedAt   DateTime     @updatedAt
+  createdAt   DateTime     @default(now())
+
+  @@map("activities")
+}
+
+model inviteCode {
+  id          String         @id @default(uuid())
+  code        String
+  createdAt   DateTime       @default(now())
+  reservedFor String?
+  type        InviteCodeType
+  timeLimit   DateTime
+  createdBy   Member         @relation(fields: [memberId], references: [id])
+  memberId    String
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id])
+  workspaceId String
+  user        User?          @relation(fields: [userId], references: [id])
+  userId      String?
+
+  @@map("invite-codes")
 }
 
 enum DeskMode {
@@ -127,4 +255,35 @@ enum ProjectAccess {
 enum RequestStatus {
   PENDING
   ACCEPTED
+}
+
+enum InviteCodeType {
+  RESERVED
+  OPEN
+}
+
+enum Status {
+  TODO
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum ActivityType {
+  PROJECTS
+  TASKS
+}
+
+enum MileStoneStatus {
+  NOT_STARTED
+  DONE
+  IN_PROGRESS
+}
+
+enum PriorityLevel {
+  HIGH
+  MEDIUM
+  LOW
+  URGENT
 }

@@ -3,6 +3,7 @@ import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
 import { SessionProvider } from "next-auth/react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const montserrat = Montserrat({
 	variable: "--font-montserrat",
@@ -23,8 +24,10 @@ export default function RootLayout({
 		<html lang="en">
 			<body className={`${montserrat.className} antialiased`}>
 				<SessionProvider>
-					<Toaster position="top-center" closeButton />
-					{children}
+					<TooltipProvider>
+						<Toaster position="top-center" closeButton />
+						{children}
+					</TooltipProvider>
 				</SessionProvider>
 			</body>
 		</html>

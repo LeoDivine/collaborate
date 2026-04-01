@@ -7,9 +7,10 @@ declare module "next-auth" {
 			email: string;
 			fullName: string;
 			userName: string;
-			currenWorkspaceId?: string;
+			currentWorkspaceId?: string;
 			currentWorkspaceMode?: string;
 			currentWorkspaceRole?: string;
+			currentWorkspaceName?: string;
 		} & DefaultSession["user"];
 		error?: string;
 	}
@@ -20,8 +21,9 @@ declare module "next-auth" {
 		fullName: string;
 		userName: string;
 		currentWorkspaceMode?: string;
-		currenWorkspaceId?: string;
+		currentWorkspaceId?: string;
 		currentWorkspaceRole?: string;
+		currentWorkspaceName?: string;
 	}
 }
 
@@ -31,8 +33,9 @@ declare module "next-auth/jwt" {
 		email: string;
 		fullName: string;
 		userName: string;
-		currenWorkspaceId?: string;
+		currentWorkspaceId?: string;
 		currentWorkspaceRole?: string;
 		currentWorkspaceMode?: string;
+		currentWorkspaceName?: string;
 	}
 }
