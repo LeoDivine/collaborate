@@ -1,36 +1,148 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Collaborate
+
+Collaborate is a Next.js App Router project for individual productivity and team collaboration.
+It supports account creation, authentication (credentials + OAuth), workspace onboarding, and role-aware dashboard routing.
+
+## Current State (Overview)
+
+This README reflects the current codebase state as of April 2026.
+
+Implemented and working:
+
+- Next.js 16 + React 19 + TypeScript setup
+- pnpm-based workflow
+- Prisma (PostgreSQL) with generated client in `generated/prisma`
+- NextAuth v5 beta integration
+    - Credentials auth
+    - Google OAuth
+    - GitHub OAuth
+- Route protection and redirect logic via `src/proxy.ts`
+- Workspace-aware session enrichment (current workspace id, mode, role, name)
+- Initial onboarding flows:
+    - Sign in
+    - Sign up (individual/workspace branches)
+    - Workspace creation
+    - Join workspace request flow
+    - Workspace selection (`/sign-in/my-workspaces`)
+- Dashboard role branching for OWNER / ADMIN / MEMBER and INDIVIDUAL mode
+- UI foundation with Tailwind v4 + shadcn/ui components
+
+## Tech Stack
+
+- Framework: Next.js (App Router)
+- Language: TypeScript
+- Package manager: pnpm
+- UI: Tailwind CSS v4, Radix UI, shadcn/ui patterns
+- Auth: NextAuth v5 beta + Prisma Adapter
+- Database: PostgreSQL + Prisma ORM
+- Validation: Zod + React Hook Form
+
+## Project Structure
+
+```text
+src/
+	app/
+		(auth)/
+		(private)/
+		(public)/
+		(workspace)/
+		api/
+	components/
+		forms/
+		pages/
+		shared/
+		ui/
+	hooks/
+	lib/
+		schemas/
+		services/
+prisma/
+generated/prisma/
+public/resources/
+```
+
+## Prerequisites
+
+- Node.js 20+
+- pnpm 10+
+- PostgreSQL database
+
+## Environment Variables
+
+Create `.env.local` and provide at least:
+
+```bash
+DATABASE_URL=
+
+# NextAuth
+AUTH_SECRET=
+AUTH_URL=http://localhost:4242
+
+# OAuth providers
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+```
+
+Notes:
+
+- `DATABASE_URL` is required by Prisma and the custom Prisma adapter setup.
+- Credentials auth works without OAuth keys, but Google/GitHub sign-in require their env vars.
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Generate Prisma client (also runs automatically on postinstall):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm dlx prisma generate
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Run development server:
 
-## Learn More
+```bash
+pnpm dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+App runs on:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `http://localhost:4242`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Useful Commands
 
-## Deploy on Vercel
+```bash
+pnpm dev
+pnpm build
+pnpm start
+pnpm lint
+pnpm dlx prisma generate
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Routing Model
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Public route: `/`
+- Auth routes: `/sign-in`, `/sign-up`, auth subflows
+- Workspace onboarding routes: `/create-workspace`, `/join-workspace`
+- Protected routes: `/dashboard`, `/activity`, `/calendar`, `/members`, `/notifications`, `/projects`, `/requests`, `/settings`, `/tasks`
+
+Access and redirect behavior is handled in `src/proxy.ts` using `routes.ts` definitions.
+
+## Data Model Summary
+
+Core Prisma models include:
+
+- User, Account
+- Workspace, Member, JoinRequest, inviteCode
+- Project, Task, MileStone, Comment, Resource
+- Activity
+
+The app supports both:
+
+- `INDIVIDUAL` workspaces (personal desk)
+- `WORKSPACE` mode (team collaboration)
