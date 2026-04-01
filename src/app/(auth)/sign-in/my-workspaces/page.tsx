@@ -13,10 +13,10 @@ export default async function MyWorkspaces() {
 	const session = await auth();
 	const user = session?.user;
 
-	const { member } = await getMembersByUserID(user?.id!);
+	const { members } = await getMembersByUserID(user?.id!);
 
-	const WORKSPACES = member.filter((i) => i.workspace.mode === "WORKSPACE");
-	const INDIVIDUALS = member.filter((i) => i.workspace.mode === "INDIVIDUAL");
+	const WORKSPACES = members.filter((i) => i.workspace.mode === "WORKSPACE");
+	const INDIVIDUALS = members.filter((i) => i.workspace.mode === "INDIVIDUAL");
 
 	// console.log({ user });
 

@@ -8,7 +8,7 @@ export default function PublicLayout({
 }>) {
 	return (
 		<div>
-			<PublicNavbar />
+			<PublicNavbar /> 
 			<div className="">{children}</div>
 		</div>
 	);

@@ -51,6 +51,7 @@ export default function PublicNavbar() {
 						<Button
 							className="text-[13px] rounded-full"
 							variant={"secondary"}
+							asChild
 						>
 							<Link href={"/sign-in"}>Sign In</Link>
 						</Button>

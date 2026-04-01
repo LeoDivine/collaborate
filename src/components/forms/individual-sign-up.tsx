@@ -7,7 +7,7 @@ import { signUpSchema } from "@/lib/schemas/auth";
 import { individualSignUp } from "@/lib/services/auth.services";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LoaderCircle } from "lucide-react";
-import { useSession } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -57,9 +57,10 @@ export default function IndividualSignUp() {
 				toast.error(res.message);
 			}
 			await update({
-				currenWorkspaceId: res.workspace?.id,
+				currentWorkspaceId: res.workspace?.id,
 				currentWorkspaceMode: res.workspace?.mode,
 				currentWorkspaceRole: res.member?.role,
+				currentWorkspaceName: res.workspace?.name,
 			});
 			form.reset();
 			router.push("/sign-up/individual-auth/username");
@@ -70,7 +71,15 @@ export default function IndividualSignUp() {
 			setLoading(false);
 		}
 	};
-
+	const handleOAuthUsage = (provider: "google" | "github") => {
+		try {
+			signIn(provider, {
+				redirectTo: "/sign-in/my-workspaces",
+			});
+		} catch (e) {
+			toast.error("Something went wrong");
+		}
+	};
 	return (
 		<Form {...form}>
 			<form
@@ -198,11 +207,12 @@ export default function IndividualSignUp() {
 						:	"Sign Up"}
 					</Button>
 					<Button
+						onClick={() => handleOAuthUsage("google")}
 						type="button"
 						className=" py-[20px] bg-accent rounded-full text-secondary"
 					>
 						<AiOutlineGoogle className=" w-60 h-60" />
-						Sign up with Google
+						Sign in with Google
 					</Button>
 				</div>
 			</form>

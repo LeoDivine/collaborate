@@ -7,7 +7,9 @@ import {
 	ListTodo,
 	Settings,
 	Users,
+	CircleDashed,
 	Workflow,
+	Group,
 } from "lucide-react";
 
 export const NAVLINKS = [
@@ -149,6 +151,11 @@ export const PROTECTEADMINNAVBAR = [
 		icon: Users,
 	},
 	{
+		name: "Teams",
+		link: "/teams",
+		icon: Group,
+	},
+	{
 		name: "Activity",
 		link: "/activity",
 		icon: Workflow,
@@ -157,6 +164,11 @@ export const PROTECTEADMINNAVBAR = [
 		name: "Notifications",
 		link: "/notifications",
 		icon: Bell,
+	},
+	{
+		name: "Invite Codes",
+		link: "/invite-codes",
+		icon: CircleDashed,
 	},
 	{
 		name: "Requests",

@@ -27,9 +27,10 @@ export default function WorkspaceView({
 
 	const handleSelectWorkspace = async () => {
 		await update({
-			currenWorkspaceId: id,
+			currentWorkspaceId: id,
 			currentWorkspaceMode: mode,
 			currentWorkspaceRole: role,
+			currentWorkspaceName: title,
 		});
 		router.push("/dashboard");
 	};
