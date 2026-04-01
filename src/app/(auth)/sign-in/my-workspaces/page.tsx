@@ -7,7 +7,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { auth } from "../../../../../auth";
 import { DeskMode } from "../../../../../generated/prisma/client";
-import { redirect } from "next/navigation";
 
 export default async function MyWorkspaces() {
 	const session = await auth();
@@ -16,7 +15,9 @@ export default async function MyWorkspaces() {
 	const { members } = await getMembersByUserID(user?.id!);
 
 	const WORKSPACES = members.filter((i) => i.workspace.mode === "WORKSPACE");
-	const INDIVIDUALS = members.filter((i) => i.workspace.mode === "INDIVIDUAL");
+	const INDIVIDUALS = members.filter(
+		(i) => i.workspace.mode === "INDIVIDUAL",
+	);
 
 	// console.log({ user });
 
@@ -54,7 +55,7 @@ export default async function MyWorkspaces() {
 										<WorkspaceView
 											role={i.role}
 											key={i.id}
-											id={i.id}
+											workspaceId={i.workspace.id}
 											mode={i.workspace.mode as DeskMode}
 											title={i.workspace.name}
 											// value={i.value}
@@ -96,7 +97,7 @@ export default async function MyWorkspaces() {
 											<WorkspaceView
 												role={i.role}
 												key={i.id}
-												id={i.id}
+												workspaceId={i.workspace.id}
 												mode={
 													i.workspace.mode as DeskMode
 												}

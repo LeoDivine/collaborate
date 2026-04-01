@@ -114,9 +114,9 @@ export default function ProtectedNavbar({
 					)}
 
 					<Dialog open={open} onOpenChange={setOpen}>
-						<DialogTrigger className=" hidden md:flex" asChild>
+						<DialogTrigger className=" " asChild>
 							<Badge
-								className=" flex items-center cursor-pointer py-[5px]"
+								className=" md:flex items-center hidden cursor-pointer py-[5px]"
 								variant={"secondary"}
 							>
 								<FlipHorizontal2 className=" w-5 h-5" />

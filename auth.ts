@@ -2,7 +2,34 @@ import { db } from "@/lib/db";
 import { getUserByEmail } from "@/lib/services/auth.services";
 import { generateSlug } from "@/lib/utils";
 import NextAuth, { Session } from "next-auth";
+import { JWT } from "next-auth/jwt";
 import authConfig from "./auth.config";
+
+function syncWorkspaceSessionFields(
+	token: JWT,
+	data: {
+		currentWorkspaceId?: string;
+		currentWorkspaceMode?: string;
+		currentWorkspaceRole?: string;
+		currentWorkspaceName?: string;
+	},
+) {
+	if (data.currentWorkspaceId !== undefined) {
+		token.currentWorkspaceId = data.currentWorkspaceId;
+	}
+
+	if (data.currentWorkspaceMode !== undefined) {
+		token.currentWorkspaceMode = data.currentWorkspaceMode;
+	}
+
+	if (data.currentWorkspaceRole !== undefined) {
+		token.currentWorkspaceRole = data.currentWorkspaceRole;
+	}
+
+	if (data.currentWorkspaceName !== undefined) {
+		token.currentWorkspaceName = data.currentWorkspaceName;
+	}
+}
 
 export const { signIn, signOut, auth, handlers } = NextAuth({
 	session: {
@@ -76,10 +103,12 @@ export const { signIn, signOut, auth, handlers } = NextAuth({
 				token.email = user.email;
 				token.fullName = user.fullName;
 				token.userName = user.userName;
-				token.currentWorkspaceId = user.currentWorkspaceId;
-				token.currentWorkspaceMode = user.currentWorkspaceMode;
-				token.currentWorkspaceRole = user.currentWorkspaceRole;
-				token.currentWorkspaceName = user.currentWorkspaceName;
+				syncWorkspaceSessionFields(token, {
+					currentWorkspaceId: user.currentWorkspaceId,
+					currentWorkspaceMode: user.currentWorkspaceMode,
+					currentWorkspaceRole: user.currentWorkspaceRole,
+					currentWorkspaceName: user.currentWorkspaceName,
+				});
 			}
 
 			if (trigger === "update") {
@@ -87,60 +116,12 @@ export const { signIn, signOut, auth, handlers } = NextAuth({
 					token.userName = session.userName;
 				}
 
-				if (session?.currentWorkspaceId && token.id) {
-					const member = await db.member.findUnique({
-						where: {
-							userId_workspaceId: {
-								userId: token.id as string,
-								workspaceId: session.currentWorkspaceId,
-							},
-						},
-						select: {
-							role: true,
-							workspace: {
-								select: {
-									mode: true,
-									name: true,
-								},
-							},
-						},
-					});
-
-					if (member) {
-						token.currentWorkspaceId = session.currentWorkspaceId;
-						token.currentWorkspaceMode = member.workspace.mode;
-						token.currentWorkspaceRole = member.role;
-						token.currentWorkspaceName = member.workspace.name;
-					}
-				}
-			}
-
-			if (token.id && !token.currentWorkspaceId) {
-				const firstMembership = await db.member.findFirst({
-					where: {
-						userId: token.id as string,
-					},
-					orderBy: {
-						createdAt: "asc",
-					},
-					select: {
-						workspaceId: true,
-						role: true,
-						workspace: {
-							select: {
-								mode: true,
-								name: true,
-							},
-						},
-					},
+				syncWorkspaceSessionFields(token, {
+					currentWorkspaceId: session?.currentWorkspaceId,
+					currentWorkspaceMode: session?.currentWorkspaceMode,
+					currentWorkspaceRole: session?.currentWorkspaceRole,
+					currentWorkspaceName: session?.currentWorkspaceName,
 				});
-
-				if (firstMembership) {
-					token.currentWorkspaceId = firstMembership.workspaceId;
-					token.currentWorkspaceMode = firstMembership.workspace.mode;
-					token.currentWorkspaceRole = firstMembership.role;
-					token.currentWorkspaceName = firstMembership.workspace.name;
-				}
 			}
 
 			return token;
