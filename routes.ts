@@ -15,7 +15,6 @@ export const authRoutes = [
 	"/sign-up",
 	"/sign-up/individual-auth",
 	"/sign-up/workspace-auth",
-	"/join-workspace",
 ];
 export const apiAuthPrefix = "/api/auth";
 export const DEFAULT_LOGIN_REDIRECT = "/dashboard";
