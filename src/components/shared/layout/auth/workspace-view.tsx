@@ -14,10 +14,10 @@ export default function WorkspaceView({
 	title,
 	value,
 	role,
-	id,
+	workspaceId,
 }: {
 	role: WorkspaceRoles;
-	id: string;
+	workspaceId: string;
 	title: string;
 	value?: number;
 	mode: DeskMode;
@@ -27,7 +27,7 @@ export default function WorkspaceView({
 
 	const handleSelectWorkspace = async () => {
 		await update({
-			currentWorkspaceId: id,
+			currentWorkspaceId: workspaceId,
 			currentWorkspaceMode: mode,
 			currentWorkspaceRole: role,
 			currentWorkspaceName: title,
@@ -37,7 +37,7 @@ export default function WorkspaceView({
 	return (
 		<div
 			onClick={() => {
-				handleSelectWorkspace();
+				void handleSelectWorkspace();
 			}}
 			className=" cursor-pointer text-primary px-[20px] rounded-[20px] py-[20px] bg-accent w-full"
 		>

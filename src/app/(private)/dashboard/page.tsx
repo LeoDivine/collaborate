@@ -25,7 +25,7 @@ export default async function Dashboard() {
 				case "MEMBER":
 					return <MemberDashboard />;
 				case "OWNER":
-					return <OwnerDashboard />;
+					return <OwnerDashboard user={user!} />;
 				default:
 					return <MemberDashboard />;
 			}
