@@ -8,12 +8,12 @@ import { Resend } from "resend";
 export async function POST(req: Request) {
 	const { fullName, email, workspaceId } = await req.json();
 	const resend = new Resend(process.env.RESEND_API_KEY);
-
+	const senderEmail = process.env.SENDER_EMAIL;
 	const workspace = await getWorkspaceBByID(workspaceId);
 
 	try {
 		const { data, error } = await resend.emails.send({
-			from: "Collaborate <onboarding@resend.dev>",
+			from: `Collaborate <${senderEmail}>`,
 			to: [email],
 			subject: "Your workspace request has been accepted!",
 			react: React.createElement(RequestAcceptedEmail, {
