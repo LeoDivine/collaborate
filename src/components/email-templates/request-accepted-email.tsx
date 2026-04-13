@@ -6,7 +6,8 @@ export default function RequestAcceptedEmail({
 	workspaceId,
 	workspaceName,
 }: RequestAcceptedEmailProps) {
-	const accessUrl = `http://localhost:4242/sign-up/individual-auth?fullName=${encodeURIComponent(fullName)}?email=${encodeURIComponent(email)}?requestWorkspace=${workspaceId}`;
+	const baseUrl = process.env.BASE_URL;
+	const accessUrl = `${baseUrl}/sign-up/individual-auth?fullName=${encodeURIComponent(fullName)}?email=${encodeURIComponent(email)}?requestWorkspace=${workspaceId}`;
 
 	return (
 		<div
@@ -156,13 +157,15 @@ export default function RequestAcceptedEmail({
 					style={{
 						borderTop: "1px solid #f4f4f5",
 						padding: "20px 40px",
+						backgroundColor: "#18181b",
 						textAlign: "center" as const,
 					}}
 				>
 					<p
 						style={{
 							fontSize: "12px",
-							color: "#a1a1aa",
+							color: "#8a8a8a",
+							backgroundColor: "#18181b",
 							margin: "0",
 						}}
 					>
