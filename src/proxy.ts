@@ -6,6 +6,7 @@ import {
 	extendedRoutes,
 	protectedRoutes,
 	publicRoutes,
+	userNameRoutes,
 } from "../routes";
 
 export default auth((req) => {
@@ -22,6 +23,7 @@ export default auth((req) => {
 	const isAuthRoute = authRoutes.includes(pathname);
 	const isProtectedRoute = protectedRoutes.includes(pathname);
 	const isExtendedRoute = extendedRoutes.includes(pathname);
+	const isUserNameRoute = userNameRoutes.includes(pathname);
 
 	if (isApiRoute) {
 		return null;
@@ -51,6 +53,10 @@ export default auth((req) => {
 	}
 
 	if (isExtendedRoute && user?.currentWorkspaceId) {
+		return Response.redirect(new URL("/dashboard", nextUrl));
+	}
+
+	if (isUserNameRoute && user?.userName) {
 		return Response.redirect(new URL("/dashboard", nextUrl));
 	}
 

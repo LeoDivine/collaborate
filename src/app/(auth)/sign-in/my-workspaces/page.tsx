@@ -19,6 +19,8 @@ export default async function MyWorkspaces() {
 		(i) => i.workspace.mode === "INDIVIDUAL",
 	);
 
+	// console.log({ members });
+
 	// console.log({ user });
 
 	// if (!user) {
@@ -58,6 +60,7 @@ export default async function MyWorkspaces() {
 											workspaceId={i.workspace.id}
 											mode={i.workspace.mode as DeskMode}
 											title={i.workspace.name}
+											memberId={i.id}
 											// value={i.value}
 										/>
 									);
@@ -95,6 +98,7 @@ export default async function MyWorkspaces() {
 									).map((i) => {
 										return (
 											<WorkspaceView
+												memberId={i.id}
 												role={i.role}
 												key={i.id}
 												workspaceId={i.workspace.id}

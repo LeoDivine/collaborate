@@ -1,10 +1,12 @@
 import JoinWorkspaceForm from "@/components/forms/join-workspace";
 import React from "react";
 import { auth } from "../../../../auth";
+import { getMembersByWorkspaceId } from "@/lib/services/member.services";
 
 export default async function JoinWorkspace() {
 	const session = await auth();
 	const user = session?.user;
+
 	return (
 		<div className=" w-full   ">
 			<div className=" flex h-full flex-col items-center justify-between">

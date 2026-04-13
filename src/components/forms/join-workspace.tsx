@@ -6,13 +6,13 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { joinWorkspaceSchema } from "@/lib/schemas/workspace";
-import {
-	searchForWorkspace,
-	workspaceRequest,
-} from "@/lib/services/workspace.services";
+import { makeRequest } from "@/lib/services/request.services";
+import { searchForWorkspace } from "@/lib/services/workspace.services";
 import { getInitials } from "@/lib/utils";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { LoaderCircle, TriangleAlert } from "lucide-react";
 import { User } from "next-auth";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -41,6 +41,7 @@ export default function JoinWorkspaceForm({ user }: { user?: User }) {
 	const [hasMore, setHasMore] = useState(true);
 	const [fetchingMore, setFetchingMore] = useState(false);
 	const [searching, setSearching] = useState(false);
+	const [showError, setShowError] = useState(false);
 	const shouldShowNoWorkspaceAlert =
 		debouncedQuery.length > 0 &&
 		!searching &&
@@ -48,6 +49,7 @@ export default function JoinWorkspaceForm({ user }: { user?: User }) {
 		workspaces.length === 0;
 
 	const scrollViewportRef = useRef<HTMLDivElement>(null);
+	const router = useRouter();
 
 	const form = useForm<JoinWorkspaceValues>({
 		defaultValues: {
@@ -56,6 +58,7 @@ export default function JoinWorkspaceForm({ user }: { user?: User }) {
 			inviteToken: "",
 			message: "",
 		},
+		resolver: zodResolver(joinWorkspaceSchema),
 		mode: "all",
 	});
 
@@ -129,15 +132,17 @@ export default function JoinWorkspaceForm({ user }: { user?: User }) {
 		setLoading(true);
 
 		try {
-			const res = await workspaceRequest(
-				values,
-				workspace?.id ?? "",
-				user,
-			);
+			const res = await makeRequest(values, workspace?.id ?? "", user);
 			if (!res.success) {
 				toast.error(res.message);
+			} else {
+				toast.success(res.message);
+				if (user) {
+					router.push("/sign-in/my-workspaces");
+				} else {
+					router.push("/");
+				}
 			}
-			toast.success(res.message);
 		} catch (e) {
 			toast.error("Something went wrong");
 		} finally {
@@ -210,6 +215,7 @@ export default function JoinWorkspaceForm({ user }: { user?: User }) {
 						<div className=" relative">
 							<Input
 								disabled={loading}
+								onFocus={() => setShowError(false)}
 								value={query}
 								onChange={(e) => {
 									setQuery(e.target.value);
@@ -232,7 +238,11 @@ export default function JoinWorkspaceForm({ user }: { user?: User }) {
 								</Tooltip>
 							)}
 						</div>
-						<FormMessage />
+						{showError && (
+							<p className=" text-destructive text-sm">
+								No workspace added
+							</p>
+						)}
 					</div>
 
 					{workspaces.length > 0 && (
@@ -309,6 +319,13 @@ export default function JoinWorkspaceForm({ user }: { user?: User }) {
 					<Button
 						disabled={loading}
 						type="submit"
+						onClick={() => {
+							if (!workspace) {
+								setShowError(true);
+							} else {
+								setShowError(false);
+							}
+						}}
 						className="w-full py-[20px] rounded-full text-secondary"
 					>
 						{loading ?
