@@ -104,14 +104,14 @@ export const PROTECTEDPERSONALNAVBAR = [
 		icon: LayoutDashboard,
 	},
 	{
-		name: "Tasks",
-		link: "/tasks",
-		icon: ListTodo,
-	},
-	{
 		name: "Projects",
 		link: "/projects",
 		icon: Box,
+	},
+	{
+		name: "Tasks",
+		link: "/tasks",
+		icon: ListTodo,
 	},
 	{
 		name: "Calendar",
@@ -132,14 +132,14 @@ export const PROTECTEADMINNAVBAR = [
 		icon: LayoutDashboard,
 	},
 	{
-		name: "Tasks",
-		link: "/tasks",
-		icon: ListTodo,
-	},
-	{
 		name: "Projects",
 		link: "/projects",
 		icon: Box,
+	},
+	{
+		name: "Tasks",
+		link: "/tasks",
+		icon: ListTodo,
 	},
 	{
 		name: "Calendar",
@@ -190,14 +190,14 @@ export const PROTECTEDMEMBERNAVBAR = [
 		icon: LayoutDashboard,
 	},
 	{
-		name: "Tasks",
-		link: "/tasks",
-		icon: ListTodo,
-	},
-	{
 		name: "Projects",
 		link: "/projects",
 		icon: Box,
+	},
+	{
+		name: "Tasks",
+		link: "/tasks",
+		icon: ListTodo,
 	},
 	{
 		name: "Calendar",

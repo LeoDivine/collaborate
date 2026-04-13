@@ -39,8 +39,8 @@ export default async function Layout({
 						workspaces={members}
 					/>
 				</div>
-				<ScrollArea className="  h-screen px-[10px]   py-[10px] md:py-[15px]">
-					<div className="  h-screen  ">{children}</div>
+				<ScrollArea className="  h-screen px-[10px]    py-[10px]  md:py-[15px]">
+					<div className=" pb-[200px]">{children}</div>
 					<ScrollBar orientation="vertical" />
 				</ScrollArea>
 			</div>

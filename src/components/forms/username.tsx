@@ -49,11 +49,11 @@ export default function UsernameForm({
 			if (!res.success) {
 				toast.error(res.message);
 			} else {
-				toast.success(res.message);
-				router.push("/dashboard");
 				await update({
 					userName: value.username,
 				});
+				toast.success(res.message);
+				router.push("/dashboard");
 			}
 		} catch (e: any) {
 			toast.error("Something went wrong");

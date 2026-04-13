@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -19,7 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { getInitials, renderNavigationByRole } from "@/lib/utils";
-import { Check, FlipHorizontal2, LogOut } from "lucide-react";
+import { Check, FlipHorizontal2, LogOut, Plus } from "lucide-react";
 import { User } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
 import Image from "next/image";
@@ -32,7 +33,6 @@ import {
 	DeskMode,
 	WorkspaceRoles,
 } from "../../../../../generated/prisma/enums";
-import { Button } from "@/components/ui/button";
 
 export default function ProtectedNavbar({
 	user,
@@ -59,11 +59,13 @@ export default function ProtectedNavbar({
 		mode,
 		role,
 		name,
+		memberId,
 	}: {
 		id: string;
 		mode: DeskMode;
 		role: WorkspaceRoles;
 		name: string;
+		memberId: string;
 	}) {
 		if (id === activeWorkspaceId) {
 			setOpen(false);
@@ -78,6 +80,7 @@ export default function ProtectedNavbar({
 			currentWorkspaceMode: mode,
 			currentWorkspaceRole: role,
 			currentWorkspaceName: name,
+			currentMemberId: memberId,
 		});
 
 		setActiveWorkspaceId(updatedSession?.user?.currentWorkspaceId ?? id);
@@ -123,16 +126,30 @@ export default function ProtectedNavbar({
 								<p>Switch workspace</p>
 							</Badge>
 						</DialogTrigger>
-						<DialogContent className="  border-0 bg-primary">
+						<DialogContent className="rounded-[20px]  border-0 bg-primary">
 							<DialogHeader>
 								<DialogTitle className=" text-accent">
 									Switch Workspace
 								</DialogTitle>
+								<div className=""></div>
 								<DialogDescription>
 									Switch to another workspace you belong to
 									and view your projects and tasks
 								</DialogDescription>
 							</DialogHeader>
+
+							<Button
+								asChild
+								className="w-full rounded-full bg-secondary text-primary hover:bg-secondary/90"
+							>
+								<Link
+									href="/create-workspace"
+									onClick={() => setOpen(false)}
+								>
+									<Plus className="w-4 h-4" />
+									<span>Create workspace</span>
+								</Link>
+							</Button>
 
 							<div>
 								<ScrollArea className="  max-h-[200px] h-full ">
@@ -149,6 +166,7 @@ export default function ProtectedNavbar({
 															mode: memberWorkspace.mode,
 															name: memberWorkspace.name,
 															role: i.role,
+															memberId: i.id,
 														});
 													}}
 													className={` ${activeWorkspaceId === memberWorkspace.id ? " bg-accent text-primary" : " bg-transparent text-accent"} hover:bg-accent hover:text-primary transition-all  flex items-center justify-between px-[20px] rounded-[10px] py-[10px]`}
@@ -159,9 +177,7 @@ export default function ProtectedNavbar({
 																memberWorkspace.name
 															}
 														</p>
-														<Badge
-															variant={"default"}
-														>
+														<Badge>
 															{
 																memberWorkspace.mode
 															}
@@ -204,7 +220,7 @@ export default function ProtectedNavbar({
 							<FlipHorizontal2 className=" w-5 h-5" />
 						</Button>
 					</DialogTrigger>
-					<DialogContent className="  border-0 bg-primary">
+					<DialogContent className=" rounded-[20px] border-0 bg-primary">
 						<DialogHeader>
 							<DialogTitle className=" text-accent">
 								Switch Workspace
@@ -214,6 +230,19 @@ export default function ProtectedNavbar({
 								view your projects and tasks
 							</DialogDescription>
 						</DialogHeader>
+
+						<Button
+							asChild
+							className="w-full rounded-full bg-secondary text-primary hover:bg-secondary/90"
+						>
+							<Link
+								href="/create-workspace"
+								onClick={() => setOpen(false)}
+							>
+								<Plus className="w-4 h-4" />
+								<span>Create workspace</span>
+							</Link>
+						</Button>
 
 						<div>
 							<ScrollArea className="  max-h-[200px] h-full ">
@@ -230,6 +259,7 @@ export default function ProtectedNavbar({
 														mode: memberWorkspace.mode,
 														name: memberWorkspace.name,
 														role: i.role,
+														memberId: i.id,
 													});
 												}}
 												className={` ${activeWorkspaceId === memberWorkspace.id ? " bg-accent text-primary" : " bg-transparent text-accent"} hover:bg-accent hover:text-primary transition-all  flex items-center justify-between px-[20px] rounded-[10px] py-[10px]`}

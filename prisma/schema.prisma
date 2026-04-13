@@ -66,27 +66,31 @@ model Workspace {
   comments     Comment[]
   projects     Project[]
   resources    Resource[]
+  teams        Team[]
 
   @@map("workspaces")
 }
 
 model Member {
-  id                  String         @id @default(uuid())
-  user                User           @relation(fields: [userId], references: [id])
+  id                  String          @id @default(uuid())
+  user                User            @relation(fields: [userId], references: [id])
   userId              String
-  workspace           Workspace      @relation(fields: [workspaceId], references: [id])
+  workspace           Workspace       @relation(fields: [workspaceId], references: [id])
   workspaceId         String
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
   role                WorkspaceRoles
-  task                Task?          @relation(fields: [taskId], references: [id])
-  taskId              String?
   inviteCodes         inviteCode[]
-  createdTasks        Task[]         @relation("TaskCreator")
+  createdTasks        Task[]          @relation("TaskCreator")
+  createdProjects     Project[]       @relation("ProjectCreator")
   comments            Comment[]
-  createdMilestones   MileStone[]    @relation("MileStoneCreator")
-  completedMilestones MileStone[]    @relation("MileStoneCompleted")
-  projects            Project[]
+  createdMilestones   MileStone[]     @relation("MileStoneCreator")
+  completedMilestones MileStone[]     @relation("MileStoneCompleted")
+  team                Team?           @relation(fields: [teamId], references: [id])
+  teamId              String?
+  projectMembers      ProjectMember[]
+  taskMembers         TaskMember[]
+  status              MemberStatus    @default(ACTIVE)
 
   @@unique([userId, workspaceId])
   @@map("members")
@@ -94,9 +98,9 @@ model Member {
 
 model JoinRequest {
   id           String        @id @default(uuid())
-  email        String
+  email        String        @unique
   fullName     String
-  inviteCode   String?       @unique
+  inviteCode   String?
   createdAt    DateTime      @default(now())
   status       RequestStatus @default(PENDING)
   message      String?
@@ -108,29 +112,43 @@ model JoinRequest {
   user         User?         @relation("RequestUser", fields: [userId], references: [id])
   userId       String?
 
-  @@unique([email, workspaceId])
   @@map("join-requests")
 }
 
 model Project {
-  id          String        @id @default(uuid())
-  workspace   Workspace     @relation(fields: [workspaceId], references: [id])
-  workspaceId String
-  createdBy   Member        @relation(fields: [memberId], references: [id])
-  memberId    String
-  status      Status
-  startPeriod DateTime
-  endPeriod   DateTime
-  title       String
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  priority    PriorityLevel @default(MEDIUM)
-  Labels      String[]
-  tasks       Task[]
-  comments    Comment[]
-  resources   Resource[]
+  id             String          @id @default(uuid())
+  title          String
+  description    String
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id])
+  workspaceId    String
+  createdBy      Member          @relation("ProjectCreator", fields: [createdById], references: [id])
+  createdById    String
+  status         Status          @default(TODO)
+  startPeriod    DateTime
+  endPeriod      DateTime
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  priority       PriorityLevel   @default(MEDIUM)
+  Labels         String[]
+  tasks          Task[]
+  comments       Comment[]
+  resources      Resource[]
+  projectId      String
+  projectMembers ProjectMember[]
 
   @@map("projects")
+}
+
+model ProjectMember {
+  id          String        @id @default(uuid())
+  project     Project       @relation(fields: [projectId], references: [id])
+  projectId   String
+  member      Member        @relation(fields: [memberId], references: [id])
+  memberId    String
+  projectRole ProjectAccess @default(CONTRIBUTOR)
+  joinedAt    DateTime      @default(now())
+
+  @@map("project-members")
 }
 
 model Task {
@@ -148,14 +166,25 @@ model Task {
   createdBy   Member        @relation("TaskCreator", fields: [createdById], references: [id])
   createdById String
   priority    PriorityLevel @default(MEDIUM)
-  status      Status
-  assignee    Member[]
+  status      Status        @default(TODO)
   Labels      String[]
   milestones  MileStone[]
   comments    Comment[]
   resources   Resource[]
+  taskMembers TaskMember[]
 
   @@map("tasks")
+}
+
+model TaskMember {
+  id         String   @id @default(uuid())
+  task       Task     @relation(fields: [taskId], references: [id])
+  taskId     String
+  member     Member   @relation(fields: [memberId], references: [id])
+  memberId   String
+  assignedAt DateTime @default(now())
+
+  @@map("task-members")
 }
 
 model Resource {
@@ -196,7 +225,7 @@ model MileStone {
   taskId        String
   title         String
   description   String
-  status        MileStoneStatus
+  status        MileStoneStatus @default(NOT_STARTED)
   dueDate       DateTime?
   createdBy     Member          @relation("MileStoneCreator", fields: [createdById], references: [id])
   createdById   String
@@ -234,6 +263,16 @@ model inviteCode {
   @@map("invite-codes")
 }
 
+model Team {
+  id          String    @id @default(uuid())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  workspaceId String
+  name        String
+  members     Member[]
+
+  @@map("teams")
+}
+
 enum DeskMode {
   WORKSPACE
   INDIVIDUAL
@@ -248,13 +287,18 @@ enum WorkspaceRoles {
 enum ProjectAccess {
   PROJECT_LEAD
   PROJECT_MANAGER
-  CONTRIBUTER
+  CONTRIBUTOR
   VIEWER
 }
 
 enum RequestStatus {
   PENDING
   ACCEPTED
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
 }
 
 enum InviteCodeType {
@@ -286,4 +330,5 @@ enum PriorityLevel {
   MEDIUM
   LOW
   URGENT
+  NO_PRIORITY
 }

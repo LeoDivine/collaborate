@@ -1,4 +1,4 @@
-export const publicRoutes = ["/"];
+export const publicRoutes = ["/", "/join-workspace"];
 export const protectedRoutes = [
 	"/dashboard",
 	"/activity",
@@ -19,3 +19,7 @@ export const authRoutes = [
 export const apiAuthPrefix = "/api/auth";
 export const DEFAULT_LOGIN_REDIRECT = "/dashboard";
 export const extendedRoutes = ["/sign-in/my-workspaces"];
+export const userNameRoutes = [
+	"/sign-up/individual-auth/username",
+	"/sign-up/workspace-auth/username",
+];

@@ -15,9 +15,11 @@ export default function WorkspaceView({
 	value,
 	role,
 	workspaceId,
+	memberId,
 }: {
 	role: WorkspaceRoles;
 	workspaceId: string;
+	memberId: string;
 	title: string;
 	value?: number;
 	mode: DeskMode;
@@ -31,6 +33,7 @@ export default function WorkspaceView({
 			currentWorkspaceMode: mode,
 			currentWorkspaceRole: role,
 			currentWorkspaceName: title,
+			currentMemberId: memberId,
 		});
 		router.push("/dashboard");
 	};

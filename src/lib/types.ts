@@ -6,3 +6,10 @@ export interface Quote {
 	text: string;
 	author: string;
 }
+
+export interface RequestAcceptedEmailProps {
+	fullName: string;
+	email: string;
+	workspaceId: string;
+	workspaceName: string;
+}

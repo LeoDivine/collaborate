@@ -12,6 +12,7 @@ function syncWorkspaceSessionFields(
 		currentWorkspaceMode?: string;
 		currentWorkspaceRole?: string;
 		currentWorkspaceName?: string;
+		currentMemberId?: string;
 	},
 ) {
 	if (data.currentWorkspaceId !== undefined) {
@@ -28,6 +29,10 @@ function syncWorkspaceSessionFields(
 
 	if (data.currentWorkspaceName !== undefined) {
 		token.currentWorkspaceName = data.currentWorkspaceName;
+	}
+
+	if (data.currentMemberId !== undefined) {
+		token.currentMemberId = data.currentMemberId;
 	}
 }
 
@@ -92,7 +97,7 @@ export const { signIn, signOut, auth, handlers } = NextAuth({
 				}
 			}
 
-			console.log({ account, user, workspace, member });
+			// console.log({ account, user, workspace, member });
 
 			return true;
 		},
@@ -108,6 +113,7 @@ export const { signIn, signOut, auth, handlers } = NextAuth({
 					currentWorkspaceMode: user.currentWorkspaceMode,
 					currentWorkspaceRole: user.currentWorkspaceRole,
 					currentWorkspaceName: user.currentWorkspaceName,
+					currentMemberId: user.currentMemberId,
 				});
 			}
 
@@ -121,6 +127,7 @@ export const { signIn, signOut, auth, handlers } = NextAuth({
 					currentWorkspaceMode: session?.currentWorkspaceMode,
 					currentWorkspaceRole: session?.currentWorkspaceRole,
 					currentWorkspaceName: session?.currentWorkspaceName,
+					currentMemberId: session?.currentMemberId,
 				});
 			}
 
@@ -139,6 +146,7 @@ export const { signIn, signOut, auth, handlers } = NextAuth({
 					currentWorkspaceMode: token.currentWorkspaceMode as string,
 					currentWorkspaceRole: token.currentWorkspaceRole as string,
 					currentWorkspaceName: token.currentWorkspaceName as string,
+					currentMemberId: token.currentMemberId as string,
 				};
 
 				session.user = sessionUser;

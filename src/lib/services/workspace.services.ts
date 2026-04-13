@@ -10,6 +10,7 @@ import {
 	joinWorkspaceSchema,
 } from "../schemas/workspace";
 import { generateSuffix } from "../utils";
+import { getMembersByWorkspaceId } from "./member.services";
 
 export const getWorkspaceBByID = async (id: string) => {
 	const workspace = await db.workspace.findUnique({
@@ -176,47 +177,4 @@ export const searchForWorkspace = async ({
 	};
 };
 
-export const workspaceRequest = async (
-	values: JoinWorkspaceValues,
-	workspaceId: string,
-	user?: User,
-) => {
-	const validatedFields = joinWorkspaceSchema.safeParse(values);
-	if (!validatedFields.success) {
-		return {
-			success: false,
-			message: "Invalid fields passed",
-		};
-	}
-	const { email, name, inviteToken, message } = validatedFields.data;
 
-	try {
-		const joinWorkspace = await db.joinRequest.create({
-			data: {
-				email,
-				fullName: name,
-				inviteCode: inviteToken,
-				message,
-				workspaceId,
-				userId: user?.id,
-			},
-		});
-		//TODO: CHECK FOR INVITE CODE CORRECTION
-		if (!joinWorkspace) {
-			return {
-				success: false,
-				message: "Request not sent",
-			};
-		}
-		return {
-			success: true,
-			message:
-				"Request successfully sent, the admin will approve your request soon.",
-		};
-	} catch (e) {
-		return {
-			success: false,
-			message: "Something went wrong",
-		};
-	}
-};
