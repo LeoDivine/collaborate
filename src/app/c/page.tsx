@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useSession } from "next-auth/react";
-import { getWorkspaceBByID } from "@/lib/services/workspace.services";
-import { WorkspaceRoles } from "../../../generated/prisma/client";
 import { createMemberForWorkspace } from "@/lib/services/member.services";
-import { toast } from "sonner";
+import { getWorkspaceBByID } from "@/lib/services/workspace.services";
 import { PawPrint } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect } from "react";
+import { toast } from "sonner";
+import { WorkspaceRoles } from "../../../generated/prisma/client";
 
-export default function InviteRedirect() {
+function InviteRedirectInner() {
 	const { update, data: session, status } = useSession();
 	const searchParams = useSearchParams();
 	const requestWorkspaceID = searchParams.get("requestWorkspace");
@@ -67,5 +67,21 @@ export default function InviteRedirect() {
 			<p className=" mt-[6px]">Redirecting you....</p>
 			<p className="  text-[13px]">Don't close this page yet</p>
 		</div>
+	);
+}
+
+export default function InviteRedirect() {
+	return (
+		<Suspense
+			fallback={
+				<div className=" flex h-screen items-center justify-center flex-col text-primary">
+					<PawPrint className=" animate-pulse w-6 h-6" />
+					<p className=" mt-[6px]">Redirecting you....</p>
+					<p className="  text-[13px]">Don't close this page yet</p>
+				</div>
+			}
+		>
+			<InviteRedirectInner />
+		</Suspense>
 	);
 }
