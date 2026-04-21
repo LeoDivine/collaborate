@@ -129,8 +129,18 @@ export default function WorkspaceSignUp({
 				className=" w-full mt-[10px]"
 			>
 				<TabsList className=" md:w-[50%] w-full">
-					<TabsTrigger value="owner">Owner</TabsTrigger>
-					<TabsTrigger value="workspace">Workspace</TabsTrigger>
+					<TabsTrigger
+						className="data-[state=active]:bg-primary text-primary"
+						value="owner"
+					>
+						Owner
+					</TabsTrigger>
+					<TabsTrigger
+						className="data-[state=active]:bg-primary text-primary"
+						value="workspace"
+					>
+						Workspace
+					</TabsTrigger>
 				</TabsList>
 				<TabsContent className=" mt-[20px] w-full" value="owner">
 					<Form {...ownerForm}>

@@ -12,7 +12,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { useSession } from "next-auth/react";
 import { updateUserName } from "@/lib/services/auth.services";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useState } from "react";
 import { User } from "../../../generated/prisma/client";
@@ -27,6 +27,7 @@ export default function UsernameForm({
 }) {
 	const [loading, setLoading] = useState(false);
 	const { update } = useSession();
+
 
 	const router = useRouter();
 	// if (!user) {

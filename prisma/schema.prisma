@@ -98,7 +98,7 @@ model Member {
 
 model JoinRequest {
   id           String        @id @default(uuid())
-  email        String        @unique
+  email        String
   fullName     String
   inviteCode   String?
   createdAt    DateTime      @default(now())
@@ -106,12 +106,13 @@ model JoinRequest {
   message      String?
   reviewedById String?
   reviewedBy   User?         @relation("ReviewUser", fields: [reviewedById], references: [id])
-  reviewedAt   DateTime      @default(now())
+  reviewedAt   DateTime?
   workspace    Workspace     @relation(fields: [workspaceId], references: [id])
   workspaceId  String
   user         User?         @relation("RequestUser", fields: [userId], references: [id])
   userId       String?
 
+  @@unique([email, workspaceId])
   @@map("join-requests")
 }
 

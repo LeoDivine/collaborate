@@ -1,6 +1,11 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { DeskMode, WorkspaceRoles } from "../../generated/prisma/enums";
+import {
+	DeskMode,
+	MemberStatus,
+	RequestStatus,
+	WorkspaceRoles,
+} from "../../generated/prisma/enums";
 import {
 	ALPHABET,
 	PROTECTEADMINNAVBAR,
@@ -57,5 +62,34 @@ export const renderNavigationByRole = (
 			return PROTECTEADMINNAVBAR;
 		default:
 			return PROTECTEDPERSONALNAVBAR;
+	}
+};
+
+export const renderRequestStatusBadge = (status: RequestStatus) => {
+	switch (status) {
+		case "ACCEPTED":
+			return " bg-success";
+		case "PENDING":
+			return " bg-destructive";
+	}
+};
+
+export const renderWorkspaceRoleBadge = (role: WorkspaceRoles) => {
+	switch (role) {
+		case "ADMIN":
+			return " bg-[#B1AD44]";
+		case "MEMBER":
+			return " bg-accent text-primary";
+		case "OWNER":
+			return "bg-destructive";
+	}
+};
+
+export const renderStatusBadge = (status: MemberStatus) => {
+	switch (status) {
+		case "ACTIVE":
+			return " bg-success";
+		case "INACTIVE":
+			return " bg-accent text-primary";
 	}
 };
