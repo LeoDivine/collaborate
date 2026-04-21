@@ -8,7 +8,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
 	return (
 		<div
 			data-slot="table-container"
-			className="relative w-full rounded-[15px] overflow-x-auto"
+			className="relative w-full text-[13px] rounded-[15px] overflow-x-auto custom-scrollbar"
 		>
 			<table
 				data-slot="table"
@@ -57,7 +57,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 		<tr
 			data-slot="table-row"
 			className={cn(
-				"text-secondary transition-colors bg-primary has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+				"text-secondary transition-colors bg-primary has-aria-expanded:bg-primary/85 data-[state=selected]:bg-primary/has-aria-expanded:bg-primary/85",
 				className,
 			)}
 			{...props}
@@ -106,11 +106,11 @@ function TableCaption({
 
 export {
 	Table,
-	TableHeader,
 	TableBody,
+	TableCaption,
+	TableCell,
 	TableFooter,
 	TableHead,
+	TableHeader,
 	TableRow,
-	TableCell,
-	TableCaption,
 };

@@ -1,6 +1,5 @@
 import ProtectedNavbar from "@/components/shared/layout/private/protected-navbar";
 import ProtectedSidebar from "@/components/shared/layout/private/protected-sidebar";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { getMembersByUserID } from "@/lib/services/member.services";
 import NextTopLoader from "nextjs-toploader";
 import React from "react";
@@ -39,10 +38,9 @@ export default async function Layout({
 						workspaces={members}
 					/>
 				</div>
-				<ScrollArea className="  h-screen px-[10px]    py-[10px]  md:py-[15px]">
+				<div className="overflow-y-scroll custom-scrollbar h-screen px-[10px] py-[10px] md:py-[15px]">
 					<div className=" pb-[200px]">{children}</div>
-					<ScrollBar orientation="vertical" />
-				</ScrollArea>
+				</div>
 			</div>
 		</div>
 	);

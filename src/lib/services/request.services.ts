@@ -2,9 +2,9 @@
 
 import { JoinWorkspaceValues } from "@/components/forms/join-workspace";
 import { User } from "next-auth";
+import { auth } from "../../../auth";
 import { db } from "../db";
 import { joinWorkspaceSchema } from "../schemas/workspace";
-import { getMembersByWorkspaceId } from "./member.services";
 
 export const makeRequest = async (
 	values: JoinWorkspaceValues,
@@ -20,9 +20,11 @@ export const makeRequest = async (
 	}
 	const { email, name, inviteToken, message } = validatedFields.data;
 
-	const isEmailExisting = await db.joinRequest.findUnique({
+	const isEmailExisting = await db.joinRequest.findFirst({
 		where: {
 			email,
+			workspaceId,
+			status: "PENDING",
 		},
 	});
 
@@ -33,12 +35,17 @@ export const makeRequest = async (
 		};
 	}
 
-	const members = await getMembersByWorkspaceId(workspaceId);
+	const members = await db.member.findMany({
+		where: {
+			workspaceId: workspaceId,
+		},
+		include: {
+			user: true,
+		},
+	});
 
-	if (members.success) {
-		const isEmailInWorkspace = members.members.find(
-			(i) => i.user.email === email,
-		);
+	if (members.length > 0) {
+		const isEmailInWorkspace = members.find((i) => i.user.email === email);
 
 		if (isEmailInWorkspace) {
 			return {
@@ -80,34 +87,112 @@ export const makeRequest = async (
 	}
 };
 
-export const acceptRequest = async (requestId: string) => {
+export const acceptRequestAdmin = async (requestId: string) => {
+	const session = await auth();
+	const user = session?.user;
 	if (!requestId) {
 		return {
 			success: false,
-			meesage: "Request ID is not valid",
+			message: "Request ID is not valid",
 		};
 	}
-	const request = await db.joinRequest.update({
-		where: {
-			id: requestId,
-		},
-		data: {
-			status: "ACCEPTED",
-		},
-	});
 
-	if (!request) {
+	try {
+		const request = await db.joinRequest.update({
+			where: {
+				id: requestId,
+			},
+			data: {
+				status: "ACCEPTED",
+				reviewedById: user?.id,
+				reviewedAt: new Date(),
+			},
+		});
+
+		return {
+			success: true,
+			message:
+				"Request accepted, they would get a confirmation email soon.",
+			request,
+		};
+	} catch (e) {
+		console.error("Issue with accepting admin request", e);
 		return {
 			success: false,
-			meesage: "Request not accepted",
+			message: "Failed to accept request",
+		};
+	}
+};
+
+export const getAllRequest = async (
+	page: number,
+	limit: number,
+	workspaceId: string,
+	query?: string,
+) => {
+	const [requests, total, pending, accepted] = await Promise.all([
+		db.joinRequest.findMany({
+			take: limit,
+			skip: (page - 1) * limit,
+			where: {
+				AND: [
+					{
+						workspaceId,
+					},
+					{
+						OR: [
+							{
+								fullName: {
+									contains: query,
+									mode: "insensitive",
+								},
+							},
+							{
+								email: {
+									contains: query,
+									mode: "insensitive",
+								},
+							},
+						],
+					},
+				],
+			},
+			orderBy: {
+				createdAt: "desc",
+			},
+		}),
+		db.joinRequest.count({}),
+		db.joinRequest.count({
+			where: {
+				workspaceId,
+				status: "PENDING",
+			},
+		}),
+		db.joinRequest.count({
+			where: {
+				workspaceId,
+				status: "ACCEPTED",
+			},
+		}),
+	]);
+
+	if (requests.length === 0) {
+		return {
+			success: false,
+			message: "No requests found",
+			requests: [],
+			total,
 		};
 	}
 
 	return {
 		success: true,
-		meesage: "Request accepted",
-		data: {
-			request,
+		message: "Requests fetched successfully",
+		requests,
+		total,
+		stats: {
+			pending,
+			accepted,
 		},
 	};
 };

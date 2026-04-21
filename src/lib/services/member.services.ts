@@ -1,5 +1,6 @@
 "use server";
 
+import { User } from "../../../generated/prisma/client";
 import { db } from "../db";
 
 export const getMembersByUserID = async (userId: string) => {
@@ -22,45 +23,104 @@ export const getMembersByUserID = async (userId: string) => {
 	};
 };
 
-// export const getMemberInfoByUserId = () => {};
+export const getMembersByWorkspaceId = async (
+	page: number,
+	limit: number,
+	workspaceId: string,
+	query?: string,
+) => {
+	const [members, total] = await Promise.all([
+		await db.member.findMany({
+			take: limit,
+			skip: (page - 1) * limit,
+			include: {
+				user: true,
+			},
+			where: {
+				AND: [
+					{
+						workspaceId,
+					},
+					{
+						OR: [
+							{
+								user: {
+									fullName: {
+										contains: query,
+										mode: "insensitive",
+									},
+								},
+							},
+							{
+								user: {
+									email: {
+										contains: query,
+										mode: "insensitive",
+									},
+								},
+							},
+							{
+								user: {
+									userName: {
+										contains: query,
+										mode: "insensitive",
+									},
+								},
+							},
+						],
+					},
+				],
+			},
+			orderBy: {
+				createdAt: "desc",
+			},
+		}),
 
-// export const getMemberById = async (userId: string) => {
-// 	const member = await db.member.findMany({
-// 		where: {
-// 			userId,
-// 		},
-// 	});
-// 	return member;
-// };
+		await db.member.count({
+			where: {
+				workspaceId,
+			},
+		}),
+	]);
 
-export const getMembersByWorkspaceId = async (id: string) => {
-	if (!id) {
+	if (members.length === 0) {
 		return {
 			success: false,
-			message: "ID not found",
+			meesage: "No members found",
 			members: [],
+			total,
 		};
 	}
-	const members = await db.member.findMany({
-		where: {
-			workspaceId: id,
-		},
-		include: {
-			user: true,
-		},
-	});
 
-	if (members.length > 0) {
+	return {
+		success: true,
+		meesage: "Members fetched successfully",
+		members,
+		total,
+	};
+};
+
+export const createMemberForWorkspace = async (
+	userId: string,
+	workspaceId: string,
+) => {
+	try {
+		const member = await db.member.create({
+			data: {
+				role: "MEMBER",
+				workspaceId: workspaceId,
+				userId,
+			},
+		});
 		return {
 			success: true,
-			message: "Members for this workspace have been fetched",
-			members,
+			member,
+			message: "Member created successfully",
 		};
-	} else {
+	} catch (e: any) {
 		return {
 			success: false,
-			message: "No members found for this workspace",
-			members: [],
+			message: "Something went wrong with creating workspace",
 		};
 	}
 };

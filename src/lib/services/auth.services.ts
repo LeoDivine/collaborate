@@ -5,12 +5,16 @@ import { SignInValues } from "@/components/forms/sign-in";
 import { WorkspaceCreateValues } from "@/components/forms/workspace-sign-up";
 import bcrypt from "bcryptjs";
 import { AuthError } from "next-auth";
-import { signIn } from "../../../auth";
+import { auth, signIn } from "../../../auth";
 import { db } from "../db";
 import { signInSchema, signUpSchema } from "../schemas/auth";
-import { generateSlug } from "../utils";
-import { generateUniqueSlugOnCreation } from "./workspace.services";
 import { workspaceCreateSchema } from "../schemas/workspace";
+import { generateSlug } from "../utils";
+import {
+	generateUniqueSlugOnCreation,
+	getWorkspaceBByID,
+} from "./workspace.services";
+import { getSession } from "next-auth/react";
 
 export const individualSignUp = async (values: SignUpValues) => {
 	const validatedFields = signUpSchema.safeParse(values);
@@ -251,9 +255,19 @@ export const login = async (values: SignInValues) => {
 				message: "Invalid email or password",
 			};
 		} else {
+			const user = await db.user.findUnique({ where: { email } });
+			if (!user) {
+				return {
+					success: false,
+					message: "User not found",
+				};
+			}
+			user.password = "_";
+
 			return {
 				success: true,
 				message: "Account signed in successfully",
+				user,
 			};
 		}
 	} catch (e: any) {
@@ -274,4 +288,76 @@ export const login = async (values: SignInValues) => {
 		}
 		throw e;
 	}
+};
+
+export const createAccountFromRequest = async (
+	values: SignUpValues,
+	requestedWorkspaceId: string,
+) => {
+	const validatedFields = signUpSchema.safeParse(values);
+
+	if (!validatedFields.success) {
+		return {
+			success: false,
+			message: "Invalid fields passed",
+		};
+	}
+
+	const { email, fullName, password } = validatedFields.data;
+
+	const hashedPassword = await bcrypt.hash(password, 10);
+	const existingUser = await db.user.findUnique({
+		where: {
+			email,
+		},
+	});
+	const workspace = await getWorkspaceBByID(requestedWorkspaceId);
+
+	if (existingUser) {
+		return {
+			success: false,
+			message: "An account with this email already exists",
+		};
+	}
+
+	if (!workspace) {
+		return {
+			success: false,
+			message: "The workspace selected is invalid",
+		};
+	}
+
+	const user = await db.user.create({
+		data: {
+			fullName,
+			email,
+			password: hashedPassword,
+		},
+	});
+
+	const member = await db.member.create({
+		data: {
+			role: "MEMBER",
+			userId: user.id,
+			workspaceId: requestedWorkspaceId,
+		},
+	});
+
+	const signInResponse = await signIn("credentials", {
+		email: user.email,
+		password,
+		redirect: false,
+	});
+
+	if (!signInResponse) {
+		throw new Error("Something went wrong");
+	}
+
+	return {
+		success: true,
+		message: "Account created successfully",
+		user,
+		workspace,
+		member,
+	};
 };

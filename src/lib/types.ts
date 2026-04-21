@@ -1,4 +1,4 @@
-import { User } from "../../generated/prisma/client";
+import { Member, User } from "../../generated/prisma/client";
 
 export type ExtendedUser = Pick<User, "fullName" | "email" | "id" | "userName">;
 
@@ -12,4 +12,9 @@ export interface RequestAcceptedEmailProps {
 	email: string;
 	workspaceId: string;
 	workspaceName: string;
+	hasAccount: boolean;
+}
+
+export interface MembersUsers extends Member {
+	user: User;
 }

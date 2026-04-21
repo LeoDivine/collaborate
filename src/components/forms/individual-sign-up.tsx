@@ -4,12 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signUpSchema } from "@/lib/schemas/auth";
-import { individualSignUp } from "@/lib/services/auth.services";
+import {
+	createAccountFromRequest,
+	individualSignUp,
+} from "@/lib/services/auth.services";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LoaderCircle } from "lucide-react";
 import { signIn, useSession } from "next-auth/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { AiOutlineGoogle } from "react-icons/ai";
@@ -21,16 +24,23 @@ import { Form, FormField, FormItem, FormMessage } from "../ui/form";
 
 export type SignUpValues = z.infer<typeof signUpSchema>;
 export default function IndividualSignUp() {
+	const searchParams = useSearchParams();
 	const [password, setPassword] = useState(false);
 	const [loading, setLoading] = useState(false);
+
+	const urlFullName = searchParams.get("fullName");
+	const urlEmail = searchParams.get("email");
+	const urlRequestWorkspaceId = searchParams.get("requestWorkspace");
+
+	// console.log({ urlFullName, urlEmail, urlRequestWorkspaceId });
 
 	const { update } = useSession();
 
 	const form = useForm<SignUpValues>({
 		defaultValues: {
 			confirmPassword: "",
-			email: "",
-			fullName: "",
+			email: urlEmail ?? "",
+			fullName: urlFullName ?? "",
 			password: "",
 		},
 		resolver: zodResolver(signUpSchema),
@@ -45,13 +55,24 @@ export default function IndividualSignUp() {
 
 	const handleSubmit = async (values: SignUpValues) => {
 		setLoading(true);
+		let res;
 		try {
-			const res = await individualSignUp({
-				email: values.email,
-				fullName: values.fullName,
-				password: values.password,
-				confirmPassword: values.confirmPassword,
-			});
+			if (urlRequestWorkspaceId) {
+				toast.info(
+					"Signing up to access the workspace you requested to join",
+				);
+				res = await createAccountFromRequest(
+					values,
+					urlRequestWorkspaceId,
+				);
+			} else {
+				res = await individualSignUp({
+					email: values.email,
+					fullName: values.fullName,
+					password: values.password,
+					confirmPassword: values.confirmPassword,
+				});
+			}
 			if (!res.success) {
 				form.reset();
 				toast.error(res.message);
@@ -93,7 +114,7 @@ export default function IndividualSignUp() {
 						<FormItem className=" flex flex-col gap-2">
 							<Label className=" text-primary">Full Name</Label>
 							<Input
-								disabled={loading}
+								disabled={loading || urlFullName !== ""}
 								{...field}
 								placeholder="Enter your full name"
 								className=" text-primary py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
@@ -111,7 +132,7 @@ export default function IndividualSignUp() {
 								Email Address
 							</Label>
 							<Input
-								disabled={loading}
+								disabled={loading || urlEmail !== ""}
 								{...field}
 								placeholder="Enter your email address"
 								className=" text-primary py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
@@ -206,14 +227,16 @@ export default function IndividualSignUp() {
 							</div>
 						:	"Sign Up"}
 					</Button>
-					<Button
-						onClick={() => handleOAuthUsage("google")}
-						type="button"
-						className=" py-[20px] bg-accent rounded-full text-secondary"
-					>
-						<AiOutlineGoogle className=" w-60 h-60" />
-						Sign in with Google
-					</Button>
+					{!urlRequestWorkspaceId && (
+						<Button
+							onClick={() => handleOAuthUsage("google")}
+							type="button"
+							className=" py-[20px] bg-accent rounded-full text-secondary"
+						>
+							<AiOutlineGoogle className=" w-60 h-60" />
+							Sign in with Google
+						</Button>
+					)}
 				</div>
 			</form>
 		</Form>

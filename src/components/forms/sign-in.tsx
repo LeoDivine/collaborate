@@ -7,8 +7,8 @@ import { signInSchema } from "@/lib/schemas/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { AiOutlineGoogle } from "react-icons/ai";
 import { FaRegEyeSlash } from "react-icons/fa";
@@ -19,16 +19,27 @@ import { Form, FormField, FormItem, FormMessage } from "../ui/form";
 import { LoaderCircle } from "lucide-react";
 import { login } from "@/lib/services/auth.services";
 import { toast } from "sonner";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
+import { DeskMode, WorkspaceRoles } from "../../../generated/prisma/enums";
+import { getWorkspaceBByID } from "@/lib/services/workspace.services";
+import { createMemberForWorkspace } from "@/lib/services/member.services";
 
 export type SignInValues = z.infer<typeof signInSchema>;
 export default function SignInForm() {
 	const [loading, setLoading] = useState(false);
 	const [password, setPassword] = useState(false);
 
+	const searchParams = useSearchParams();
+	const urlFullName = searchParams.get("fullName")?.replace("null", "");
+	const urlEmail = searchParams.get("email")?.replace("null", "");
+	const urlRequestWorkspaceId = searchParams
+		.get("requestWorkspace")
+		?.replace("null", "");
+	const { update } = useSession();
+
 	const form = useForm<SignInValues>({
 		defaultValues: {
-			email: "",
+			email: urlEmail ?? "",
 			password: "",
 		},
 		resolver: zodResolver(signInSchema),
@@ -48,9 +59,29 @@ export default function SignInForm() {
 			if (!res.success) {
 				toast.error(res.message);
 				form.reset();
+			} else {
+				if (urlRequestWorkspaceId) {
+					await createMemberForWorkspace(
+						res.user?.id!,
+						urlRequestWorkspaceId,
+					);
+					toast.info(
+						"Signing in to access the workspace you requested to join",
+					);
+					const workspace = await getWorkspaceBByID(
+						urlRequestWorkspaceId,
+					);
+					await update({
+						currentWorkspaceId: urlRequestWorkspaceId,
+						currentWorkspaceMode: workspace?.mode,
+						currentWorkspaceRole: "MEMBER" as WorkspaceRoles,
+						currentWorkspaceName: workspace?.name,
+					});
+				} else {
+					toast.success(res.message);
+					router.push("/sign-in/my-workspaces");
+				}
 			}
-			toast.success(res.message);
-			router.push("/sign-in/my-workspaces");
 		} catch (e: any) {
 			toast.error("Something went wrong");
 		} finally {
@@ -123,9 +154,17 @@ export default function SignInForm() {
 									render={({ field }) => (
 										<FormItem>
 											<div className="w-full flex relative flex-col gap-2 ">
-												<Label className=" text-primary">
-													Password
-												</Label>
+												<div className=" flex justify-between">
+													<Label className=" text-primary">
+														Password
+													</Label>
+													<Link
+														href={""}
+														className=" text-sm underline text-primary"
+													>
+														Reset Password
+													</Link>
+												</div>
 												<Input
 													{...field}
 													disabled={loading}
@@ -153,12 +192,12 @@ export default function SignInForm() {
 
 								<div className="  w-full flex flex-row justify-start items-start">
 									<span className=" text-[15px] flex gap-2 text-primary">
-										Forgot Password?
+										Don't have an account?
 										<Link
 											className=" underline"
-											href={"/sign-in/individual-auth"}
+											href={"/sign-up"}
 										>
-											Reset Password
+											Create account
 										</Link>
 									</span>
 								</div>
@@ -175,16 +214,18 @@ export default function SignInForm() {
 											</div>
 										:	"Sign In"}
 									</Button>
-									<Button
-										type="button"
-										onClick={() =>
-											handleOAuthUsage("google")
-										}
-										className="  py-[20px] bg-accent rounded-full text-secondary"
-									>
-										<AiOutlineGoogle className=" w-60 h-60" />
-										Sign in with Google
-									</Button>
+									{!urlRequestWorkspaceId && (
+										<Button
+											onClick={() =>
+												handleOAuthUsage("google")
+											}
+											type="button"
+											className=" py-[20px] bg-accent rounded-full text-secondary"
+										>
+											<AiOutlineGoogle className=" w-60 h-60" />
+											Sign in with Google
+										</Button>
+									)}
 								</div>
 							</div>
 						</form>
