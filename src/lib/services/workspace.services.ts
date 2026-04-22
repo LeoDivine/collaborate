@@ -1,16 +1,13 @@
 "use server";
 
 import { ExtendedWorkspaceCreateValues } from "@/components/forms/create-workspace";
-import { JoinWorkspaceValues } from "@/components/forms/join-workspace";
 import { User } from "next-auth";
 import { DeskMode } from "../../../generated/prisma/enums";
 import { db } from "../db";
 import {
-	extendedWorkspaceCreateSchema,
-	joinWorkspaceSchema,
+	extendedWorkspaceCreateSchema
 } from "../schemas/workspace";
 import { generateSuffix } from "../utils";
-import { getMembersByWorkspaceId } from "./member.services";
 
 export const getWorkspaceBByID = async (id: string) => {
 	const workspace = await db.workspace.findUnique({

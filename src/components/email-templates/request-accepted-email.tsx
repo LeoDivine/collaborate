@@ -5,9 +5,13 @@ export default function RequestAcceptedEmail({
 	email,
 	workspaceId,
 	workspaceName,
+	hasAccount,
 }: RequestAcceptedEmailProps) {
-	const baseUrl = process.env.BASE_URL;
-	const accessUrl = `${baseUrl}/sign-up/individual-auth?fullName=${encodeURIComponent(fullName)}?email=${encodeURIComponent(email)}?requestWorkspace=${workspaceId}`;
+	const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+	const accessUrl =
+		hasAccount ?
+			`${baseUrl}/c?fullName=${encodeURIComponent(fullName)}&email=${encodeURIComponent(email)}&requestWorkspace=${workspaceId}`
+		:	`${baseUrl}/sign-up/individual-auth?fullName=${encodeURIComponent(fullName)}&email=${encodeURIComponent(email)}&requestWorkspace=${workspaceId}`;
 
 	return (
 		<div
@@ -85,9 +89,11 @@ export default function RequestAcceptedEmail({
 					>
 						Great news — your request to join {workspaceName} has
 						been{" "}
-						<strong style={{ color: "#18181b" }}>accepted</strong>.
-						You can now complete your sign-up and start
-						collaborating with your team.
+						<strong style={{ color: "#18181b" }}>accepted</strong>.{" "}
+						{hasAccount ?
+							"Sign in to your existing account to start collaborating with your team."
+						:	"Complete your sign-up to start collaborating with your team."
+						}
 					</p>
 
 					<p
@@ -98,8 +104,10 @@ export default function RequestAcceptedEmail({
 							margin: "0 0 32px",
 						}}
 					>
-						Click the button below to set up your account and access
-						the workspace.
+						{hasAccount ?
+							"Click the button below to sign in and access the workspace."
+						:	"Click the button below to set up your account and access the workspace."
+						}
 					</p>
 
 					{/* CTA Button */}
@@ -123,7 +131,9 @@ export default function RequestAcceptedEmail({
 								letterSpacing: "0.1px",
 							}}
 						>
-							Access Your Workspace
+							{hasAccount ?
+								"Sign In to Your Workspace"
+							:	"Access Your Workspace"}
 						</a>
 					</div>
 

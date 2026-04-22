@@ -33,6 +33,7 @@ import {
 	DeskMode,
 	WorkspaceRoles,
 } from "../../../../../generated/prisma/enums";
+import { toast } from "sonner";
 
 export default function ProtectedNavbar({
 	user,
@@ -74,6 +75,8 @@ export default function ProtectedNavbar({
 
 		setActiveWorkspaceId(id);
 		setOpen(false);
+
+		toast.success(`Switching workspace to ${name}`);
 
 		const updatedSession = await update({
 			currentWorkspaceId: id,

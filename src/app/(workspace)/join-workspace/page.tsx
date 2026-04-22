@@ -1,7 +1,5 @@
 import JoinWorkspaceForm from "@/components/forms/join-workspace";
-import React from "react";
 import { auth } from "../../../../auth";
-import { getMembersByWorkspaceId } from "@/lib/services/member.services";
 
 export default async function JoinWorkspace() {
 	const session = await auth();
