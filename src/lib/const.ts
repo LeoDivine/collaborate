@@ -4,14 +4,20 @@ import {
 	Box,
 	CalendarDays,
 	CircleDashed,
+	CircleSlash,
 	Group,
+	Info,
 	LayoutDashboard,
 	ListTodo,
 	Settings,
 	Users,
+	Flame,
 	Workflow,
+	Cloud,
+	ThermometerSnowflake,
 } from "lucide-react";
 import { Quote } from "./types";
+import { PriorityLevel } from "../../generated/prisma/enums";
 
 export const NAVLINKS = [
 	{
@@ -630,5 +636,33 @@ export const motivationalQuotes: Quote[] = [
 	{
 		text: "The harder you work for something, the greater you'll feel when you achieve it.",
 		author: "Unknown",
+	},
+];
+
+export const PRIORITY_LEVEL = [
+	{
+		icon: CircleSlash,
+		title: "No Priority",
+		value: "NO_PRIORITY" as PriorityLevel,
+	},
+	{
+		icon: Info,
+		title: "Urgent",
+		value: "URGENT" as PriorityLevel,
+	},
+	{
+		icon: Flame,
+		title: "High",
+		value: "HIGH" as PriorityLevel,
+	},
+	{
+		icon: Cloud,
+		title: "Medium",
+		value: "MEDIUM" as PriorityLevel,
+	},
+	{
+		icon: ThermometerSnowflake,
+		title: "Low",
+		value: "LOW" as PriorityLevel,
 	},
 ];
