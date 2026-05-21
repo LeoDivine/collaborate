@@ -1,4 +1,4 @@
-import { Member, User } from "../../generated/prisma/client";
+import { Member, Prisma, User } from "../../generated/prisma/client";
 
 export type ExtendedUser = Pick<User, "fullName" | "email" | "id" | "userName">;
 
@@ -18,3 +18,23 @@ export interface RequestAcceptedEmailProps {
 export interface MembersUsers extends Member {
 	user: User;
 }
+
+export type ProjectWithMembers = Prisma.ProjectGetPayload<{
+	include: {
+		projectMembers: {
+			include: {
+				member: {
+					include: {
+						user: true;
+					};
+				};
+			};
+		};
+		tasks: {
+			select: {
+				id: true;
+				status: true;
+			};
+		};
+	};
+}>;

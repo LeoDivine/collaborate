@@ -1,12 +1,12 @@
+import { db } from "@/lib/db";
 import { signInSchema } from "@/lib/schemas/auth";
-import { getUserByEmail } from "@/lib/services/auth.services";
+import { getUserByIdentifier } from "@/lib/services/auth.services";
+import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import Google from "next-auth/providers/google";
 import GitHub from "next-auth/providers/github";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import { db } from "@/lib/db";
+import Google from "next-auth/providers/google";
 
 export default {
 	adapter: PrismaAdapter(db),
@@ -25,8 +25,8 @@ export default {
 			async authorize(credentials, _request) {
 				const validatedFields = signInSchema.safeParse(credentials);
 				if (validatedFields.success) {
-					const { email, password } = validatedFields.data;
-					const user = await getUserByEmail(email);
+					const { identifier, password } = validatedFields.data;
+					const user = await getUserByIdentifier(identifier);
 					if (!user || !user.password) {
 						return null;
 					}

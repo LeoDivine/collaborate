@@ -24,7 +24,9 @@ export default async function Members({
 
 	return (
 		<div>
-			<p className=" text-[20px] font-bold text-primary">Members</p>
+			<p className=" text-[20px] font-bold text-primary">
+				Members ({memberData.total ?? 0})
+			</p>
 			<MembersView
 				members={memberData.members}
 				totalItems={memberData.total}

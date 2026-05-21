@@ -5,7 +5,7 @@ import { SignInValues } from "@/components/forms/sign-in";
 import { WorkspaceCreateValues } from "@/components/forms/workspace-sign-up";
 import bcrypt from "bcryptjs";
 import { AuthError } from "next-auth";
-import { auth, signIn } from "../../../auth";
+import { signIn } from "../../../auth";
 import { db } from "../db";
 import { signInSchema, signUpSchema } from "../schemas/auth";
 import { workspaceCreateSchema } from "../schemas/workspace";
@@ -14,7 +14,6 @@ import {
 	generateUniqueSlugOnCreation,
 	getWorkspaceBByID,
 } from "./workspace.services";
-import { getSession } from "next-auth/react";
 
 export const individualSignUp = async (values: SignUpValues) => {
 	const validatedFields = signUpSchema.safeParse(values);
@@ -68,7 +67,7 @@ export const individualSignUp = async (values: SignUpValues) => {
 	});
 
 	const signInResponse = await signIn("credentials", {
-		email: user.email,
+		identifier: user.email,
 		password,
 		redirect: false,
 	});
@@ -168,7 +167,7 @@ export const workspaceSignUp = async (
 	});
 
 	const signInResponse = await signIn("credentials", {
-		email: user.email,
+		identifier: user.email,
 		password,
 		redirect: false,
 	});
@@ -190,6 +189,22 @@ export const getUserByEmail = async (email: string) => {
 	const user = await db.user.findUnique({
 		where: {
 			email: email,
+		},
+	});
+	return user;
+};
+
+export const getUserByIdentifier = async (identifier: string) => {
+	const user = await db.user.findFirst({
+		where: {
+			OR: [
+				{
+					email: identifier,
+				},
+				{
+					userName: identifier,
+				},
+			],
 		},
 	});
 	return user;
@@ -240,11 +255,11 @@ export const login = async (values: SignInValues) => {
 		};
 	}
 
-	const { email, password } = validatedFields.data;
+	const { identifier, password } = validatedFields.data;
 
 	try {
 		const res = await signIn("credentials", {
-			email,
+			identifier,
 			password,
 			redirect: false,
 		});
@@ -252,10 +267,22 @@ export const login = async (values: SignInValues) => {
 		if (!res || res.error) {
 			return {
 				success: false,
-				message: "Invalid email or password",
+				message: "Invalid login details",
 			};
 		} else {
-			const user = await db.user.findUnique({ where: { email } });
+			const user = await db.user.findFirst({
+				where: {
+					OR: [
+						{
+							email: identifier,
+						},
+						{
+							userName: identifier,
+						},
+					],
+				},
+			});
+
 			if (!user) {
 				return {
 					success: false,
@@ -277,7 +304,7 @@ export const login = async (values: SignInValues) => {
 				case "CredentialsSignin":
 					return {
 						success: false,
-						message: "Invalid email or password",
+						message: "Invalid login details",
 					};
 				default:
 					return {
@@ -344,7 +371,7 @@ export const createAccountFromRequest = async (
 	});
 
 	const signInResponse = await signIn("credentials", {
-		email: user.email,
+		identifier: user.email,
 		password,
 		redirect: false,
 	});

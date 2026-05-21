@@ -1,32 +1,59 @@
 "use client";
 
-import CreateProject from "@/components/forms/create-project";
-import { Button } from "@/components/ui/button";
-import {
-	Dialog,
-	DialogContent,
-	DialogHeader,
-	DialogTitle,
-	DialogTrigger
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { MembersUsers, ProjectWithMembers } from "@/lib/types";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow
-} from "@/components/ui/table";
-import { Box, Plus } from "lucide-react";
+	Clock,
+	GanttChartSquare,
+	LayoutGrid,
+	List,
+	Table2,
+} from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { JSX, useEffect, useState } from "react";
+import ProjectGanttView from "./project-gantt-view";
+import ProjectKanbanView from "./project-kanban-view";
+import ProjectListView from "./project-list-view";
+import ProjectTableView from "./project-table-view";
+import ProjectTimelineView from "./project-timeline-view";
+import ProjectViewHeader from "./project-view-header";
+import ProjectViewModes, { ProjectViewMode } from "./project-view-modes";
 
-export default function ProjectView({ isCreating }: { isCreating: string }) {
+const VIEW_MODE_STORAGE_KEY = "projectViewMode";
+const VIEW_MODES: ProjectViewMode[] = [
+	"list",
+	"kanban",
+	"table",
+	"timeline",
+	"gantt",
+];
+const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+	year: "numeric",
+	month: "short",
+	day: "2-digit",
+	timeZone: "UTC",
+});
+
+export default function ProjectView({
+	isCreating,
+	members,
+	workspaceId,
+	initialTotal,
+	projects,
+	projectsTotal,
+}: {
+	isCreating: string;
+	members: MembersUsers[];
+	workspaceId: string;
+	initialTotal: number;
+	projects: ProjectWithMembers[];
+	projectsTotal: number;
+}) {
 	const searchParams = useSearchParams();
 	const creating = searchParams.get("creating") || isCreating;
 
 	const [open, setOpen] = useState(creating === "false" ? false : true);
+	const [viewMode, setViewMode] = useState<ProjectViewMode>("list");
 
 	useEffect(() => {
 		if (creating === "false") {
@@ -36,8 +63,84 @@ export default function ProjectView({ isCreating }: { isCreating: string }) {
 		}
 	}, [creating]);
 
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		const storedMode = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+		if (storedMode && VIEW_MODES.includes(storedMode as ProjectViewMode)) {
+			setViewMode(storedMode as ProjectViewMode);
+		}
+	}, []);
+
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+	}, [viewMode]);
+
 	const router = useRouter();
 	const pathname = usePathname();
+
+	const statusLabels: Record<string, string> = {
+		TODO: "To Do",
+		IN_PROGRESS: "In Progress",
+		ON_HOLD: "On Hold",
+		COMPLETED: "Completed",
+		CANCELLED: "Cancelled",
+	};
+
+	const modeIcons: Record<ProjectViewMode, JSX.Element> = {
+		list: <List className=" h-4 w-4" />,
+		kanban: <LayoutGrid className=" h-4 w-4" />,
+		table: <Table2 className=" h-4 w-4" />,
+		timeline: <Clock className=" h-4 w-4" />,
+		gantt: <GanttChartSquare className=" h-4 w-4" />,
+	};
+
+	const getTaskProgress = (project: ProjectWithMembers) => {
+		const totalTasks = project.tasks.length;
+		if (totalTasks === 0) return 0;
+		const completedTasks = project.tasks.filter(
+			(task) => task.status === "COMPLETED",
+		).length;
+		return Math.round((completedTasks / totalTasks) * 100);
+	};
+
+	const formatDate = (value: Date | string | null) => {
+		if (!value) return "N/A";
+		return DATE_FORMATTER.format(new Date(value));
+	};
+
+	const toDate = (value: Date | string) => new Date(value);
+
+	const sortedByStart = [...projects].sort((a, b) => {
+		return (
+			toDate(a.startPeriod).getTime() - toDate(b.startPeriod).getTime()
+		);
+	});
+
+	const minStart =
+		sortedByStart.length > 0 ?
+			toDate(sortedByStart[0].startPeriod).getTime()
+		:	0;
+	const maxEnd =
+		sortedByStart.length > 0 ?
+			Math.max(
+				...sortedByStart.map((project) =>
+					toDate(project.endPeriod).getTime(),
+				),
+			)
+		:	0;
+	const totalRange = maxEnd - minStart || 1;
+
+	const getBarStyle = (project: ProjectWithMembers) => {
+		const start = toDate(project.startPeriod).getTime();
+		const end = toDate(project.endPeriod).getTime();
+		const left = ((start - minStart) / totalRange) * 100;
+		const width = ((end - start) / totalRange) * 100;
+		return {
+			left: `${left}%`,
+			width: `${Math.max(width, 2)}%`,
+		};
+	};
 
 	const handleOpenDialog = () => {
 		const params = new URLSearchParams(searchParams.toString());
@@ -59,90 +162,62 @@ export default function ProjectView({ isCreating }: { isCreating: string }) {
 
 	return (
 		<div>
-			<div className=" flex justify-between items-center">
-				<p className=" text-[20px] font-bold text-primary">
-					Projects (20)
-				</p>
+			<ProjectViewHeader
+				projectsTotal={projectsTotal}
+				open={open}
+				members={members}
+				workspaceId={workspaceId}
+				initialTotal={initialTotal}
+				onOpenDialog={handleOpenDialog}
+				onDialogChange={handleDialogChange}
+			/>
 
-				<Dialog open={open} onOpenChange={handleDialogChange}>
-					<DialogTrigger asChild>
-						<Button
-							onClick={handleOpenDialog}
-							className=" rounded-full"
-						>
-							<Plus />
-							New Project
-						</Button>
-					</DialogTrigger>
-					<DialogContent className=" w-full min-w-6xl rounded-[20px]  border-0 bg-primary">
-						<DialogHeader>
-							<DialogTitle className=" text-accent flex items-center gap-3">
-								<Box />
-								New Project
-							</DialogTitle>
-							<CreateProject />
-						</DialogHeader>
-					</DialogContent>
-				</Dialog>
-			</div>
-
-			<div className=" mt-[20px] flex gap-2 flex-col">
+			<div className=" mt-[20px] flex gap-4 flex-col">
+				<ProjectViewModes
+					modes={VIEW_MODES}
+					viewMode={viewMode}
+					modeIcons={modeIcons}
+					onModeChange={setViewMode}
+				/>
 				<Input
 					className=" bg-primary rounded-[15px] border-0"
 					placeholder="Search with project name...."
 				/>
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead className="w-[100px]">Invoice</TableHead>
-							<TableHead>Status</TableHead>
-							<TableHead>Method</TableHead>
-							<TableHead className="text-right">Amount</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						<TableRow>
-							<TableCell className="font-medium">
-								INV001
-							</TableCell>
-							<TableCell>Paid</TableCell>
-							<TableCell>Credit Card</TableCell>
-							<TableCell className="text-right">
-								$250.00
-							</TableCell>
-						</TableRow>
-						<TableRow>
-							<TableCell className="font-medium">
-								INV001
-							</TableCell>
-							<TableCell>Paid</TableCell>
-							<TableCell>Credit Card</TableCell>
-							<TableCell className="text-right">
-								$250.00
-							</TableCell>
-						</TableRow>
-						<TableRow>
-							<TableCell className="font-medium">
-								INV001
-							</TableCell>
-							<TableCell>Paid</TableCell>
-							<TableCell>Credit Card</TableCell>
-							<TableCell className="text-right">
-								$250.00
-							</TableCell>
-						</TableRow>
-						<TableRow>
-							<TableCell className="font-medium">
-								INV001
-							</TableCell>
-							<TableCell>Paid</TableCell>
-							<TableCell>Credit Card</TableCell>
-							<TableCell className="text-right">
-								$250.00
-							</TableCell>
-						</TableRow>
-					</TableBody>
-				</Table>
+				{viewMode === "list" && (
+					<ProjectListView
+						projects={projects}
+						getTaskProgress={getTaskProgress}
+						formatDate={formatDate}
+					/>
+				)}
+				{viewMode === "kanban" && (
+					<ProjectKanbanView
+						projects={projects}
+						statusLabels={statusLabels}
+						getTaskProgress={getTaskProgress}
+						formatDate={formatDate}
+					/>
+				)}
+				{viewMode === "table" && (
+					<ProjectTableView
+						projects={projects}
+						getTaskProgress={getTaskProgress}
+						formatDate={formatDate}
+					/>
+				)}
+				{viewMode === "timeline" && (
+					<ProjectTimelineView
+						projects={sortedByStart}
+						formatDate={formatDate}
+					/>
+				)}
+				{viewMode === "gantt" && (
+					<ProjectGanttView
+						projects={sortedByStart}
+						formatDate={formatDate}
+						getBarStyle={getBarStyle}
+					/>
+				)}
 			</div>
 		</div>
 	);
