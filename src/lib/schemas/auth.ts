@@ -32,7 +32,16 @@ export const userNameSchema = z.object({
 });
 
 export const signInSchema = z.object({
-	email: z.email({ error: "Email is required" }),
+	identifier: z
+		.string({ error: "Email or username is required" })
+		.trim()
+		.min(1, { error: "Email or username is required" })
+		.refine(
+			(value) =>
+				/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ||
+				/^[a-z0-9_.]+$/.test(value),
+			{ message: "Enter a valid email or username" },
+		),
 	password: z
 		.string({ error: "Password is required" })
 		.min(2, { error: "Password should be greater than two characters" }),

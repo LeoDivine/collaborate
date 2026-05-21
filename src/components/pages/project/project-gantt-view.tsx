@@ -1,4 +1,11 @@
+import { Badge } from "@/components/ui/badge";
 import { ProjectWithMembers } from "@/lib/types";
+import {
+	getProjectPriorityColor,
+	getProjectPriorityLabel,
+	getProjectStatusColor,
+	getProjectStatusLabel,
+} from "@/lib/utils";
 
 interface ProjectGanttViewProps {
 	projects: ProjectWithMembers[];
@@ -50,8 +57,6 @@ export default function ProjectGanttView({
 			</div>
 			{projects.map((project) => {
 				const barStyle = getBarStyle(project);
-				const isHighPriority =
-					project.priority?.toLowerCase?.() === "high";
 				return (
 					<div
 						key={project.id}
@@ -67,20 +72,24 @@ export default function ProjectGanttView({
 									{formatDate(project.endPeriod)}
 								</span>
 								{project.status && (
-									<span className=" rounded-full bg-primary px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-										{project.status}
-									</span>
+									<Badge
+										className={getProjectStatusColor(
+											project.status,
+										)}
+									>
+										{getProjectStatusLabel(project.status)}
+									</Badge>
 								)}
 								{project.priority && (
-									<span
-										className={` rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide ${
-											isHighPriority ?
-												" bg-accent text-primary"
-											:	" bg-primary text-muted-foreground"
-										}`}
+									<Badge
+										className={getProjectPriorityColor(
+											project.priority,
+										)}
 									>
-										{project.priority}
-									</span>
+										{getProjectPriorityLabel(
+											project.priority,
+										)}
+									</Badge>
 								)}
 							</div>
 						</div>

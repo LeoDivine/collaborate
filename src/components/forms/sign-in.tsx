@@ -39,7 +39,7 @@ export default function SignInForm() {
 
 	const form = useForm<SignInValues>({
 		defaultValues: {
-			email: urlEmail ?? "",
+			identifier: urlEmail ?? "",
 			password: "",
 		},
 		resolver: zodResolver(signInSchema),
@@ -120,7 +120,7 @@ export default function SignInForm() {
 				/>
 				<div className=" w-full md:w-fit flex flex-col items-center ">
 					<p className=" text-center text-[25px] text-primary">
-						Enter your email to sign in
+						Enter your email or username to sign in
 					</p>
 					<Form {...form}>
 						<form
@@ -130,17 +130,17 @@ export default function SignInForm() {
 							<div className="  justify-center  mt-[10px]  w-full flex flex-col gap-3">
 								<FormField
 									control={form.control}
-									name="email"
+									name="identifier"
 									render={({ field }) => (
 										<FormItem>
 											<div className="flex relative w-full flex-col gap-2">
 												<Label className=" text-primary">
-													Email Address
+													Email Address / Username
 												</Label>
 												<Input
 													{...field}
 													disabled={loading}
-													placeholder="Enter your email address"
+													placeholder="Email address or username"
 													className=" text-primary w-full md:w-[500px] py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
 												/>
 											</div>

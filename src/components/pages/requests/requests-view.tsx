@@ -39,6 +39,9 @@ export default function RequestsView({
 }) {
 	const [query, setQuery] = useState("");
 	const [loading, setLoading] = useState(false);
+	const [selected, setSelected] = useState<{
+		requestId: string | null;
+	}>();
 	const pathName = usePathname();
 	const router = useRouter();
 
@@ -69,6 +72,9 @@ export default function RequestsView({
 		email: string;
 	}) => {
 		setLoading(true);
+		setSelected({
+			requestId,
+		});
 		try {
 			const res = await acceptRequestAdmin(requestId);
 
@@ -90,6 +96,9 @@ export default function RequestsView({
 		} finally {
 			setLoading(false);
 			router.refresh();
+			setSelected({
+				requestId: null,
+			});
 		}
 	};
 
@@ -166,7 +175,11 @@ export default function RequestsView({
 													}
 													asChild
 												>
-													{loading ?
+													{(
+														loading &&
+														selected?.requestId ===
+															i.id
+													) ?
 														<LoaderCircle className=" animate-spin w-4 h-4" />
 													:	<Ellipsis
 															className={` ${i.status === "ACCEPTED" && " cursor-not-allowed text-accent"} cursor-pointer w-4 h-4`}
@@ -190,7 +203,11 @@ export default function RequestsView({
 																)
 															}
 														>
-															{loading ?
+															{(
+																loading &&
+																selected?.requestId ===
+																	i.id
+															) ?
 																<LoaderCircle className=" animate-spin" />
 															:	<Check />}
 															{loading ?

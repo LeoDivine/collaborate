@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
 	Table,
@@ -8,6 +9,12 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { ProjectWithMembers } from "@/lib/types";
+import {
+	getProjectPriorityColor,
+	getProjectPriorityLabel,
+	getProjectStatusColor,
+	getProjectStatusLabel,
+} from "@/lib/utils";
 import { Ellipsis } from "lucide-react";
 import AssigneeOverview from "./assignee-overview";
 
@@ -62,7 +69,13 @@ export default function ProjectTableView({
 								{formatDate(project.endPeriod)}
 							</TableCell>
 							<TableCell className="">
-								{project.priority}
+								<Badge
+									className={getProjectPriorityColor(
+										project.priority,
+									)}
+								>
+									{getProjectPriorityLabel(project.priority)}
+								</Badge>
 							</TableCell>
 							<TableCell className="">
 								<div className=" flex items-center gap-1">
@@ -74,7 +87,15 @@ export default function ProjectTableView({
 									<p>{progressValue}%</p>
 								</div>
 							</TableCell>
-							<TableCell className="">{project.status}</TableCell>
+							<TableCell className="">
+								<Badge
+									className={getProjectStatusColor(
+										project.status,
+									)}
+								>
+									{getProjectStatusLabel(project.status)}
+								</Badge>
+							</TableCell>
 							<TableCell className="">
 								<Ellipsis className="cursor-pointer w-4 h-4" />
 							</TableCell>

@@ -28,6 +28,14 @@ export const makeRequest = async (
 		},
 	});
 
+	const isEmailAccepted = await db.joinRequest.findFirst({
+		where: {
+			email,
+			workspaceId,
+			status: "ACCEPTED",
+		},
+	});
+
 	if (isEmailExisting) {
 		return {
 			success: false,
@@ -56,16 +64,37 @@ export const makeRequest = async (
 	}
 
 	try {
-		const joinWorkspace = await db.joinRequest.create({
-			data: {
-				email,
-				fullName: name,
-				inviteCode: inviteToken,
-				message,
-				workspaceId,
-				userId: user?.id,
-			},
-		});
+		let joinWorkspace;
+		if (isEmailAccepted && members.find((i) => i.user.email !== email)) {
+			await db.joinRequest.update({
+				where: {
+					email_workspaceId: {
+						email,
+						workspaceId,
+					},
+				},
+				data: {
+					status: "PENDING",
+					createdAt: new Date(),
+				},
+			});
+			return {
+				success: true,
+				message:
+					"Request successfully sent, the admin will approve your request soon.",
+			};
+		} else {
+			joinWorkspace = await db.joinRequest.create({
+				data: {
+					email,
+					fullName: name,
+					inviteCode: inviteToken,
+					message,
+					workspaceId,
+					userId: user?.id,
+				},
+			});
+		}
 		//TODO: CHECK FOR INVITE CODE CORRECTION
 		if (!joinWorkspace) {
 			return {
