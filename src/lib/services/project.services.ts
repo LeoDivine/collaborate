@@ -16,6 +16,10 @@ export const createProject = async ({
 		title: string;
 		description: string;
 		labels: string[];
+		resources: {
+			name: string;
+			url: string;
+		}[];
 	};
 }) => {
 	console.log({ values });
@@ -68,6 +72,17 @@ export const createProject = async ({
 					Labels: values.labels,
 				},
 			});
+
+			for (const r of values.resources) {
+				await tx.resource.create({
+					data: {
+						name: r.name,
+						url: r.url,
+						workspaceId,
+						projectId: project.id,
+					},
+				});
+			}
 
 			await tx.projectMember.createMany({
 				data: values.projectMembers.map((memberId) => ({

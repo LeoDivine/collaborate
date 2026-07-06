@@ -666,3 +666,52 @@ export const PRIORITY_LEVEL = [
 		value: "LOW" as PriorityLevel,
 	},
 ];
+
+export const MONTH = [
+	"January",
+	"February",
+	"March",
+	"April",
+	"May",
+	"June",
+	"July",
+	"August",
+	"September",
+	"October",
+	"November",
+	"December",
+];
+
+export const DAY = [
+	"Sunday",
+	"Monday",
+	"Tuesday",
+	"Wednesday",
+	"Thursday",
+	"Friday",
+	"Saturday",
+];
+
+export const DUMMY_TASK = [
+	...Array.from({ length: 200 }, (_, i) => {
+		const today = new Date();
+
+		const daysAgo = Math.floor(Math.random() * 60);
+
+		const date = new Date(today);
+		date.setDate(today.getDate() - daysAgo);
+
+		return {
+			id: `task-${i + 1}`,
+			title: `Task ${i + 1} eodnmdnf d fdinfdifdnfdinfdi`,
+			priority: [
+				PriorityLevel.HIGH,
+				PriorityLevel.MEDIUM,
+				PriorityLevel.LOW,
+				PriorityLevel.URGENT,
+				PriorityLevel.NO_PRIORITY,
+			][Math.floor(Math.random() * 5)],
+			date,
+		};
+	}),
+];

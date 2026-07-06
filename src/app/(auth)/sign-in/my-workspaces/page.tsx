@@ -1,12 +1,16 @@
 import BackButton from "@/components/shared/back-button";
 import WorkspaceView from "@/components/shared/layout/auth/workspace-view";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { getMembersByUserID } from "@/lib/services/member.services";
+import {
+	getMembersByUserID,
+	getMembersByWorkspaceId,
+} from "@/lib/services/member.services";
 import { Plus } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { auth } from "../../../../../auth";
 import { DeskMode } from "../../../../../generated/prisma/client";
+import { getProjectsByWorkspaceId } from "@/lib/services/project.services";
 
 export default async function MyWorkspaces() {
 	const session = await auth();
@@ -19,6 +23,26 @@ export default async function MyWorkspaces() {
 		(i) => i.workspace.mode === "INDIVIDUAL",
 	);
 
+	const fullIndividualScope = await Promise.all(
+		INDIVIDUALS.map(async (i) => {
+			const projects = await getProjectsByWorkspaceId(i.workspaceId);
+			const projectTotal = projects.total;
+			return { ...i, projectTotal };
+		}),
+	);
+
+	const fullWorkspaceScope = await Promise.all(
+		WORKSPACES.map(async (i) => {
+			const members = await getMembersByWorkspaceId(
+				1,
+				1000,
+				i.workspaceId,
+			);
+			const memberTotal = members.total;
+			return { ...i, memberTotal };
+		}),
+	);
+
 	// console.log({ members });
 
 	// console.log({ user });
@@ -27,7 +51,10 @@ export default async function MyWorkspaces() {
 	// 	redirect("/sign-in");
 	// }
 
-	// console.log({ WORKSPACES, INDIVIDUALS });
+	// console.log({
+	// 	fullIndividualScope,
+	// 	fullWorkspaceScope,
+	// });
 
 	return (
 		<>
@@ -52,7 +79,7 @@ export default async function MyWorkspaces() {
 							className={`${WORKSPACES.length >= 3 ? "h-[200px]" : " h-full"}`}
 						>
 							<div className="  flex flex-col gap-2">
-								{WORKSPACES.map((i) => {
+								{fullWorkspaceScope.map((i) => {
 									return (
 										<WorkspaceView
 											role={i.role}
@@ -61,7 +88,7 @@ export default async function MyWorkspaces() {
 											mode={i.workspace.mode as DeskMode}
 											title={i.workspace.name}
 											memberId={i.id}
-											// value={i.value}
+											value={i.memberTotal}
 										/>
 									);
 								})}
@@ -91,24 +118,28 @@ export default async function MyWorkspaces() {
 							</Link>
 						:	<div className=" flex flex-col gap-2">
 								<div className=" flex flex-col gap-2">
-									{INDIVIDUALS.filter(
-										(i) =>
-											i.workspace.mode ===
-											("INDIVIDUAL" as DeskMode),
-									).map((i) => {
-										return (
-											<WorkspaceView
-												memberId={i.id}
-												role={i.role}
-												key={i.id}
-												workspaceId={i.workspace.id}
-												mode={
-													i.workspace.mode as DeskMode
-												}
-												title={i.workspace.name}
-											/>
-										);
-									})}
+									{fullIndividualScope
+										.filter(
+											(i) =>
+												i.workspace.mode ===
+												("INDIVIDUAL" as DeskMode),
+										)
+										.map((i) => {
+											return (
+												<WorkspaceView
+													memberId={i.id}
+													role={i.role}
+													key={i.id}
+													workspaceId={i.workspace.id}
+													mode={
+														i.workspace
+															.mode as DeskMode
+													}
+													title={i.workspace.name}
+													value={i.projectTotal}
+												/>
+											);
+										})}
 								</div>
 							</div>
 						}

@@ -18,6 +18,7 @@ import {
 	CalendarRange,
 	Check,
 	CircleSlash,
+	FolderSymlink,
 	Gauge,
 	Hash,
 	Loader2,
@@ -29,6 +30,11 @@ import {
 	X,
 	Zap,
 } from "lucide-react";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PriorityLevel } from "../../../generated/prisma/client";
@@ -39,6 +45,8 @@ import { DialogClose } from "../ui/dialog";
 import { Separator } from "../ui/separator";
 import { Textarea } from "../ui/textarea";
 import { useRouter } from "next/navigation";
+import { Badge } from "../ui/badge";
+import Link from "next/link";
 
 const PAGE_SIZE = 10;
 
@@ -88,6 +96,16 @@ export default function CreateProject({
 	const [labels, setLabels] = useState<string[]>([]);
 	const [labelInput, setLabelInput] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [resources, setResources] = useState<
+		{
+			name: string;
+			url: string;
+		}[]
+	>([]);
+	const [resourceField, setResourceField] = useState<{
+		name?: string;
+		url?: string;
+	}>({ name: "", url: "" });
 
 	const setFetching = (val: boolean) => {
 		isFetchingRef.current = val;
@@ -108,8 +126,31 @@ export default function CreateProject({
 		});
 	};
 
+	const addResources = () => {
+		if (
+			resourceField?.name === undefined ||
+			resourceField?.url === undefined
+		) {
+			return;
+		}
+
+		const resourcesValue = setResources((prev) => [
+			...prev,
+			{
+				name: resourceField.name!,
+				url: resourceField.url!,
+			},
+		]);
+
+		return resourcesValue;
+	};
+
 	const removeLabel = (label: string) => {
 		setLabels((prev) => prev.filter((item) => item !== label));
+	};
+
+	const removeResource = (name: string) => {
+		setResources((prev) => prev.filter((item) => item.name !== name));
 	};
 
 	const toggleMember = (id: string) => {
@@ -223,6 +264,7 @@ export default function CreateProject({
 					projectMembers,
 					startDate: startDate!,
 					title,
+					resources: resources,
 				},
 			});
 
@@ -574,7 +616,7 @@ export default function CreateProject({
 									<input
 										disabled={isSubmitting}
 										placeholder="Start typing with a hashtag..."
-										className="flex-1 h-9 rounded-md bg-primary text-secondary px-2 text-sm outline-none"
+										className="flex-1 h-9 rounded-md text-[12px] bg-primary text-secondary px-2 text-sm outline-none"
 										value={labelInput}
 										onChange={(e) =>
 											setLabelInput(e.currentTarget.value)
@@ -622,6 +664,106 @@ export default function CreateProject({
 							</div>
 						</PopoverContent>
 					</Popover>
+
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								disabled={isSubmitting}
+								className={`text-[13px] bg-accent hover:bg-accent text-primary rounded-full ${triggerOpacity(resources.length > 0)}`}
+							>
+								<FolderSymlink />
+								<p className="md:inline hidden">
+									{resources.length > 0 ?
+										`Resources (${resources.length})`
+									:	"Resources"}
+								</p>
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent className="rounded-[20px] bg-accent max-w-[190px] text-primary px-[10px] border-0">
+							<div className="flex flex-col gap-2">
+								<div className=" flex gap-1 flex-wrap">
+									{resources.map((i, k) => {
+										return (
+											<Link key={k} href={""}>
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<Badge className=" cursor-pointer">
+															{i.name}
+															<button
+																type="button"
+																className="text-secondary/70 hover:text-secondary"
+																disabled={
+																	isSubmitting
+																}
+																onClick={(
+																	e,
+																) => {
+																	e.stopPropagation();
+																	e.preventDefault();
+																	removeResource(
+																		i.name,
+																	);
+																}}
+															>
+																<X className="h-3 w-3" />
+															</button>
+														</Badge>
+													</TooltipTrigger>
+													<TooltipContent className=" rounded-full bg-secondary text-primary">
+														<Link href={""}>
+															{i.url}
+														</Link>
+													</TooltipContent>
+												</Tooltip>
+											</Link>
+										);
+									})}
+								</div>
+								<div className="flex flex-col gap-1 items-center w-full">
+									<input
+										disabled={isSubmitting}
+										placeholder="Resource name"
+										value={resourceField?.name || ""}
+										onChange={(e) => {
+											setResourceField((prev) => ({
+												...prev,
+												name: e.target.value,
+											}));
+										}}
+										className="flex-1  py-[5px] text-[12px] rounded-md bg-primary text-secondary px-2 text-sm outline-none"
+									/>
+									<input
+										disabled={isSubmitting}
+										placeholder="Link"
+										value={resourceField?.url || ""}
+										onChange={(e) => {
+											setResourceField((prev) => ({
+												...prev,
+												url: e.target.value,
+											}));
+										}}
+										className="flex-1  py-[5px] text-[12px] rounded-md bg-primary text-secondary px-2 text-sm outline-none"
+									/>
+									<Button
+										onClick={() => (
+											setResourceField({
+												name: "",
+												url: "",
+											}),
+											addResources()
+										)}
+										disabled={
+											resourceField.name === "" ||
+											resourceField.url === ""
+										}
+										className=" w-full rounded-full text-[12px]"
+									>
+										Add
+									</Button>
+								</div>
+							</div>
+						</DropdownMenuContent>
+					</DropdownMenu>
 				</div>
 			</div>
 

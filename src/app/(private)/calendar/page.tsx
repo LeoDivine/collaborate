@@ -1,9 +1,9 @@
-import React from "react";
+import CalendarView from "@/components/pages/calendar/calendar-view";
 
 export default function Calendar() {
 	return (
-		<div>
-			<p>Calendar</p>
+		<div className="  overflow-x-hidden">
+			<CalendarView />
 		</div>
 	);
 }

@@ -1,5 +1,15 @@
 "use client";
 
+import PaginationControls from "@/components/shared/pagination-controls";
+import { Badge } from "@/components/ui/badge";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
 	Table,
@@ -9,27 +19,14 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { Member, WorkspaceRoles } from "../../../../generated/prisma/client";
-import { Ellipsis, Mail } from "lucide-react";
 import { MembersUsers } from "@/lib/types";
-import { Badge } from "@/components/ui/badge";
+import { renderMemberStatusBadge, renderWorkspaceRoleBadge } from "@/lib/utils";
 import { format } from "date-fns";
-import { renderStatusBadge, renderWorkspaceRoleBadge } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuGroup,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { Ellipsis, Mail } from "lucide-react";
 import { User } from "next-auth";
-import PaginationControls from "@/components/shared/pagination-controls";
-import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { WorkspaceRoles } from "../../../../generated/prisma/client";
 
 export default function MembersView({
 	members,
@@ -73,7 +70,7 @@ export default function MembersView({
 			/>
 
 			<div className="">
-				<Table> 
+				<Table>
 					<TableHeader>
 						<TableRow>
 							<TableHead className="">Fullname</TableHead>
@@ -118,7 +115,7 @@ export default function MembersView({
 									</TableCell>
 									<TableCell className="">
 										<Badge
-											className={renderStatusBadge(
+											className={renderMemberStatusBadge(
 												i.status,
 											)}
 										>
