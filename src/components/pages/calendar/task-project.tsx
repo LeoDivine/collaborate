@@ -14,20 +14,28 @@ export default function TaskProject({
 	date,
 	priority,
 	title,
+	isDialogView = false,
+	showFullView = false,
 }: {
 	id?: string;
 	title: string;
 	date: Date;
 	priority: PriorityLevel;
+	isDialogView?: boolean;
+	showFullView?: boolean;
 }) {
+	const isFull = isDialogView || showFullView;
+
 	return (
 		<div className=" mt-1">
-			<div className=" md:hidden inline">
-				<div
-					className={` w-[14px] rounded-full h-[14px]  ${renderPriority(priority)}`}
-				></div>
-			</div>
-			<div className=" hidden md:inline">
+			{!isFull && (
+				<div className=" md:hidden inline">
+					<div
+						className={` w-[14px] rounded-full h-[14px]  ${renderPriority(priority)}`}
+					></div>
+				</div>
+			)}
+			<div className={isFull ? "block" : " hidden md:inline"}>
 				<Dialog>
 					<DialogTrigger asChild>
 						<div className="flex cursor-pointer overflow-hidden rounded-md">

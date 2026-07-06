@@ -31,7 +31,7 @@ export function TaskDialog({ tasks, children }: TaskDialogProps) {
 				</DialogHeader>
 				<div className="mt-4 space-y-2 max-h-[60vh] overflow-y-auto">
 					{tasks.map((task) => (
-						<TaskProject key={task.id} {...task} />
+						<TaskProject key={task.id} {...task} isDialogView={true} />
 					))}
 				</div>
 			</DialogContent>
