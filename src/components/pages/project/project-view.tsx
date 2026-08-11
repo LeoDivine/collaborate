@@ -1,9 +1,11 @@
 "use client";
 
-import { MembersUsers, ProjectWithMembers } from "@/lib/types";
+import type { MembersUsers, Projects } from "@/lib/types";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import ProjectViewHeader from "./project-view-header";
+import ProjectTable from "./project-table";
+import { Project } from "../../../../generated/prisma/client";
 
 export default function ProjectView({
 	isCreating,
@@ -17,7 +19,7 @@ export default function ProjectView({
 	members: MembersUsers[];
 	workspaceId: string;
 	initialTotal: number;
-	projects: ProjectWithMembers[];
+	projects: Projects[];
 	projectsTotal: number;
 }) {
 	const searchParams = useSearchParams();
@@ -65,7 +67,10 @@ export default function ProjectView({
 				onOpenDialog={handleOpenDialog}
 				onDialogChange={handleDialogChange}
 			/>
-			<div className="">dofdofo</div>
+			<ProjectTable
+				project={projects}
+				totalItems={projectsTotal}
+			/>
 		</div>
 	);
 }

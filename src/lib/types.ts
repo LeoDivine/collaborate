@@ -1,4 +1,14 @@
-import { Member, Prisma, User } from "../../generated/prisma/client";
+import {
+	Activity,
+	Comment,
+	Member,
+	Prisma,
+	Project,
+	ProjectMember,
+	Resource,
+	Task,
+	User,
+} from "../../generated/prisma/client";
 
 export type ExtendedUser = Pick<User, "fullName" | "email" | "id" | "userName">;
 
@@ -19,23 +29,29 @@ export interface MembersUsers extends Member {
 	user: User;
 }
 
-export type ProjectWithMembers = Prisma.ProjectGetPayload<{
-	include: {
-		projectMembers: {
-			include: {
-				member: {
-					include: {
-						user: true;
-					};
-				};
-			};
-		};
-		tasks: {
-			select: {
-				id: true;
-				status: true;
-			};
-		};
+export interface ProjectMembers extends ProjectMember {
+	member: Member & {
+		user: User;
 	};
-}>;
+}
+
+export interface ProjectComment extends Comment {
+	member?: (Member & {
+		user?: User;
+	}) | null;
+}
+
+export interface ProjectActivity extends Activity {
+	member?: (Member & {
+		user?: User;
+	}) | null;
+}
+
+export interface Projects extends Project {
+	projectMembers: ProjectMembers[];
+	tasks: Task[];
+	resources: Resource[];
+	comments?: ProjectComment[];
+	activities?: ProjectActivity[];
+}
 

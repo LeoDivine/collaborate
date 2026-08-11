@@ -44,6 +44,7 @@ import { Checkbox } from "../ui/checkbox";
 import { DialogClose } from "../ui/dialog";
 import { Separator } from "../ui/separator";
 import { Textarea } from "../ui/textarea";
+import WysiwygEditor from "../ui/wysiwyg-editor";
 import { useRouter } from "next/navigation";
 import { Badge } from "../ui/badge";
 import Link from "next/link";
@@ -281,10 +282,10 @@ export default function CreateProject({
 
 	return (
 		<div
-			className={`w-full ${isSubmitting ? "pointer-events-none opacity-70" : ""}`}
+			className={`w-full text-left ${isSubmitting ? "pointer-events-none opacity-70" : ""}`}
 		>
 			<div className="flex flex-col md:flex-row gap-4">
-				<div className="mt-[20px] grow">
+				<div className="mt-[20px] w-full md:w-[78%] shrink-0">
 					<input
 						disabled={isSubmitting}
 						value={title}
@@ -294,13 +295,15 @@ export default function CreateProject({
 						className="w-full outline-none bg-transparent placeholder:text-2xl md:placeholder:text-[40px] placeholder:font-bold text-2xl md:text-[40px] font-bold border-0"
 					/>
 					<Separator className="bg-secondary/20 my-[10px]" />
-					<div className="w-full">
-						<Textarea
+					<div className="w-full mt-2">
+						<WysiwygEditor
 							disabled={isSubmitting}
 							value={description}
-							onChange={(e) => setDescription(e.target.value)}
-							className="break-all w-full h-48 md:h-[500px] resize-none focus-visible:ring-0 border-0"
-							placeholder="Type a description..."
+							onChange={setDescription}
+							placeholder="Type a detailed description for your project..."
+							height="400px"
+							maxHeight="400px"
+							minHeight="350px"
 						/>
 					</div>
 				</div>

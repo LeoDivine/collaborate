@@ -8,7 +8,7 @@ import {
 	Group,
 	Info,
 	LayoutDashboard,
-	ListTodo,
+	Diamond,
 	Settings,
 	Users,
 	Flame,
@@ -117,7 +117,7 @@ export const PROTECTEDPERSONALNAVBAR = [
 	{
 		name: "Tasks",
 		link: "/tasks",
-		icon: ListTodo,
+		icon: Diamond,
 	},
 	{
 		name: "Calendar",
@@ -145,7 +145,7 @@ export const PROTECTEADMINNAVBAR = [
 	{
 		name: "Tasks",
 		link: "/tasks",
-		icon: ListTodo,
+		icon: Diamond,
 	},
 	{
 		name: "Calendar",
@@ -203,7 +203,7 @@ export const PROTECTEDMEMBERNAVBAR = [
 	{
 		name: "Tasks",
 		link: "/tasks",
-		icon: ListTodo,
+		icon: Diamond,
 	},
 	{
 		name: "Calendar",

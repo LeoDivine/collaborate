@@ -10,16 +10,15 @@ import {
 	HoverCardContent,
 	HoverCardTrigger,
 } from "@/components/ui/hover-card";
-import { ProjectWithMembers } from "@/lib/types";
 import { getInitials } from "@/lib/utils";
-
-type AssigneeOverviewProps = {
-	projectMembers: ProjectWithMembers["projectMembers"];
-};
+import { ProjectMember } from "../../../../generated/prisma/client";
+import type { ProjectMembers } from "@/lib/types";
 
 export default function AssigneeOverview({
 	projectMembers,
-}: AssigneeOverviewProps) {
+}: {
+	projectMembers: ProjectMembers[];
+}) {
 	if (!projectMembers || projectMembers.length === 0) {
 		return <p className=" text-sm text-muted-foreground">No assignees</p>;
 	}

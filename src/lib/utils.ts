@@ -135,3 +135,20 @@ export const renderPriorityLight = (level: PriorityLevel) => {
 			return "bg-[#555353]/20";
 	}
 };
+
+export const renderStatus = (status: Status) => {
+	switch (status) {
+		case "TODO":
+			return "bg-[#555353]";
+		case "IN_PROGRESS":
+			return "bg-[#3B82F6] text-primary";
+		case "ON_HOLD":
+			return "bg-[#B1AD44] text-primary";
+		case "COMPLETED":
+			return "bg-[#339D3A]";
+		case "CANCELLED":
+			return "bg-[#AD3D3D]";
+		default:
+			return "bg-[#555353]";
+	}
+};
