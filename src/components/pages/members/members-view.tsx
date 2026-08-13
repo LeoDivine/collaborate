@@ -26,7 +26,7 @@ import { Ellipsis, Mail } from "lucide-react";
 import { User } from "next-auth";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { WorkspaceRoles } from "../../../../generated/prisma/client";
+import { WorkspaceRoles } from "../../../../generated/prisma/enums";
 
 export default function MembersView({
 	members,

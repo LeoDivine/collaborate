@@ -2,11 +2,13 @@ import {
 	Activity,
 	Comment,
 	Member,
+	MileStone,
 	Prisma,
 	Project,
 	ProjectMember,
 	Resource,
 	Task,
+	TaskMember,
 	User,
 } from "../../generated/prisma/client";
 
@@ -35,6 +37,12 @@ export interface ProjectMembers extends ProjectMember {
 	};
 }
 
+export interface TaskMembers extends TaskMember {
+	member: Member & {
+		user: User;
+	};
+}
+
 export interface ProjectComment extends Comment {
 	member?: (Member & {
 		user?: User;
@@ -49,9 +57,22 @@ export interface ProjectActivity extends Activity {
 
 export interface Projects extends Project {
 	projectMembers: ProjectMembers[];
-	tasks: Task[];
+	tasks: (Task & { milestones?: MileStone[] })[];
 	resources: Resource[];
 	comments?: ProjectComment[];
 	activities?: ProjectActivity[];
 }
+
+export interface Tasks extends Task {
+	project: Project;
+	taskMembers: TaskMembers[];
+	milestones: MileStone[];
+	comments?: ProjectComment[];
+	resources?: Resource[];
+	activities?: ProjectActivity[];
+	createdBy?: Member & {
+		user: User;
+	};
+}
+
 

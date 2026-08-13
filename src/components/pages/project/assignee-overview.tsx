@@ -11,7 +11,7 @@ import {
 	HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { getInitials } from "@/lib/utils";
-import { ProjectMember } from "../../../../generated/prisma/client";
+import type { ProjectMember } from "../../../../generated/prisma/client";
 import type { ProjectMembers } from "@/lib/types";
 
 export default function AssigneeOverview({

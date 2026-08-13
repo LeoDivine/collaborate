@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import z from "zod";
-import { Workspace } from "../../../generated/prisma/client";
+import type { Workspace } from "../../../generated/prisma/client";
 import { Button } from "../ui/button";
 import { Form, FormField, FormItem, FormMessage } from "../ui/form";
 import { Input } from "../ui/input";

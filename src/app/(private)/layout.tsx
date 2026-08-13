@@ -23,7 +23,7 @@ export default async function Layout({
 				<ProtectedSidebar user={user!} />
 			</div>
 			<div className=" overflow-y-clip w-full">
-				<div className=" md:flex md:w-full w-[96%] mx-auto md:justify-center mt-[10px]">
+				<div className=" md:flex md:w-full w-[96%]	 mx-auto md:justify-center mt-[10px]">
 					<ProtectedNavbar
 						user={{
 							email: user?.email ?? "",

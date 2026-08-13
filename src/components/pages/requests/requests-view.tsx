@@ -24,7 +24,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Blocks, Check, Ellipsis, LoaderCircle } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { JoinRequest } from "../../../../generated/prisma/client";
+import type { JoinRequest } from "../../../../generated/prisma/client";
 import { acceptRequestAdmin } from "@/lib/services/request.services";
 import { toast } from "sonner";
 

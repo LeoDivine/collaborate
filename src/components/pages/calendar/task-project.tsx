@@ -1,6 +1,6 @@
 import { renderPriority, renderPriorityLight } from "@/lib/utils";
 import React from "react";
-import { PriorityLevel } from "../../../../generated/prisma/client";
+import { PriorityLevel } from "../../../../generated/prisma/enums";
 import {
 	Dialog,
 	DialogContent,

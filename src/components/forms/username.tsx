@@ -15,7 +15,7 @@ import { updateUserName } from "@/lib/services/auth.services";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useState } from "react";
-import { User } from "../../../generated/prisma/client";
+import type { User } from "../../../generated/prisma/client";
 import { ExtendedUser } from "@/lib/types";
 
 export type UsernameValue = z.infer<typeof userNameSchema>;

@@ -1,8 +1,37 @@
 "use client";
 
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+	HoverCard,
+	HoverCardContent,
+	HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createPortal } from "react-dom";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -13,14 +42,65 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { PRIORITY_LEVEL } from "@/lib/const";
 import {
-	MembersUsers,
-	ProjectActivity,
-	ProjectComment,
-	Projects,
-} from "@/lib/types";
+	addMilestone,
+	addTaskComment,
+	addTaskResource,
+	deleteMilestone,
+	deleteTask,
+	deleteTaskComment,
+	deleteTaskResource,
+	toggleMilestoneStatus,
+	updateTaskComment,
+	updateTaskDetails,
+	updateTaskMembers,
+	updateTaskResource,
+} from "@/lib/services/task.services";
+import type { MembersUsers, Tasks } from "@/lib/types";
 import { getInitials, renderPriority, renderStatus } from "@/lib/utils";
 import { format, formatDistanceToNowStrict } from "date-fns";
+import {
+	Box,
+	CalendarDays,
+	ChartNoAxesColumn,
+	Check,
+	CheckSquare,
+	CircleCheck,
+	CircleX,
+	CornerDownRight,
+	ExternalLink,
+	Flag,
+	Loader2,
+	LoaderCircle,
+	LucideIcon,
+	MessageSquare,
+	MoreHorizontal,
+	MoveLeft,
+	MoveRight,
+	MoveUp,
+	Paperclip,
+	Pencil,
+	PenLine,
+	Plus,
+	Search,
+	Squircle,
+	Trash2,
+	Users,
+	UserStar,
+	X,
+} from "lucide-react";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import React, { useState } from "react";
+import { toast } from "sonner";
+import {
+	MileStoneStatus,
+	PriorityLevel,
+	Status,
+} from "../../../../generated/prisma/enums";
 
 function formatRelativeTime(date: Date | string): string {
 	try {
@@ -44,168 +124,114 @@ function formatRelativeTime(date: Date | string): string {
 		return "";
 	}
 }
-import {
-	Activity,
-	CalendarDays,
-	ChartNoAxesColumn,
-	Check,
-	CircleCheck,
-	CircleX,
-	Copy,
-	CornerDownRight,
-	Flag,
-	Loader2,
-	LoaderCircle,
-	LucideIcon,
-	MessageSquare,
-	MoreHorizontal,
-	MoveLeft,
-	MoveRight,
-	MoveUp,
-	Paperclip,
-	Pencil,
-	PenLine,
-	Plus,
-	Search,
-	Squircle,
-	Tags,
-	Trash2,
-	Users,
-	UserStar,
-	X,
-} from "lucide-react";
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import {
-	PriorityLevel,
-	ProjectAccess,
-	Status,
-} from "../../../../generated/prisma/enums";
-import { useSession } from "next-auth/react";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import {
-	Dialog,
-	DialogClose,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@/components/ui/dialog";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-	HoverCard,
-	HoverCardContent,
-	HoverCardTrigger,
-} from "@/components/ui/hover-card";
-import { Calendar } from "@/components/ui/calendar";
-import { Checkbox } from "@/components/ui/checkbox";
-import WysiwygEditor from "@/components/ui/wysiwyg-editor";
-import { PRIORITY_LEVEL } from "@/lib/const";
-import {
-	addProjectComment,
-	addProjectResource,
-	deleteProject,
-	deleteProjectComment,
-	deleteProjectResource,
-	updateProjectComment,
-	updateProjectDetails,
-	updateProjectMembers,
-	updateProjectResource,
-} from "@/lib/services/project.services";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
-export default function SingleProjectView({
-	project,
+function safeFormatDate(
+	date: Date | string | number | undefined | null,
+	fmtString: string,
+): string {
+	if (!date) return "N/A";
+	try {
+		const d = new Date(date);
+		if (isNaN(d.getTime())) return "N/A";
+		return format(d, fmtString);
+	} catch {
+		return "N/A";
+	}
+}
+
+export default function SingleTaskView({
+	task: initialTask,
 	workspaceId,
+	currentUserId,
 	members = [],
-	initialTotal = 0,
 }: {
-	project: Projects;
+	task: Tasks;
 	workspaceId?: string;
+	currentUserId?: string;
 	members?: MembersUsers[];
-	initialTotal?: number;
 }) {
 	const router = useRouter();
 	const { data: session } = useSession();
 	const user = session?.user;
 
-	// Editable field states
-	const [title, setTitle] = useState(project.title);
+	const [task, setTask] = useState<Tasks>(initialTask);
+
+	// Editable Field States
+	const [title, setTitle] = useState(task?.title || "");
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
 	const [isSavingTitle, setIsSavingTitle] = useState(false);
 
-	const [description, setDescription] = useState(project.description || "");
+	const [description, setDescription] = useState(task?.description || "");
 	const [isEditingDescription, setIsEditingDescription] = useState(false);
 	const [isSavingDescription, setIsSavingDescription] = useState(false);
 
-	const [status, setStatus] = useState<Status>(project.status);
+	const [status, setStatus] = useState<Status>(task?.status || Status.TODO);
 	const [isSavingStatus, setIsSavingStatus] = useState(false);
 
-	const [priority, setPriority] = useState<PriorityLevel>(project.priority);
+	const [priority, setPriority] = useState<PriorityLevel>(
+		task?.priority || PriorityLevel.MEDIUM,
+	);
 	const [isSavingPriority, setIsSavingPriority] = useState(false);
 
-	const [startDate, setStartDate] = useState<Date>(
-		new Date(project.startPeriod),
-	);
+	const [startDate, setStartDate] = useState<Date>(() => {
+		try {
+			return task?.startPeriod ? new Date(task.startPeriod) : new Date();
+		} catch {
+			return new Date();
+		}
+	});
 	const [isSavingStartDate, setIsSavingStartDate] = useState(false);
 
-	const [dueDate, setDueDate] = useState<Date>(new Date(project.endPeriod));
+	const [dueDate, setDueDate] = useState<Date>(() => {
+		try {
+			return task?.endPeriod ? new Date(task.endPeriod) : new Date();
+		} catch {
+			return new Date();
+		}
+	});
 	const [isSavingDueDate, setIsSavingDueDate] = useState(false);
 
-	const [labels, setLabels] = useState<string[]>(project.labels || []);
-	const [labelInput, setLabelInput] = useState("");
-	const [isSavingLabels, setIsSavingLabels] = useState(false);
-	const [taskSearch, setTaskSearch] = useState("");
+	const [readMore, setReadMore] = useState(false);
 
 	// Member selection state
-	const initialLead = project.projectMembers.find(
-		(e) => e.projectRole === ("PROJECT_LEAD" as ProjectAccess),
-	)?.memberId;
-
-	const initialMemberIds = project.projectMembers.map((e) => e.memberId);
-
+	const initialAssignees = task.taskMembers?.map((tm) => tm.memberId) || [];
 	const [selectedMembers, setSelectedMembers] =
-		useState<string[]>(initialMemberIds);
-	const [selectedLeadId, setSelectedLeadId] = useState<string | undefined>(
-		initialLead,
-	);
+		useState<string[]>(initialAssignees);
 	const [isSavingMembers, setIsSavingMembers] = useState(false);
+	const [memberSearch, setMemberSearch] = useState("");
 
-	const [readMore, setReadMore] = useState(false);
-	const [resources, setResources] = useState(project.resources);
-	const [comments, setComments] = useState<ProjectComment[]>(
-		project.comments || [],
-	);
-	const [commentInput, setCommentInput] = useState("");
-	const [isPostingComment, setIsPostingComment] = useState(false);
-	const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
+	// Milestones
+	const [milestoneInput, setMilestoneInput] = useState("");
+	const [isAddingMilestone, setIsAddingMilestone] = useState(false);
+
+	// Resources
+	const [resources, setResources] = useState(task.resources || []);
+	const [resourceField, setResourceField] = useState({ name: "", url: "" });
+	const [isAddingResource, setIsAddingResource] = useState(false);
+	const [isAddResourceOpen, setIsAddResourceOpen] = useState(false);
+	const [deletingResourceId, setDeletingResourceId] = useState<string | null>(
 		null,
 	);
+
+	// Comments state
+	const [comments, setComments] = useState(task.comments || []);
+	const [commentInput, setCommentInput] = useState("");
+	const [isPostingComment, setIsPostingComment] = useState(false);
+
+	const [replyingToCommentId, setReplyingToCommentId] = useState<
+		string | null
+	>(null);
+	const [replyInput, setReplyInput] = useState("");
+	const [isPostingReply, setIsPostingReply] = useState(false);
+
 	const [editingCommentId, setEditingCommentId] = useState<string | null>(
 		null,
 	);
 	const [editingMessage, setEditingMessage] = useState("");
 	const [isSavingComment, setIsSavingComment] = useState(false);
-	const [replyingToCommentId, setReplyingToCommentId] = useState<string | null>(
+	const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
 		null,
 	);
-	const [replyInput, setReplyInput] = useState("");
-	const [isPostingReply, setIsPostingReply] = useState(false);
 
 	// Member Mention State & Handlers
 	interface ActiveMention {
@@ -219,8 +245,13 @@ export default function SingleProjectView({
 	);
 
 	const getMentionSuggestions = (query: string) => {
-		return (members || [])
-			.filter((m) => {
+		const taskMembersList =
+			(task.taskMembers || [])
+				.map((tm: any) => tm.member)
+				.filter((m: any) => m && m.user) || [];
+
+		return taskMembersList
+			.filter((m: any) => {
 				const uName = m.user?.userName?.toLowerCase() || "";
 				const fName = m.user?.fullName?.toLowerCase() || "";
 				return uName.includes(query) || fName.includes(query);
@@ -268,7 +299,10 @@ export default function SingleProjectView({
 		setValue: (val: string) => void,
 	) => {
 		if (!activeMention) return;
-		const textBeforeCursor = currentValue.slice(0, activeMention.cursorIndex);
+		const textBeforeCursor = currentValue.slice(
+			0,
+			activeMention.cursorIndex,
+		);
 		const lastAtIndex = textBeforeCursor.lastIndexOf("@");
 		if (lastAtIndex === -1) return;
 
@@ -280,7 +314,7 @@ export default function SingleProjectView({
 
 	/**
 	 * Handles ArrowUp / ArrowDown / Enter keyboard navigation inside the mention dropdown.
-	 * Returns true if the event was consumed (caller should stop further processing).
+	 * Returns true if the event was consumed (caller should e.preventDefault() and stop).
 	 */
 	const handleMentionKeyDown = (
 		e: React.KeyboardEvent<HTMLTextAreaElement>,
@@ -296,7 +330,11 @@ export default function SingleProjectView({
 			e.preventDefault();
 			setActiveMention((prev) =>
 				prev ?
-					{ ...prev, selectedIndex: (prev.selectedIndex + 1) % suggestions.length }
+					{
+						...prev,
+						selectedIndex:
+							(prev.selectedIndex + 1) % suggestions.length,
+					}
 				:	prev,
 			);
 			return true;
@@ -308,7 +346,8 @@ export default function SingleProjectView({
 					{
 						...prev,
 						selectedIndex:
-							(prev.selectedIndex - 1 + suggestions.length) % suggestions.length,
+							(prev.selectedIndex - 1 + suggestions.length) %
+							suggestions.length,
 					}
 				:	prev,
 			);
@@ -318,7 +357,12 @@ export default function SingleProjectView({
 			e.preventDefault();
 			const chosen = suggestions[activeMention.selectedIndex];
 			if (chosen) {
-				insertMention(targetId, currentValue, chosen.user?.userName || "user", setValue);
+				insertMention(
+					targetId,
+					currentValue,
+					chosen.user?.userName || "user",
+					setValue,
+				);
 			}
 			return true;
 		}
@@ -355,7 +399,7 @@ export default function SingleProjectView({
 					zIndex: 99999,
 				};
 
-		const content = (
+		return (
 			<div
 				style={style}
 				className="w-[230px] bg-accent border border-primary/20 rounded-[15px] shadow-2xl p-1.5 max-h-[190px] overflow-y-auto custom-scrollbar flex flex-col gap-0.5"
@@ -363,7 +407,7 @@ export default function SingleProjectView({
 				<p className="px-2 py-0.5 text-[10px] font-semibold text-primary/60 uppercase">
 					Mention Member
 				</p>
-				{suggestions.map((m, idx) => {
+				{suggestions.map((m: any, idx: number) => {
 					const isSelected = idx === activeMention.selectedIndex;
 					const displayName = m.user?.fullName || "Member";
 					const username = m.user?.userName || "user";
@@ -404,21 +448,20 @@ export default function SingleProjectView({
 				})}
 			</div>
 		);
-
-		if (typeof document !== "undefined" && rect) {
-			return createPortal(content, document.body);
-		}
-		return content;
 	};
 
-	const renderMessageWithMentions = (message: string) => {
-		if (!message) return null;
-		const parts = message.split(/(@[\w.-]+)/g);
+	const renderMessageWithMentions = (msg: string) => {
+		if (!msg) return null;
+		const parts = msg.split(/(@[\w.-]+)/g);
 		return parts.map((part, idx) => {
 			if (part.startsWith("@")) {
 				const usernameWithoutAt = part.slice(1);
-				const matchedMember = (members || []).find(
-					(m) =>
+				const taskMembersList =
+					(task.taskMembers || [])
+						.map((tm: any) => tm.member)
+						.filter((m: any) => m && m.user) || [];
+				const matchedMember = taskMembersList.find(
+					(m: any) =>
 						m.user?.userName?.toLowerCase() ===
 						usernameWithoutAt.toLowerCase(),
 				);
@@ -426,13 +469,6 @@ export default function SingleProjectView({
 				if (matchedMember && matchedMember.user) {
 					const user = matchedMember.user;
 					const displayName = user.fullName || "Member";
-					const projectMember = (project.projectMembers || []).find(
-						(pm) =>
-							pm.member?.id === matchedMember.id ||
-							(pm.member?.userId &&
-								pm.member.userId === user.id),
-					);
-					const projectRole = projectMember?.projectRole;
 
 					return (
 						<HoverCard key={idx} openDelay={10} closeDelay={100}>
@@ -462,561 +498,377 @@ export default function SingleProjectView({
 										)}
 									</div>
 								</div>
-								{projectRole ?
-									<Badge className="mt-[10px] text-[10px] w-fit">
-										{projectRole.replace(/_/g, " ")}
-									</Badge>
-								: matchedMember.role ?
+								{matchedMember.role && (
 									<Badge className="mt-[10px] text-[10px] w-fit">
 										{matchedMember.role.replace(/_/g, " ")}
 									</Badge>
-								:	null}
+								)}
 							</HoverCardContent>
 						</HoverCard>
 					);
 				}
+
+				// Unmatched @mention — still style it
+				return (
+					<span
+						key={idx}
+						className="font-semibold text-accent bg-secondary/20 px-1 py-0.5 rounded-[6px] mx-0.5 inline-block"
+					>
+						{part}
+					</span>
+				);
 			}
 			return part;
 		});
 	};
-	const [resourceField, setResourceField] = useState<{
-		name: string;
-		url: string;
-	}>({ name: "", url: "" });
-	const [isAddingResource, setIsAddingResource] = useState(false);
-	const [activities, setActivities] = useState<ProjectActivity[]>(
-		project.activities || [],
-	);
 
-	// Delete Project Dialog State
+	// Delete Task modal
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-	const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
-	const [hasCopiedName, setHasCopiedName] = useState(false);
-	const [isDeletingProject, setIsDeletingProject] = useState(false);
+	const [deleteConfirmTitle, setDeleteConfirmTitle] = useState("");
+	const [isDeletingTask, setIsDeletingTask] = useState(false);
 
-	const handleCopyProjectName = async () => {
-		try {
-			await navigator.clipboard.writeText(title || project.title);
-			setHasCopiedName(true);
-			toast.success("Project name copied to clipboard");
-			setTimeout(() => setHasCopiedName(false), 2000);
-		} catch {
-			toast.error("Failed to copy project name");
-		}
-	};
-
-	const handleDeleteProject = async () => {
-		const targetName = (title || project.title).trim();
-		if (deleteConfirmInput.trim() !== targetName) {
-			toast.error("Project name does not match");
-			return;
-		}
-
-		setIsDeletingProject(true);
-		try {
-			const res = await deleteProject(project.id);
-			if (res.success) {
-				toast.success(res.message || "Project deleted successfully");
-				setIsDeleteDialogOpen(false);
-				window.location.href = "/projects";
-			} else {
-				toast.error(res.message || "Failed to delete project");
-				setIsDeletingProject(false);
-			}
-		} catch {
-			toast.error("An error occurred while deleting the project");
-			setIsDeletingProject(false);
-		}
-	};
-
-	// Member search pagination inside dropdowns
-	const [memberSearch, setMemberSearch] = useState("");
-	const [displayedMembers, setDisplayedMembers] =
-		useState<MembersUsers[]>(members);
-
-	useEffect(() => {
-		setTitle(project.title);
-		setDescription(project.description || "");
-		setStatus(project.status);
-		setPriority(project.priority);
-		setStartDate(new Date(project.startPeriod));
-		setDueDate(new Date(project.endPeriod));
-		setLabels(project.labels || []);
-		setResources(project.resources);
-		setComments(project.comments || []);
-
-		const lead = project.projectMembers.find(
-			(e) => e.projectRole === ("PROJECT_LEAD" as ProjectAccess),
-		)?.memberId;
-		setSelectedLeadId(lead);
-		setSelectedMembers(project.projectMembers.map((e) => e.memberId));
-		setActivities((project.activities || []).slice(0, 20));
-	}, [project]);
-
-	useEffect(() => {
-		setDisplayedMembers(
-			members.filter((m) =>
-				memberSearch.trim() ?
-					m.user.fullName
-						.toLowerCase()
-						.includes(memberSearch.toLowerCase()) ||
-					m.user
-						.userName!.toLowerCase()
-						.includes(memberSearch.toLowerCase())
-				:	true,
-			),
-		);
-	}, [memberSearch, members]);
-
-	// Auto-save title function
-	const handleSaveTitle = async () => {
-		setIsEditingTitle(false);
-		const trimmedTitle = title.trim();
-		if (!trimmedTitle || trimmedTitle === project.title) {
-			setTitle(project.title);
-			return;
-		}
-
-		setIsSavingTitle(true);
-		try {
-			const res = await updateProjectDetails({
-				projectId: project.id,
-				values: { title: trimmedTitle },
-			});
-			if (res.success) {
-				toast.success("Project title updated");
-				if (res.activity) {
-					setActivities((prev) =>
-						[
-							res.activity as unknown as ProjectActivity,
-							...prev,
-						].slice(0, 20),
-					);
-				}
-				router.refresh();
-			} else {
-				toast.error(res.message || "Failed to update title");
-				setTitle(project.title);
-			}
-		} catch (e) {
-			toast.error("Error updating title");
-			setTitle(project.title);
-		} finally {
-			setIsSavingTitle(false);
-		}
-	};
-
-	// Auto-save description function
-	const handleSaveDescription = async () => {
-		setIsSavingDescription(true);
-		try {
-			const res = await updateProjectDetails({
-				projectId: project.id,
-				values: { description },
-			});
-			if (res.success) {
-				toast.success("Description updated");
-				if (res.activity) {
-					setActivities((prev) =>
-						[
-							res.activity as unknown as ProjectActivity,
-							...prev,
-						].slice(0, 20),
-					);
-				}
-				setIsEditingDescription(false);
-				router.refresh();
-			} else {
-				toast.error(res.message || "Failed to update description");
-			}
-		} catch (e) {
-			toast.error("Error updating description");
-		} finally {
-			setIsSavingDescription(false);
-		}
-	};
-
-	// Auto-save status function
-	const handleUpdateStatus = async (newStatus: Status) => {
-		if (newStatus === status) return;
-		setStatus(newStatus);
-		setIsSavingStatus(true);
-		try {
-			const res = await updateProjectDetails({
-				projectId: project.id,
-				values: { status: newStatus },
-			});
-			if (res.success) {
-				toast.success(
-					`Status set to ${newStatus.replaceAll("_", " ")}`,
-				);
-				if (res.activity) {
-					setActivities((prev) =>
-						[
-							res.activity as unknown as ProjectActivity,
-							...prev,
-						].slice(0, 20),
-					);
-				}
-				router.refresh();
-			} else {
-				toast.error(res.message || "Failed to update status");
-				setStatus(project.status);
-			}
-		} catch (e) {
-			toast.error("Error updating status");
-			setStatus(project.status);
-		} finally {
-			setIsSavingStatus(false);
-		}
-	};
-
-	// Auto-save priority function
-	const handleUpdatePriority = async (newPriority: PriorityLevel) => {
-		if (newPriority === priority) return;
-		setPriority(newPriority);
-		setIsSavingPriority(true);
-		try {
-			const res = await updateProjectDetails({
-				projectId: project.id,
-				values: { priority: newPriority },
-			});
-			if (res.success) {
-				toast.success("Priority updated");
-				if (res.activity) {
-					setActivities((prev) =>
-						[
-							res.activity as unknown as ProjectActivity,
-							...prev,
-						].slice(0, 20),
-					);
-				}
-				router.refresh();
-			} else {
-				toast.error(res.message || "Failed to update priority");
-				setPriority(project.priority);
-			}
-		} catch (e) {
-			toast.error("Error updating priority");
-			setPriority(project.priority);
-		} finally {
-			setIsSavingPriority(false);
-		}
-	};
-
-	// Auto-save start date
-	const handleUpdateStartDate = async (date?: Date) => {
-		if (!date) return;
-		setStartDate(date);
-		setIsSavingStartDate(true);
-		try {
-			const res = await updateProjectDetails({
-				projectId: project.id,
-				values: { startDate: date },
-			});
-			if (res.success) {
-				toast.success("Start date updated");
-				if (res.activity) {
-					setActivities((prev) =>
-						[
-							res.activity as unknown as ProjectActivity,
-							...prev,
-						].slice(0, 20),
-					);
-				}
-				router.refresh();
-			} else {
-				toast.error(res.message || "Failed to update start date");
-				setStartDate(new Date(project.startPeriod));
-			}
-		} catch (e) {
-			toast.error("Error updating start date");
-			setStartDate(new Date(project.startPeriod));
-		} finally {
-			setIsSavingStartDate(false);
-		}
-	};
-
-	// Auto-save due date
-	const handleUpdateDueDate = async (date?: Date) => {
-		if (!date) return;
-		setDueDate(date);
-		setIsSavingDueDate(true);
-		try {
-			const res = await updateProjectDetails({
-				projectId: project.id,
-				values: { dueDate: date },
-			});
-			if (res.success) {
-				toast.success("Due date updated");
-				if (res.activity) {
-					setActivities((prev) =>
-						[
-							res.activity as unknown as ProjectActivity,
-							...prev,
-						].slice(0, 20),
-					);
-				}
-				router.refresh();
-			} else {
-				toast.error(res.message || "Failed to update due date");
-				setDueDate(new Date(project.endPeriod));
-			}
-		} catch (e) {
-			toast.error("Error updating due date");
-			setDueDate(new Date(project.endPeriod));
-		} finally {
-			setIsSavingDueDate(false);
-		}
-	};
-
-	// Auto-save labels helper
-	const handleSaveLabels = async (newLabels: string[]) => {
-		setLabels(newLabels);
-		setIsSavingLabels(true);
-		try {
-			const res = await updateProjectDetails({
-				projectId: project.id,
-				values: { labels: newLabels },
-			});
-			if (res.success) {
-				toast.success("Labels updated");
-				if (res.activity) {
-					setActivities((prev) =>
-						[
-							res.activity as unknown as ProjectActivity,
-							...prev,
-						].slice(0, 20),
-					);
-				}
-				router.refresh();
-			} else {
-				toast.error(res.message || "Failed to update labels");
-				setLabels(project.labels || []);
-			}
-		} catch (e) {
-			toast.error("Error updating labels");
-			setLabels(project.labels || []);
-		} finally {
-			setIsSavingLabels(false);
-		}
-	};
-
-	const extractLabels = (value: string) => value.match(/#[\w-]+/g) ?? [];
-	const addLabels = (valuesToAdd: string[]) => {
-		const normalized = valuesToAdd
-			.map((v) => v.trim())
-			.filter((v) => v.startsWith("#") && v.length > 1);
-		if (normalized.length === 0) return;
-		const nextSet = Array.from(new Set([...labels, ...normalized]));
-		handleSaveLabels(nextSet);
-	};
-
-	const removeLabel = (labelToRemove: string) => {
-		const updated = labels.filter((l) => l !== labelToRemove);
-		handleSaveLabels(updated);
-	};
-
-	// Auto-save members helper
-	const handleSaveMembers = async (
-		updatedMembers: string[],
-		leadId?: string,
-	) => {
-		setSelectedMembers(updatedMembers);
-		if (leadId !== undefined) {
-			setSelectedLeadId(leadId);
-		}
-		setIsSavingMembers(true);
-		try {
-			const res = await updateProjectMembers({
-				projectId: project.id,
-				projectMembers: updatedMembers,
-				projectLeadId: leadId !== undefined ? leadId : selectedLeadId,
-			});
-			if (res.success) {
-				toast.success("Project members updated");
-				if (res.activities && res.activities.length > 0) {
-					setActivities((prev) =>
-						[
-							...(res.activities as unknown as ProjectActivity[]),
-							...prev,
-						].slice(0, 20),
-					);
-				}
-				router.refresh();
-			} else {
-				toast.error(res.message || "Failed to update members");
-			}
-		} catch (e) {
-			toast.error("Error updating members");
-		} finally {
-			setIsSavingMembers(false);
-		}
-	};
-
-	const toggleMember = (memberId: string) => {
-		const nextMembers =
-			selectedMembers.includes(memberId) ?
-				selectedMembers.filter((m) => m !== memberId)
-			:	[...selectedMembers, memberId];
-
-		let nextLead = selectedLeadId;
-		if (!nextMembers.includes(memberId) && selectedLeadId === memberId) {
-			nextLead = undefined;
-		}
-		handleSaveMembers(nextMembers, nextLead);
-	};
-
-	const handleSetProjectLead = (memberId: string) => {
-		const nextLead = selectedLeadId === memberId ? undefined : memberId;
-		handleSaveMembers(selectedMembers, nextLead);
-	};
-
-	const [deletingResourceId, setDeletingResourceId] = useState<string | null>(
-		null,
+	const currentMember = members.find(
+		(m) => m.userId === (currentUserId || user?.id),
 	);
 
-	const handleDeleteResource = async (resourceId: string) => {
-		setDeletingResourceId(resourceId);
-		try {
-			const res = await deleteProjectResource(resourceId);
-			if (res.success) {
-				toast.success("Resource deleted");
-				setResources((prev) => prev.filter((r) => r.id !== resourceId));
-				if (res.activity) {
-					setActivities((prev) =>
-						[
-							res.activity as unknown as ProjectActivity,
-							...prev,
-						].slice(0, 20),
-					);
-				}
-				router.refresh();
-			} else {
-				toast.error(res.message || "Failed to delete resource");
-			}
-		} catch (e) {
-			toast.error("Error deleting resource");
-		} finally {
-			setDeletingResourceId(null);
+	// Creator Name
+	const creatorUser = task.createdBy?.user;
+	const creatorName =
+		creatorUser?.fullName ||
+		creatorUser?.userName ||
+		creatorUser?.email ||
+		"Creator";
+
+	// Calculate milestone metrics
+	const totalMilestones = task.milestones?.length || 0;
+	const completedMilestones =
+		task.milestones?.filter((m) => m.status === MileStoneStatus.DONE)
+			.length || 0;
+	const milestonePercent =
+		totalMilestones > 0 ?
+			Math.round((completedMilestones / totalMilestones) * 100)
+		: status === Status.COMPLETED ? 100
+		: 0;
+
+	// Save Title
+	const handleSaveTitle = async () => {
+		if (!title.trim() || title === task.title) {
+			setIsEditingTitle(false);
+			setTitle(task.title);
+			return;
+		}
+		setIsSavingTitle(true);
+		const res = await updateTaskDetails({
+			taskId: task.id,
+			values: { title: title.trim() },
+			memberId: currentMember?.id,
+		});
+		setIsSavingTitle(false);
+		if (res.success) {
+			setTask((prev) => ({ ...prev, title: title.trim() }));
+			setIsEditingTitle(false);
+			toast.success("Task title updated");
+		} else {
+			toast.error(res.message || "Failed to update title");
 		}
 	};
 
+	// Save Description
+	const handleSaveDescription = async () => {
+		if (description === task.description) {
+			setIsEditingDescription(false);
+			return;
+		}
+		setIsSavingDescription(true);
+		const res = await updateTaskDetails({
+			taskId: task.id,
+			values: { description: description.trim() },
+			memberId: currentMember?.id,
+		});
+		setIsSavingDescription(false);
+		if (res.success) {
+			setTask((prev) => ({ ...prev, description: description.trim() }));
+			setIsEditingDescription(false);
+			toast.success("Task description updated");
+		} else {
+			toast.error(res.message || "Failed to update description");
+		}
+	};
+
+	// Update Status
+	const handleUpdateStatus = async (nextStatus: Status) => {
+		if (nextStatus === status) return;
+		setIsSavingStatus(true);
+		const res = await updateTaskDetails({
+			taskId: task.id,
+			values: { status: nextStatus },
+			memberId: currentMember?.id,
+		});
+		setIsSavingStatus(false);
+		if (res.success) {
+			setStatus(nextStatus);
+			setTask((prev) => ({ ...prev, status: nextStatus }));
+			toast.success(
+				`Status updated to ${nextStatus.replaceAll("_", " ")}`,
+			);
+		} else {
+			toast.error(res.message || "Failed to update status");
+		}
+	};
+
+	// Update Priority
+	const handleUpdatePriority = async (nextPriority: PriorityLevel) => {
+		if (nextPriority === priority) return;
+		setIsSavingPriority(true);
+		const res = await updateTaskDetails({
+			taskId: task.id,
+			values: { priority: nextPriority },
+			memberId: currentMember?.id,
+		});
+		setIsSavingPriority(false);
+		if (res.success) {
+			setPriority(nextPriority);
+			setTask((prev) => ({ ...prev, priority: nextPriority }));
+			toast.success(`Priority updated to ${nextPriority}`);
+		} else {
+			toast.error(res.message || "Failed to update priority");
+		}
+	};
+
+	// Update Start Date
+	const handleUpdateStartDate = async (date: Date | undefined) => {
+		if (!date) return;
+		setIsSavingStartDate(true);
+		const res = await updateTaskDetails({
+			taskId: task.id,
+			values: { startPeriod: date },
+			memberId: currentMember?.id,
+		});
+		setIsSavingStartDate(false);
+		if (res.success) {
+			setStartDate(date);
+			setTask((prev) => ({ ...prev, startPeriod: date }));
+			toast.success("Start date updated");
+		} else {
+			toast.error(res.message || "Failed to update start date");
+		}
+	};
+
+	// Update Due Date
+	const handleUpdateDueDate = async (date: Date | undefined) => {
+		if (!date) return;
+		setIsSavingDueDate(true);
+		const res = await updateTaskDetails({
+			taskId: task.id,
+			values: { endPeriod: date },
+			memberId: currentMember?.id,
+		});
+		setIsSavingDueDate(false);
+		if (res.success) {
+			setDueDate(date);
+			setTask((prev) => ({ ...prev, endPeriod: date }));
+			toast.success("Due date updated");
+		} else {
+			toast.error(res.message || "Failed to update due date");
+		}
+	};
+
+	// Add Milestone
+	const handleAddMilestone = async () => {
+		if (!milestoneInput.trim()) return;
+		setIsAddingMilestone(true);
+		const res = await addMilestone({
+			taskId: task.id,
+			title: milestoneInput.trim(),
+		});
+		setIsAddingMilestone(false);
+		if (res.success && res.milestone) {
+			setTask((prev) => ({
+				...prev,
+				milestones: [...(prev.milestones || []), res.milestone!],
+			}));
+			setMilestoneInput("");
+			toast.success("Milestone created");
+		} else {
+			toast.error(res.message || "Failed to add milestone");
+		}
+	};
+
+	// Toggle Milestone
+	const handleToggleMilestone = async (
+		mId: string,
+		currentStatus: MileStoneStatus,
+	) => {
+		const nextStatus =
+			currentStatus === MileStoneStatus.DONE ?
+				MileStoneStatus.NOT_STARTED
+			:	MileStoneStatus.DONE;
+		const res = await toggleMilestoneStatus({
+			milestoneId: mId,
+			status: nextStatus,
+		});
+		if (res.success) {
+			setTask((prev) => ({
+				...prev,
+				milestones: (prev.milestones || []).map((m) =>
+					m.id === mId ? { ...m, status: nextStatus } : m,
+				),
+			}));
+		} else {
+			toast.error(res.message || "Failed to update milestone");
+		}
+	};
+
+	// Delete Milestone
+	const handleDeleteMilestone = async (mId: string) => {
+		const res = await deleteMilestone(mId);
+		if (res.success) {
+			setTask((prev) => ({
+				...prev,
+				milestones: (prev.milestones || []).filter((m) => m.id !== mId),
+			}));
+			toast.success("Milestone deleted");
+		} else {
+			toast.error(res.message || "Failed to delete milestone");
+		}
+	};
+
+	// Toggle Task Member Assignees
+	const toggleAssigneeMember = async (memberId: string) => {
+		const next =
+			selectedMembers.includes(memberId) ?
+				selectedMembers.filter((id) => id !== memberId)
+			:	[...selectedMembers, memberId];
+		setSelectedMembers(next);
+		setIsSavingMembers(true);
+		const res = await updateTaskMembers({
+			taskId: task.id,
+			memberIds: next,
+			actorMemberId: currentMember?.id,
+		});
+		setIsSavingMembers(false);
+		if (res.success) {
+			const updatedMembers = members
+				.filter((m) => next.includes(m.id))
+				.map((m) => ({
+					id: `tm-${m.id}`,
+					taskId: task.id,
+					memberId: m.id,
+					assignedAt: new Date(),
+					member: m,
+				}));
+			setTask((prev) => ({
+				...prev,
+				taskMembers: updatedMembers as any,
+			}));
+			toast.success("Assignees updated");
+		} else {
+			toast.error(res.message || "Failed to update assignees");
+		}
+	};
+
+	// Add Resource
+	const handleAddResource = async () => {
+		if (!resourceField.name.trim() || !resourceField.url.trim()) return;
+		let url = resourceField.url.trim();
+		if (!url.startsWith("http://") && !url.startsWith("https://")) {
+			url = `https://${url}`;
+		}
+		setIsAddingResource(true);
+		const res = await addTaskResource({
+			taskId: task.id,
+			name: resourceField.name.trim(),
+			url,
+		});
+		setIsAddingResource(false);
+		if (res.success && res.resource) {
+			setResources((prev) => [...prev, res.resource!]);
+			if (res.activity) {
+				setTask((prev) => ({
+					...prev,
+					activities: [res.activity!, ...(prev.activities || [])],
+				}));
+			}
+			setResourceField({ name: "", url: "" });
+			setIsAddResourceOpen(false);
+			toast.success("Resource added");
+		} else {
+			toast.error(res.message || "Failed to add resource");
+		}
+	};
+
+	// Update Resource
 	const handleUpdateResourceItem = async (
 		resourceId: string,
 		name: string,
 		url: string,
 	) => {
-		if (!name.trim() || !url.trim()) return;
-		try {
-			const res = await updateProjectResource({ resourceId, name, url });
-			if (res.success && res.resource) {
-				toast.success("Resource updated");
-				setResources((prev) =>
-					prev.map((r) => (r.id === resourceId ? res.resource! : r)),
-				);
-				if (res.activity) {
-					setActivities((prev) =>
-						[
-							res.activity as unknown as ProjectActivity,
-							...prev,
-						].slice(0, 20),
-					);
-				}
-				router.refresh();
-			} else {
-				toast.error(res.message || "Failed to update resource");
+		const res = await updateTaskResource({
+			resourceId,
+			name,
+			url,
+			currentTaskId: task.id,
+		});
+		if (res.success && res.resource) {
+			setResources((prev) =>
+				prev.map((r) => (r.id === resourceId ? res.resource! : r)),
+			);
+			if (res.activity) {
+				setTask((prev) => ({
+					...prev,
+					activities: [res.activity!, ...(prev.activities || [])],
+				}));
 			}
-		} catch (e) {
-			toast.error("Error updating resource");
+			toast.success("Resource updated");
+		} else {
+			toast.error(res.message || "Failed to update resource");
 		}
 	};
 
-	const handleAddResource = async () => {
-		if (!resourceField.name.trim() || !resourceField.url.trim()) return;
-
-		setIsAddingResource(true);
-		try {
-			const res = await addProjectResource({
-				projectId: project.id,
-				name: resourceField.name,
-				url: resourceField.url,
-			});
-
-			if (res.success && res.resource) {
-				toast.success(res.message);
-				setResources((prev) => [...prev, res.resource]);
-				if (res.activity) {
-					setActivities((prev) =>
-						[
-							res.activity as unknown as ProjectActivity,
-							...prev,
-						].slice(0, 20),
-					);
-				}
-				setResourceField({ name: "", url: "" });
-				router.refresh();
-			} else {
-				toast.error(res.message || "Failed to add resource");
+	// Delete Resource
+	const handleDeleteResource = async (rId: string) => {
+		setDeletingResourceId(rId);
+		const res = await deleteTaskResource(rId, task.id);
+		setDeletingResourceId(null);
+		if (res.success) {
+			setResources((prev) => prev.filter((r) => r.id !== rId));
+			if (res.activity) {
+				setTask((prev) => ({
+					...prev,
+					activities: [res.activity!, ...(prev.activities || [])],
+				}));
 			}
-		} catch (err) {
-			toast.error("An error occurred while adding resource");
-		} finally {
-			setIsAddingResource(false);
+			toast.success("Resource removed");
+		} else {
+			toast.error(res.message || "Failed to remove resource");
 		}
 	};
 
+	// Post Main Comment
 	const handleAddComment = async () => {
 		const message = commentInput.trim();
 		if (!message || isPostingComment) return;
-
 		setIsPostingComment(true);
 		try {
-			const res = await addProjectComment({
-				projectId: project.id,
+			const res = await addTaskComment({
+				taskId: task.id,
 				message,
 			});
-			if (res.success && res.comment) {
+			if (res.success && "comment" in res && res.comment) {
 				toast.success("Comment posted");
-				setComments((prev) => [res.comment as ProjectComment, ...prev]);
+				setComments((prev) => [res.comment as any, ...prev]);
 				setCommentInput("");
-				router.refresh();
 			} else {
 				toast.error(res.message || "Failed to post comment");
 			}
-		} catch (e) {
+		} catch {
 			toast.error("Error posting comment");
 		} finally {
 			setIsPostingComment(false);
 		}
 	};
 
-	const handleDeleteComment = async (commentId: string) => {
-		setDeletingCommentId(commentId);
-		try {
-			const res = await deleteProjectComment(commentId);
-			if (res.success) {
-				toast.success("Comment deleted");
-				setComments((prev) => prev.filter((c) => c.id !== commentId));
-				if (res.activity) {
-					setActivities((prev) =>
-						[
-							res.activity as unknown as ProjectActivity,
-							...prev,
-						].slice(0, 20),
-					);
-				}
-				router.refresh();
-			} else {
-				toast.error(res.message || "Failed to delete comment");
-			}
-		} catch (e) {
-			toast.error("Error deleting comment");
-		} finally {
-			setDeletingCommentId(null);
-		}
-	};
-
+	// Edit Comment
 	const handleEditComment = (commentId: string, currentMessage: string) => {
 		setEditingCommentId(commentId);
 		setEditingMessage(currentMessage);
@@ -1026,75 +878,103 @@ export default function SingleProjectView({
 		if (!editingMessage.trim()) return;
 		setIsSavingComment(true);
 		try {
-			const res = await updateProjectComment({
+			const res = await updateTaskComment({
 				commentId,
 				message: editingMessage,
 			});
-			if (res.success && res.comment) {
+			if (res.success && "comment" in res && res.comment) {
 				toast.success("Comment updated");
 				setComments((prev) =>
 					prev.map((c) =>
-						c.id === commentId ?
-							(res.comment as ProjectComment)
-						:	c,
+						c.id === commentId ? (res.comment as any) : c,
 					),
 				);
 				setEditingCommentId(null);
 				setEditingMessage("");
-				router.refresh();
 			} else {
 				toast.error(res.message || "Failed to update comment");
 			}
-		} catch (e) {
+		} catch {
 			toast.error("Error updating comment");
 		} finally {
 			setIsSavingComment(false);
 		}
 	};
 
+	// Delete Comment
+	const handleDeleteComment = async (commentId: string) => {
+		setDeletingCommentId(commentId);
+		try {
+			const res = await deleteTaskComment(commentId);
+			if (res.success) {
+				toast.success("Comment deleted");
+				setComments((prev) =>
+					prev.filter(
+						(c) =>
+							c.id !== commentId &&
+							c.replyCommentId !== commentId,
+					),
+				);
+				if ("activity" in res && res.activity) {
+					setTask((prev) => ({
+						...prev,
+						activities: [res.activity!, ...(prev.activities || [])],
+					}));
+				}
+			} else {
+				toast.error(res.message || "Failed to delete comment");
+			}
+		} catch {
+			toast.error("Error deleting comment");
+		} finally {
+			setDeletingCommentId(null);
+		}
+	};
+
+	// Post Reply
 	const handlePostReply = async (parentCommentId: string) => {
 		const message = replyInput.trim();
 		if (!message || isPostingReply) return;
-
 		setIsPostingReply(true);
 		try {
-			const res = await addProjectComment({
-				projectId: project.id,
+			const res = await addTaskComment({
+				taskId: task.id,
 				message,
 				replyCommentId: parentCommentId,
 			});
-			if (res.success && res.comment) {
+			if (res.success && "comment" in res && res.comment) {
 				toast.success("Reply posted");
-				setComments((prev) => [...prev, res.comment as ProjectComment]);
+				setComments((prev) => [...prev, res.comment as any]);
 				setReplyInput("");
 				setReplyingToCommentId(null);
-				router.refresh();
 			} else {
 				toast.error(res.message || "Failed to post reply");
 			}
-		} catch (e) {
+		} catch {
 			toast.error("Error posting reply");
 		} finally {
 			setIsPostingReply(false);
 		}
 	};
 
-	const projectLeadName = (() => {
-		const leadMember = project.projectMembers.find(
-			(e) => e.projectRole === ("PROJECT_LEAD" as ProjectAccess),
-		);
-		if (!leadMember) return "Unassigned";
-		return leadMember.member.user.id === user?.id ?
-				"YOU"
-			:	leadMember.member.user.fullName;
-	})();
-
-	const contributors = project.projectMembers.filter(
-		(e) => e.projectRole === ("CONTRIBUTOR" as ProjectAccess),
-	);
-
-	const handleReadMore = () => {
-		setReadMore(!readMore);
+	// Delete Task
+	const handleDeleteTask = async () => {
+		setIsDeletingTask(true);
+		try {
+			const res = await deleteTask(task.id, currentMember?.id);
+			if (res.success) {
+				toast.success("Task deleted successfully");
+				setIsDeleteDialogOpen(false);
+				window.location.href =
+					task.projectId ? `/projects/${task.projectId}` : "/tasks";
+			} else {
+				toast.error(res.message || "Failed to delete task");
+				setIsDeletingTask(false);
+			}
+		} catch {
+			toast.error("Error deleting task");
+			setIsDeletingTask(false);
+		}
 	};
 
 	const formatDescription = (desc: string) => {
@@ -1110,13 +990,30 @@ export default function SingleProjectView({
 	const plainTextDesc = (description || "").replace(/<[^>]*>/g, "").trim();
 	const isLongDescription = plainTextDesc.length > 220;
 
+	const projectMembersList =
+		((task.project as any)?.projectMembers || [])
+			.map((pm: any) => pm.member)
+			.filter((m: any) => m && m.user) || [];
+
+	const availableTaskAssigneeMembers =
+		projectMembersList.length > 0 ? projectMembersList : members;
+
+	const displayedMembers = availableTaskAssigneeMembers.filter((m: any) => {
+		if (!m || !m.user) return false;
+		if (!memberSearch.trim()) return true;
+		const name = m.user.fullName || m.user.userName || m.user.email || "";
+		return name.toLowerCase().includes(memberSearch.toLowerCase().trim());
+	});
+
 	return (
 		<div className="flex flex-col lg:flex-row gap-3 w-full">
+			{/* Main Left Content Area */}
 			<div className="w-full lg:w-[75%] grow">
+				{/* Top Bar: Back Button, Title, Edit Description */}
 				<div className="flex flex-wrap gap-3 justify-between items-center">
 					<div className="gap-2 sm:gap-3 items-center flex min-w-0 flex-1">
 						<Link
-							href={"/projects"}
+							href="/tasks"
 							className="py-2 px-3.5 rounded-full flex gap-2 items-center justify-center bg-primary shrink-0 text-secondary"
 						>
 							<MoveLeft className="w-4 h-4" />
@@ -1134,7 +1031,7 @@ export default function SingleProjectView({
 										if (e.key === "Enter")
 											handleSaveTitle();
 										if (e.key === "Escape") {
-											setTitle(project.title);
+											setTitle(task.title);
 											setIsEditingTitle(false);
 										}
 									}}
@@ -1170,24 +1067,21 @@ export default function SingleProjectView({
 					</Button>
 				</div>
 
+				{/* Task Description Card */}
 				<div className="mt-3">
 					{isEditingDescription ?
 						<div className="flex flex-col gap-2 bg-accent/30 p-3 rounded-[20px] text-primary">
-							<WysiwygEditor
+							<Textarea
 								disabled={isSavingDescription}
 								value={description}
-								onChange={setDescription}
-								placeholder="Type description..."
-								height="250px"
-								minHeight="200px"
-								textColor="text-primary"
+								onChange={(e) => setDescription(e.target.value)}
+								placeholder="Type task description..."
+								className="w-full min-h-[160px] p-3 bg-accent text-primary rounded-[15px] border-0 text-sm placeholder:text-primary/50 focus-visible:ring-0 focus-visible:ring-offset-0 outline-none resize-y"
 							/>
 							<div className="flex justify-end gap-2 mt-2">
 								<Button
 									onClick={() => {
-										setDescription(
-											project.description || "",
-										);
+										setDescription(task.description || "");
 										setIsEditingDescription(false);
 									}}
 									className="rounded-full text-xs bg-accent hover:bg-accent text-primary border-0"
@@ -1207,19 +1101,18 @@ export default function SingleProjectView({
 						</div>
 					:	<div className="mt-[10px] text-primary text-[14px]">
 							<div
-								className={`wysiwyg-content text-primary transition-all duration-300 ${
+								className={`text-primary transition-all duration-300 whitespace-pre-wrap ${
 									!readMore && isLongDescription ?
 										"max-h-[100px] overflow-hidden relative"
 									:	""
 								}`}
-								dangerouslySetInnerHTML={{
-									__html: formatDescription(description),
-								}}
-							/>
+							>
+								{description || "No description provided."}
+							</div>
 							{isLongDescription && (
 								<button
 									type="button"
-									onClick={handleReadMore}
+									onClick={() => setReadMore(!readMore)}
 									className="cursor-pointer underline text-xs mt-2 font-semibold hover:opacity-80 border-0 bg-transparent text-primary p-0 block"
 								>
 									{readMore ? "Show less" : "Read more"}
@@ -1229,6 +1122,7 @@ export default function SingleProjectView({
 					}
 				</div>
 
+				{/* Properties Pill Bar */}
 				<div className="bg-accent w-full mt-[10px] py-[10px] px-3 sm:px-[20px] rounded-[20px] sm:rounded-[30px]">
 					<div className="flex flex-wrap items-center gap-2 sm:gap-3">
 						{/* Interactive Priority Selector */}
@@ -1277,7 +1171,7 @@ export default function SingleProjectView({
 								<Popover>
 									<PopoverTrigger asChild>
 										<span className="text-[14px] cursor-pointer hover:underline">
-											{format(startDate, "LLL d")}
+											{safeFormatDate(startDate, "LLL d")}
 										</span>
 									</PopoverTrigger>
 									<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
@@ -1295,7 +1189,7 @@ export default function SingleProjectView({
 								<Popover>
 									<PopoverTrigger asChild>
 										<span className="text-[14px] cursor-pointer hover:underline">
-											{format(dueDate, "LLL d")}
+											{safeFormatDate(dueDate, "LLL d")}
 										</span>
 									</PopoverTrigger>
 									<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
@@ -1311,97 +1205,106 @@ export default function SingleProjectView({
 							</div>
 						</div>
 
+						{/* Project Badge */}
+						{task.project && (
+							<Link href={`/projects/${task.projectId}`}>
+								<Badge className="py-[5px] px-[10px] cursor-pointer hover:opacity-80 transition-opacity">
+									<Box className="w-3.5 h-3.5 mr-1" />
+									<p className="truncate max-w-[220px]">
+										{task.project.title}
+									</p>
+								</Badge>
+							</Link>
+						)}
+
+						{/* Metrics Badges */}
 						<Badge className="py-[5px] px-[10px]">
 							<Squircle className="w-3.5 h-3.5 mr-1" />
 							<p>
-								{
-									(project.tasks || []).filter(
-										(t) => t.status === Status.COMPLETED,
-									).length
-								}{" "}
-								out of {(project.tasks || []).length} tasks done
+								{completedMilestones} out of {totalMilestones}{" "}
+								milestones done
 							</p>
 						</Badge>
 						<Badge className="py-[5px] px-[10px]">
 							<Users className="w-3.5 h-3.5 mr-1" />
 							<p>
-								{(project.projectMembers || []).length} project
-								member
-								{(project.projectMembers || []).length === 1 ?
+								{(task.taskMembers || []).length} assignee
+								{(task.taskMembers || []).length === 1 ?
 									""
 								:	"s"}
 							</p>
 						</Badge>
 					</div>
 
+					{/* Resources Row */}
 					<div className="mt-[10px] flex flex-wrap gap-2 items-center">
-						{resources.map((i) => {
-							return (
-								<div
-									key={i.id}
-									className="flex items-center rounded-full gap-2 px-[15px] py-[8px] h-8 bg-primary text-secondary text-[11px]"
+						{resources.map((i) => (
+							<div
+								key={i.id}
+								className="flex items-center rounded-full gap-2 px-[15px] py-[8px] h-8 bg-primary text-secondary text-[11px]"
+							>
+								<Link
+									target="_blank"
+									href={i.url}
+									className="flex items-center gap-1.5 hover:underline font-medium"
 								>
-									<Link
-										target="__blank"
-										href={i.url}
-										className="flex items-center gap-1.5 hover:underline font-medium"
-									>
-										<Paperclip className="w-3.5 h-3.5" />
-										<span>{i.name}</span>
-									</Link>
+									<Paperclip className="w-3.5 h-3.5" />
+									<span>{i.name}</span>
+								</Link>
 
-									<Popover>
-										<PopoverTrigger asChild>
-											<button
-												type="button"
-												className="p-0.5 hover:bg-secondary/20 rounded-full transition-colors text-secondary/70 hover:text-secondary"
-												title="Edit resource"
-											>
-												<PenLine className="w-3 h-3" />
-											</button>
-										</PopoverTrigger>
-										<PopoverContent className="rounded-[20px] bg-accent max-w-[200px] text-primary p-3 border-0">
-											<EditResourcePopoverContent
-												resource={i}
-												onSave={(name, url) =>
-													handleUpdateResourceItem(
-														i.id,
-														name,
-														url,
-													)
-												}
-											/>
-										</PopoverContent>
-									</Popover>
+								<Popover>
+									<PopoverTrigger asChild>
+										<button
+											type="button"
+											className="p-0.5 hover:bg-secondary/20 rounded-full transition-colors text-secondary/70 hover:text-secondary"
+											title="Edit resource"
+										>
+											<PenLine className="w-3 h-3" />
+										</button>
+									</PopoverTrigger>
+									<PopoverContent className="rounded-[20px] bg-accent max-w-[200px] text-primary p-3 border-0">
+										<EditResourcePopoverContent
+											resource={i}
+											onSave={(name, url) =>
+												handleUpdateResourceItem(
+													i.id,
+													name,
+													url,
+												)
+											}
+										/>
+									</PopoverContent>
+								</Popover>
 
-									<button
-										type="button"
-										disabled={deletingResourceId === i.id}
-										onClick={() =>
-											handleDeleteResource(i.id)
-										}
-										className="p-0.5 hover:bg-secondary/20 rounded-full transition-colors text-secondary/70 hover:text-secondary disabled:opacity-50"
-										title="Delete resource"
-									>
-										{deletingResourceId === i.id ?
-											<LoaderCircle className="w-3 h-3 animate-spin" />
-										:	<X className="w-3 h-3" />}
-									</button>
-								</div>
-							);
-						})}
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
+								<button
+									type="button"
+									disabled={deletingResourceId === i.id}
+									onClick={() => handleDeleteResource(i.id)}
+									className="p-0.5 hover:bg-secondary/20 rounded-full transition-colors text-secondary/70 hover:text-secondary disabled:opacity-50"
+									title="Delete resource"
+								>
+									{deletingResourceId === i.id ?
+										<LoaderCircle className="w-3 h-3 animate-spin" />
+									:	<X className="w-3 h-3" />}
+								</button>
+							</div>
+						))}
+
+						<Popover
+							open={isAddResourceOpen}
+							onOpenChange={setIsAddResourceOpen}
+						>
+							<PopoverTrigger asChild>
 								<div className="gap-2 bg-primary text-secondary px-[8px] py-[8px] h-8 flex items-center rounded-full cursor-pointer hover:bg-primary/90 transition-colors">
 									<Plus className="w-4 h-4" />
 									{resources.length === 0 && (
 										<p className="text-[12px]">
-											Add project resource
+											Add task resource
 										</p>
 									)}
 								</div>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent className="rounded-[20px] bg-accent max-w-[190px] text-primary px-[10px] py-2 border-0">
+							</PopoverTrigger>
+							<PopoverContent className="rounded-[20px] bg-accent max-w-[190px] text-primary px-[10px] py-2 border-0">
 								<div className="flex flex-col gap-2">
 									<div className="flex flex-col gap-1 items-center w-full">
 										<input
@@ -1426,6 +1329,10 @@ export default function SingleProjectView({
 													url: e.target.value,
 												}))
 											}
+											onKeyDown={(e) => {
+												if (e.key === "Enter")
+													handleAddResource();
+											}}
 											className="flex-1 w-full py-[5px] text-[12px] rounded-md bg-primary text-secondary px-2 text-sm outline-none"
 										/>
 										<Button
@@ -1443,198 +1350,180 @@ export default function SingleProjectView({
 										</Button>
 									</div>
 								</div>
-							</DropdownMenuContent>
-						</DropdownMenu>
+							</PopoverContent>
+						</Popover>
 					</div>
 				</div>
 
+				{/* Progress & Milestones Section */}
 				<div className="mt-[20px] flex flex-col gap-4">
 					<div>
 						<div className="flex items-center justify-between">
 							<p className="text-xl text-primary font-bold">
-								Project Progress
+								Task Milestone Progress
 							</p>
 							<p className="text-primary text-[12px]">
-								{
-									(project.tasks || []).filter(
-										(t) => t.status === Status.COMPLETED,
-									).length
-								}{" "}
-								of {(project.tasks || []).length} tasks done
+								{completedMilestones} of {totalMilestones}{" "}
+								milestones done
 							</p>
 						</div>
 						<Progress
 							indicatorClassName="rounded-full"
 							className="h-[25px]"
-							value={
-								(project.tasks || []).length > 0 ?
-									Math.round(
-										((project.tasks || []).filter(
-											(t) =>
-												t.status === Status.COMPLETED,
-										).length /
-											(project.tasks || []).length) *
-											100,
-									)
-								:	0
-							}
+							value={milestonePercent}
 						/>
 					</div>
 
+					{/* Milestones List & Table */}
 					<div>
 						<div className="flex items-center justify-between">
 							<p className="font-bold text-primary">
-								Tasks ({(project.tasks || []).length})
+								Milestones ({totalMilestones})
 							</p>
-							<Button className="rounded-full">
-								<Plus />
+						</div>
+
+						{/* Add Milestone Bar */}
+						<div className="mt-[10px] flex gap-2 items-center">
+							<Input
+								placeholder="Add new milestone..."
+								value={milestoneInput}
+								onChange={(e) =>
+									setMilestoneInput(e.target.value)
+								}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") handleAddMilestone();
+								}}
+								className="bg-accent text-primary rounded-[15px] border-0 placeholder:text-primary/60 flex-1 text-sm"
+							/>
+							<Button
+								disabled={
+									isAddingMilestone || !milestoneInput.trim()
+								}
+								onClick={handleAddMilestone}
+								className="rounded-full text-xs font-semibold"
+							>
+								{isAddingMilestone ?
+									<LoaderCircle className="w-4 h-4 animate-spin" />
+								:	<Plus className="w-4 h-4 mr-1" />}
+								Add Milestone
 							</Button>
 						</div>
+
 						<div className="mt-[10px]">
-							<div className="flex flex-col gap-3">
-								<Input
-									placeholder="Search by task title..."
-									value={taskSearch}
-									onChange={(e) =>
-										setTaskSearch(e.target.value)
-									}
-									className="bg-primary rounded-[15px] border-0 text-secondary placeholder:text-secondary/70"
-								/>
-								{(() => {
-									const filteredTasks = (
-										project.tasks || []
-									).filter((t) =>
-										taskSearch.trim() ?
-											t.title
-												.toLowerCase()
-												.includes(
-													taskSearch.toLowerCase(),
-												)
-										:	true,
-									);
-
-									if (filteredTasks.length === 0) {
-										return (
-											<div className="bg-primary flex justify-center py-[20px] px-[20px] flex-col items-center rounded-[15px]">
-												<div className="bg-accent text-primary py-[10px] px-[10px] rounded-full">
-													{taskSearch.trim() ?
-														<Search className="w-4 h-4" />
-													:	<Squircle className="w-4 h-4" />
-													}
-												</div>
-												<p className="text-xs font-semibold text-secondary mt-[10px]">
-													{taskSearch.trim() ?
-														"No Matching Tasks"
-													:	"No Tasks Available"}
-												</p>
-												<p className="text-[11px] text-center text-secondary/60">
-													{taskSearch.trim() ?
-														"No tasks match your search query"
-													:	"No tasks found yet in this project"
-													}
-												</p>
-											</div>
-										);
-									}
-
-									return (
-										<div className="overflow-x-auto custom-scrollbar">
-											<Table className="min-w-[600px]">
-												<TableHeader>
-													<TableRow>
-														<TableHead>
-															Task
-														</TableHead>
-														<TableHead>
-															Due Date
-														</TableHead>
-														<TableHead>
-															Priority
-														</TableHead>
-														<TableHead>
-															Status
-														</TableHead>
-													</TableRow>
-												</TableHeader>
-												<TableBody>
-													{filteredTasks.map((t) => (
-														<TableRow key={t.id}>
-															<TableCell className="font-medium">
-																<Link
-																	href={`/tasks/${t.id}`}
-																	className="hover:underline hover:opacity-85 transition-opacity"
-																>
-																	{t.title}
-																</Link>
-															</TableCell>
-															<TableCell>
-																{t.endPeriod ?
-																	format(
-																		new Date(
-																			t.endPeriod,
-																		),
-																		"PPP",
+							{totalMilestones === 0 ?
+								<div className="bg-primary flex justify-center py-[20px] px-[20px] flex-col items-center rounded-[15px]">
+									<div className="bg-accent text-primary py-[10px] px-[10px] rounded-full">
+										<Squircle className="w-4 h-4" />
+									</div>
+									<p className="text-secondary text-[15px] mt-[10px] font-bold">
+										No Milestones Available
+									</p>
+									<p className="text-[13px] text-center text-secondary">
+										Add milestones above to track key steps
+										for this task.
+									</p>
+								</div>
+							:	<Table className="min-w-[500px]">
+									<TableHeader>
+										<TableRow>
+											<TableHead>Done</TableHead>
+											<TableHead>
+												Milestone Title
+											</TableHead>
+											<TableHead>Status</TableHead>
+											<TableHead className="text-right">
+												Action
+											</TableHead>
+										</TableRow>
+									</TableHeader>
+									<TableBody>
+										{task.milestones?.map((m) => {
+											const isDone =
+												m.status ===
+												MileStoneStatus.DONE;
+											return (
+												<TableRow key={m.id}>
+													<TableCell className="w-[50px]">
+														<Checkbox
+															checked={isDone}
+															onCheckedChange={() =>
+																handleToggleMilestone(
+																	m.id,
+																	m.status,
+																)
+															}
+															className="border-secondary data-[state=checked]:bg-accent data-[state=checked]:text-primary"
+														/>
+													</TableCell>
+													<TableCell className="font-medium">
+														<span
+															className={
+																isDone ?
+																	"line-through opacity-70"
+																:	""
+															}
+														>
+															{m.title}
+														</span>
+													</TableCell>
+													<TableCell>
+														<Badge
+															className={
+																isDone ?
+																	renderStatus(
+																		Status.COMPLETED,
 																	)
-																:	"No due date"}
-															</TableCell>
-															<TableCell>
-																<Badge
-																	className={`${renderPriority(t.priority)} text-primary`}
-																>
-																	{t.priority}
-																</Badge>
-															</TableCell>
-															<TableCell>
-																<Badge
-																	className={`${renderStatus(t.status)}`}
-																>
-																	<div className="flex items-center gap-1">
-																		{t.status ===
-																			Status.COMPLETED && (
-																			<CircleCheck className="w-3 h-3" />
-																		)}
-																		{t.status ===
-																			Status.CANCELLED && (
-																			<CircleX className="w-3 h-3" />
-																		)}
-																		<span>
-																			{t.status.replaceAll(
-																				"_",
-																				" ",
-																			)}
-																		</span>
-																	</div>
-																</Badge>
-															</TableCell>
-														</TableRow>
-													))}
-												</TableBody>
-											</Table>
-										</div>
-									);
-								})()}
-							</div>
+																:	renderStatus(
+																		Status.TODO,
+																	)
+															}
+														>
+															{isDone ?
+																"COMPLETED"
+															:	"TO DO"}
+														</Badge>
+													</TableCell>
+													<TableCell className="text-right">
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() =>
+																handleDeleteMilestone(
+																	m.id,
+																)
+															}
+															className="text-secondary/60 hover:text-destructive hover:bg-destructive/10 rounded-full h-7 w-7 p-0"
+														>
+															<Trash2 className="w-3.5 h-3.5" />
+														</Button>
+													</TableCell>
+												</TableRow>
+											);
+										})}
+									</TableBody>
+								</Table>
+							}
 						</div>
 					</div>
 
-					{/* Activity Section */}
-					<div>
+					{/* Activity Feed Section */}
+					<div className="mt-4">
 						<p className="font-bold text-primary mb-2.5">
 							Activity
 						</p>
 						<div>
-							{activities && activities.length > 0 ?
+							{task.activities && task.activities.length > 0 ?
 								<div className="flex flex-col gap-2">
-									{activities.slice(0, 20).map((act) => {
-										const user = act.member?.user;
+									{task.activities.slice(0, 20).map((act) => {
+										const actUser = act.member?.user;
 										const actor =
-											user?.userName ||
-											user?.fullName ||
+											actUser?.userName ||
+											actUser?.fullName ||
 											"User";
 										const displayName =
-											user?.fullName ||
-											user?.userName ||
-											user?.email ||
+											actUser?.fullName ||
+											actUser?.userName ||
+											actUser?.email ||
 											"User";
 										const text =
 											act.description || act.title;
@@ -1642,28 +1531,12 @@ export default function SingleProjectView({
 											act.createdAt,
 										);
 
-										const projectMember =
-											project.projectMembers?.find(
-												(pm) =>
-													pm.memberId ===
-														act.memberId ||
-													(act.member &&
-														pm.memberId ===
-															act.member.id) ||
-													(pm.member?.userId &&
-														act.member?.user?.id &&
-														pm.member.userId ===
-															act.member.user.id),
-											);
-										const projectRole =
-											projectMember?.projectRole;
-
 										return (
 											<div
 												key={act.id}
 												className="text-xs text-primary/80 flex items-center gap-1.5 flex-wrap"
 											>
-												{user ?
+												{actUser ?
 													<HoverCard
 														openDelay={10}
 														closeDelay={100}
@@ -1683,11 +1556,11 @@ export default function SingleProjectView({
 																	)}
 																</div>
 																<div>
-																	{user.userName && (
+																	{actUser.userName && (
 																		<p className="font-semibold text-[13px]">
 																			@
 																			{
-																				user.userName
+																				actUser.userName
 																			}
 																		</p>
 																	)}
@@ -1696,37 +1569,22 @@ export default function SingleProjectView({
 																			displayName
 																		}
 																	</p>
-																	{user.email && (
+																	{actUser.email && (
 																		<p className="text-[13px]">
 																			{
-																				user.email
+																				actUser.email
 																			}
 																		</p>
 																	)}
 																</div>
 															</div>
-															{projectRole ?
-																<Badge className="mt-[10px] text-[10px] w-fit">
-																	{projectRole.replace(
-																		/_/g,
-																		" ",
-																	)}
-																</Badge>
-															: act.member?.role ?
-																<Badge className="mt-[10px] text-[10px] w-fit">
-																	{act.member.role.replace(
-																		/_/g,
-																		" ",
-																	)}
-																</Badge>
-															:	null}
 														</HoverCardContent>
 													</HoverCard>
 												:	<span className="font-medium text-primary">
 														{actor}
 													</span>
 												}
-												{renderActivityText(act)}
+												<span>{text}</span>
 												<span className="text-primary/40 font-normal">
 													· {timeAgo}
 												</span>
@@ -1742,25 +1600,35 @@ export default function SingleProjectView({
 					</div>
 
 					{/* Comments Section */}
-					<div className="bg-primary py-[15px] sm:py-[20px] rounded-[20px] sm:rounded-[30px] px-3 sm:px-[20px]">
+					<div className="bg-primary py-[15px] sm:py-[20px] rounded-[20px] sm:rounded-[30px] px-3 sm:px-[20px] mt-4">
 						<p className="font-bold text-secondary">Comments</p>
-						<div className="flex flex-col gap-4 mt-3">							{comments && comments.length > 0 ?
+						<div className="flex flex-col gap-4 mt-3">
+							{comments && comments.length > 0 ?
 								<div className="flex flex-col gap-4 max-h-[350px] overflow-y-auto custom-scrollbar pr-1">
 									{(() => {
 										const renderCommentItem = (
-											comment: ProjectComment,
+											comment: any,
 											depth: number = 0,
 										) => {
 											const isOwner =
 												comment.member?.userId ===
-													user?.id ||
+													(currentUserId ||
+														user?.id) ||
 												comment.member?.user?.id ===
-													user?.id;
+													(currentUserId || user?.id);
 											const replies = comments.filter(
 												(c) =>
 													c.replyCommentId ===
 													comment.id,
 											);
+
+											const authorName =
+												comment.member?.user
+													?.fullName ||
+												comment.member?.user
+													?.userName ||
+												comment.member?.user?.email ||
+												"Member";
 
 											return (
 												<div
@@ -1782,28 +1650,22 @@ export default function SingleProjectView({
 															>
 																<AvatarFallback
 																	className={`w-full border border-primary bg-accent text-primary font-bold ${
-																		depth >
-																		0 ?
+																		(
+																			depth >
+																			0
+																		) ?
 																			"text-[10px]"
 																		:	"text-xs"
 																	}`}
 																>
 																	{getInitials(
-																		comment
-																			.member
-																			?.user
-																			?.fullName ||
-																			"User",
+																		authorName,
 																	)}
 																</AvatarFallback>
 															</Avatar>
 															<div className="text-[12px]">
 																<p className="font-bold leading-tight">
-																	{comment
-																		.member
-																		?.user
-																		?.fullName ||
-																		"Member"}
+																	{authorName}
 																</p>
 																<p className="text-[10px] opacity-70">
 																	@
@@ -1827,8 +1689,10 @@ export default function SingleProjectView({
 																	>
 																		<MoreHorizontal
 																			className={
-																				depth >
-																				0 ?
+																				(
+																					depth >
+																					0
+																				) ?
 																					"w-3.5 h-3.5"
 																				:	"w-4 h-4"
 																			}
@@ -1840,7 +1704,9 @@ export default function SingleProjectView({
 																		onClick={() =>
 																			handleEditComment(
 																				comment.id,
-																				comment.message,
+																				comment.message ||
+																					comment.content ||
+																					"",
 																			)
 																		}
 																		className="cursor-pointer flex items-center gap-2 text-xs py-1.5 px-2 rounded-[8px] hover:bg-primary/10 text-primary"
@@ -1899,15 +1765,25 @@ export default function SingleProjectView({
 																onChange={(e) =>
 																	handleTextareaChange(
 																		`edit-${comment.id}`,
-																		e.target.value,
-																		e.target.selectionStart,
+																		e.target
+																			.value,
+																		e.target
+																			.selectionStart,
 																		setEditingMessage,
 																	)
 																}
 																onKeyDown={(
 																	e,
 																) => {
-																	if (handleMentionKeyDown(e, `edit-${comment.id}`, editingMessage, setEditingMessage)) return;
+																	if (
+																		handleMentionKeyDown(
+																			e,
+																			`edit-${comment.id}`,
+																			editingMessage,
+																			setEditingMessage,
+																		)
+																	)
+																		return;
 																	if (
 																		e.key ===
 																			"Enter" &&
@@ -1925,7 +1801,9 @@ export default function SingleProjectView({
 																		setEditingCommentId(
 																			null,
 																		);
-																		setActiveMention(null);
+																		setActiveMention(
+																			null,
+																		);
 																	}
 																}}
 																className="bg-accent text-primary text-[12px] rounded-[15px] resize-none h-[80px] border-0 focus-visible:ring-0 outline-0 ring-0 p-3"
@@ -1967,7 +1845,8 @@ export default function SingleProjectView({
 													:	<div className="mt-1">
 															<p className="text-[12px] whitespace-pre-wrap break-words">
 																{renderMessageWithMentions(
-																	comment.message,
+																	comment.message ||
+																		comment.content,
 																)}{" "}
 																-{" "}
 																<b className="text-xs">
@@ -1981,8 +1860,10 @@ export default function SingleProjectView({
 																type="button"
 																onClick={() => {
 																	setReplyingToCommentId(
-																		replyingToCommentId ===
-																			comment.id ?
+																		(
+																			replyingToCommentId ===
+																				comment.id
+																		) ?
 																			null
 																		:	comment.id,
 																	);
@@ -2032,15 +1913,25 @@ export default function SingleProjectView({
 																onChange={(e) =>
 																	handleTextareaChange(
 																		`reply-${comment.id}`,
-																		e.target.value,
-																		e.target.selectionStart,
+																		e.target
+																			.value,
+																		e.target
+																			.selectionStart,
 																		setReplyInput,
 																	)
 																}
 																onKeyDown={(
 																	e,
 																) => {
-																	if (handleMentionKeyDown(e, `reply-${comment.id}`, replyInput, setReplyInput)) return;
+																	if (
+																		handleMentionKeyDown(
+																			e,
+																			`reply-${comment.id}`,
+																			replyInput,
+																			setReplyInput,
+																		)
+																	)
+																		return;
 																	if (
 																		e.key ===
 																			"Enter" &&
@@ -2058,7 +1949,9 @@ export default function SingleProjectView({
 																		setReplyingToCommentId(
 																			null,
 																		);
-																		setActiveMention(null);
+																		setActiveMention(
+																			null,
+																		);
 																	}
 																}}
 																placeholder="Write a reply... (use @ to mention)"
@@ -2090,7 +1983,9 @@ export default function SingleProjectView({
 																	}
 																	className="h-7 text-xs rounded-full"
 																>
-																	{isPostingReply ?
+																	{(
+																		isPostingReply
+																	) ?
 																		<Loader2 className="w-3 h-3 animate-spin" />
 																	:	"Reply"}
 																</Button>
@@ -2099,7 +1994,7 @@ export default function SingleProjectView({
 													)}
 
 													{replies.length > 0 && (
-														<div className="flex flex-col gap-2 mt-1">
+														<div className="flex flex-col gap-2">
 															{replies.map(
 																(reply) =>
 																	renderCommentItem(
@@ -2138,7 +2033,8 @@ export default function SingleProjectView({
 								</div>
 							}
 
-							<div className="relative mt-1">
+							{/* Add Comment Input */}
+							<div className="flex flex-col gap-2 relative mt-2">
 								{renderMentionDropdown(
 									"main",
 									commentInput,
@@ -2156,7 +2052,15 @@ export default function SingleProjectView({
 										)
 									}
 									onKeyDown={(e) => {
-										if (handleMentionKeyDown(e, "main", commentInput, setCommentInput)) return;
+										if (
+											handleMentionKeyDown(
+												e,
+												"main",
+												commentInput,
+												setCommentInput,
+											)
+										)
+											return;
 										if (e.key === "Enter" && !e.shiftKey) {
 											e.preventDefault();
 											handleAddComment();
@@ -2165,12 +2069,20 @@ export default function SingleProjectView({
 											setActiveMention(null);
 										}
 									}}
-									placeholder="Start typing... (use @ to mention members)"
-									className="rounded-[20px] resize-none h-[120px] bg-accent border-0 focus-visible:ring-0 text-primary outline-0 ring-0"
+									placeholder="Start typing a comment... (use @ to mention)"
+									className="rounded-[20px] resize-none h-[110px] bg-accent border-0 focus-visible:ring-0 text-primary outline-0 ring-0 p-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
 								/>
 								<div
-									onClick={handleAddComment}
-									className="w-[40px] h-[40px] rounded-full cursor-pointer flex items-center justify-center absolute bg-primary text-secondary right-0 bottom-0 mb-[15px] mr-[15px]"
+									onClick={
+										isPostingComment ? undefined : (
+											handleAddComment
+										)
+									}
+									className={`w-[40px] h-[40px] rounded-full flex items-center justify-center absolute bg-primary text-secondary right-0 bottom-0 mb-[12px] mr-[12px] transition-opacity ${
+										isPostingComment ?
+											"opacity-50 cursor-not-allowed"
+										:	"cursor-pointer hover:opacity-90"
+									}`}
 								>
 									{isPostingComment ?
 										<Loader2 className="w-4 h-4 animate-spin" />
@@ -2182,9 +2094,9 @@ export default function SingleProjectView({
 				</div>
 			</div>
 
-			{/* Sidebar with Interactive Auto-Saving Controls */}
+			{/* Right Sidebar with Interactive Auto-Saving Controls */}
 			<div className="bg-accent px-3 sm:px-[20px] py-[15px] sm:py-[20px] lg:h-[calc(100vh-30px)] overflow-y-auto custom-scrollbar w-full lg:w-[25%] rounded-[20px] sm:rounded-[30px] lg:sticky lg:top-0">
-				<div className="flex flex-col h-full justify-between">
+				<div className="flex flex-col h-full justify-between gap-6">
 					<div className="flex flex-col gap-7">
 						{/* Status Auto-Save */}
 						<div>
@@ -2204,140 +2116,75 @@ export default function SingleProjectView({
 										handleUpdateStatus(val as Status)
 									}
 								>
-									{Object.values(Status).map((i, k) => {
-										return (
-											<div
-												key={k}
-												className="flex items-center gap-3"
+									{Object.values(Status).map((i, k) => (
+										<div
+											key={k}
+											className="flex items-center gap-3"
+										>
+											<RadioGroupItem
+												value={i}
+												id={`status-${k}`}
+											/>
+											<Label
+												className="text-[12px] uppercase text-primary cursor-pointer"
+												htmlFor={`status-${k}`}
 											>
-												<RadioGroupItem
-													value={i}
-													id={`status-${k}`}
-												/>
-												<Label
-													className="text-[12px] uppercase text-primary cursor-pointer"
-													htmlFor={`status-${k}`}
-												>
-													{i.replaceAll("_", " ")}
-												</Label>
-											</div>
-										);
-									})}
+												{i.replaceAll("_", " ")}
+											</Label>
+										</div>
+									))}
 								</RadioGroup>
 							</div>
 						</div>
 
-						{/* Project Lead Selector */}
+						{/* Task Creator */}
 						<div>
 							<div className="flex text-primary gap-3 items-center justify-between">
 								<div className="flex gap-2 items-center">
 									<UserStar className="w-4 h-4" />
-									<p className="font-bold">Project Lead</p>
+									<p className="font-bold">Created By</p>
+								</div>
+							</div>
+							<div className="mt-[10px] w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] font-bold">
+								{creatorName}
+							</div>
+						</div>
+
+						{/* Task Assignees */}
+						<div>
+							<div className="flex text-primary gap-3 items-center justify-between">
+								<div className="flex gap-2 items-center">
+									<Users className="w-4 h-4" />
+									<p className="font-bold">Task Assignees</p>
 								</div>
 								{isSavingMembers && (
 									<Loader2 className="w-3.5 h-3.5 animate-spin" />
 								)}
 							</div>
 
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<div className="mt-[10px] w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] cursor-pointer hover:opacity-80 transition-opacity">
-										{projectLeadName}
-									</div>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent className="w-[220px] border-0 bg-accent p-2">
-									<div className="flex items-center gap-2 border-b border-primary/10 pb-2 mb-2">
-										<Search className="w-3.5 h-3.5 text-primary/40 shrink-0" />
-										<input
-											value={memberSearch}
-											onChange={(e) =>
-												setMemberSearch(e.target.value)
-											}
-											placeholder="Search members..."
-											className="flex-1 outline-none bg-transparent text-sm placeholder:text-primary/30"
-										/>
-									</div>
-									<div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1">
-										{displayedMembers
-											.filter((member) =>
-												selectedMembers.includes(
-													member.id,
-												),
-											)
-											.map((member) => (
-												<div
-													key={member.id}
-													onClick={() =>
-														handleSetProjectLead(
-															member.id,
-														)
-													}
-													className={`cursor-pointer flex items-center gap-3 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors ${
-														(
-															member.id ===
-															selectedLeadId
-														) ?
-															"bg-primary/10"
-														:	""
-													}`}
-												>
-													<Checkbox
-														checked={
-															member.id ===
-															selectedLeadId
-														}
-													/>
-													<div>
-														<p className="font-semibold text-[13px]">
-															{
-																member.user
-																	.fullName
-															}
-														</p>
-														<p className="text-[13px] text-primary/60">
-															@
-															{
-																member.user
-																	.userName
-															}
-														</p>
-													</div>
-												</div>
-											))}
-										{selectedMembers.length === 0 && (
-											<p className="px-2 py-2 text-xs text-primary/50">
-												Select contributors first.
-											</p>
-										)}
-									</div>
-								</DropdownMenuContent>
-							</DropdownMenu>
-						</div>
-
-						{/* Contributors Selector */}
-						<div>
-							<div className="flex text-primary gap-3 items-center justify-between">
-								<div className="flex gap-2 items-center">
-									<Users className="w-4 h-4" />
-									<p className="font-bold">Contributors</p>
-								</div>
-							</div>
-
 							<div className="mt-[10px] flex flex-row flex-wrap gap-1 items-center">
-								{contributors.map((i) => {
-									const fullName =
-										i.member.userId === user?.id ?
-											"YOU"
-										:	i.member.user.fullName;
-									return (
-										<p
-											key={i.memberId}
-											className="w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px]"
-										>
-											{fullName}
-										</p>
-									);
-								})}
+								{availableTaskAssigneeMembers
+									.filter((m: any) =>
+										selectedMembers.includes(m.id),
+									)
+									.map((m: any) => {
+										const isYou =
+											m.userId ===
+											(currentUserId || user?.id);
+										const name =
+											isYou ? "YOU" : (
+												m.user.fullName ||
+												m.user.userName
+											);
+										return (
+											<p
+												key={m.id}
+												className="w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] font-bold"
+											>
+												{name}
+											</p>
+										);
+									})}
 
 								<DropdownMenu>
 									<DropdownMenuTrigger asChild>
@@ -2363,11 +2210,13 @@ export default function SingleProjectView({
 											/>
 										</div>
 										<div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1">
-											{displayedMembers.map((i) => (
+											{displayedMembers.map((i: any) => (
 												<div
 													key={i.id}
 													onClick={() =>
-														toggleMember(i.id)
+														toggleAssigneeMember(
+															i.id,
+														)
 													}
 													className="cursor-pointer flex items-center gap-3 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors"
 												>
@@ -2398,10 +2247,11 @@ export default function SingleProjectView({
 								<CalendarDays className="w-4 h-4" />
 								<p className="font-bold">Due Date</p>
 							</div>
+
 							<Popover>
 								<PopoverTrigger asChild>
 									<p className="text-[12px] mt-[10px] text-primary cursor-pointer hover:underline">
-										{format(dueDate, "PPP")}
+										{safeFormatDate(dueDate, "PPP")}
 									</p>
 								</PopoverTrigger>
 								<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
@@ -2415,145 +2265,48 @@ export default function SingleProjectView({
 								</PopoverContent>
 							</Popover>
 						</div>
-
-						{/* Labels */}
-						<div>
-							<div className="flex text-primary gap-3 items-center justify-between">
-								<div className="flex gap-2 items-center">
-									<Tags className="w-4 h-4" />
-									<p className="font-bold">Labels</p>
-								</div>
-								{isSavingLabels && (
-									<Loader2 className="w-3.5 h-3.5 animate-spin" />
-								)}
-							</div>
-							<div className="flex mt-[10px] flex-row flex-wrap gap-2 items-center">
-								{labels.map((i, k) => {
-									return (
-										<Badge
-											key={k}
-											className="w-fit px-[10px] py-[3px] rounded-[9px] bg-[#AD6B3D] text-secondary text-[10px] flex items-center gap-1"
-										>
-											<span>{i}</span>
-											<button
-												type="button"
-												onClick={() => removeLabel(i)}
-												className="hover:opacity-70"
-											>
-												<X className="w-3 h-3" />
-											</button>
-										</Badge>
-									);
-								})}
-
-								<Popover>
-									<PopoverTrigger asChild>
-										<button
-											type="button"
-											className="p-1.5 rounded-full bg-primary/10 hover:bg-primary/20 text-primary"
-										>
-											<Plus className="w-3 h-3" />
-										</button>
-									</PopoverTrigger>
-									<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-3">
-										<div className="flex flex-col gap-2">
-											<input
-												placeholder="#tag"
-												className="h-8 rounded-md text-[12px] bg-primary text-secondary px-2 outline-none"
-												value={labelInput}
-												onChange={(e) =>
-													setLabelInput(
-														e.target.value,
-													)
-												}
-												onKeyDown={(e) => {
-													if (
-														e.key === "Enter" ||
-														e.key === " "
-													) {
-														e.preventDefault();
-														addLabels(
-															extractLabels(
-																labelInput,
-															),
-														);
-														setLabelInput("");
-													}
-												}}
-											/>
-										</div>
-									</PopoverContent>
-								</Popover>
-							</div>
-						</div>
 					</div>
 
+					{/* Delete Task Action */}
 					<div className="w-full mt-7 sm:mt-8 pt-2">
 						<Button
 							onClick={() => setIsDeleteDialogOpen(true)}
 							className="py-[25px] rounded-full bg-destructive hover:bg-destructive/90 w-full cursor-pointer"
 						>
 							<Trash2 />
-							Delete Project
+							Delete Task
 						</Button>
 					</div>
 				</div>
 			</div>
 
+			{/* Delete Task Confirmation Dialog */}
 			<Dialog
 				open={isDeleteDialogOpen}
-				onOpenChange={(open) => {
-					setIsDeleteDialogOpen(open);
-					if (!open) {
-						setDeleteConfirmInput("");
-						setHasCopiedName(false);
-					}
-				}}
+				onOpenChange={setIsDeleteDialogOpen}
 			>
 				<DialogContent className="rounded-[20px] border-0 bg-primary text-secondary sm:max-w-md p-6">
 					<DialogHeader>
 						<DialogTitle className="text-xl font-bold text-accent flex items-center gap-2">
 							<Trash2 className="w-5 h-5 text-accent shrink-0" />
-							Delete Project
+							Delete Task
 						</DialogTitle>
 						<DialogDescription className="text-[13px] text-secondary/80 mt-2 leading-relaxed">
 							This action cannot be undone. This will permanently
-							delete the project{" "}
+							delete the task{" "}
 							<strong className="text-accent">
-								{title || project.title}
+								{title || task.title}
 							</strong>{" "}
-							and all associated tasks, comments, and resources.
+							and all associated milestones, comments, and
+							resources.
 						</DialogDescription>
 					</DialogHeader>
 
-					<div className="flex flex-col gap-3 my-4">
-						<label className="text-xs font-semibold text-secondary/90 text-center">
-							Project name to verify:
-						</label>
-						<div className="flex items-center justify-center p-3 rounded-xl bg-secondary/10 border border-secondary/20">
-							<span className="font-mono text-sm font-medium text-accent truncate select-all text-center">
-								{title || project.title}
-							</span>
-						</div>
-
-						<label className="text-xs font-semibold text-secondary/90 mt-1">
-							Type project name to confirm:
-						</label>
-						<Input
-							value={deleteConfirmInput}
-							onChange={(e) =>
-								setDeleteConfirmInput(e.target.value)
-							}
-							placeholder={`Type "${title || project.title}" to confirm`}
-							className="h-10 rounded-xl bg-primary border-secondary/30 text-secondary placeholder:text-secondary/40 focus-visible:ring-accent"
-						/>
-					</div>
-
-					<DialogFooter className="flex flex-col-reverse sm:flex-row gap-2">
+					<DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 mt-4">
 						<DialogClose asChild>
 							<Button
 								type="button"
-								disabled={isDeletingProject}
+								disabled={isDeletingTask}
 								className="w-full sm:w-auto rounded-full bg-accent hover:bg-accent/90 text-primary border-0 font-medium cursor-pointer"
 							>
 								Cancel
@@ -2561,22 +2314,18 @@ export default function SingleProjectView({
 						</DialogClose>
 						<Button
 							type="button"
-							onClick={handleDeleteProject}
-							disabled={
-								deleteConfirmInput.trim() !==
-									(title || project.title).trim() ||
-								isDeletingProject
-							}
+							onClick={handleDeleteTask}
+							disabled={isDeletingTask}
 							className="w-full sm:w-auto rounded-full bg-destructive text-white hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
 						>
-							{isDeletingProject ?
+							{isDeletingTask ?
 								<>
 									<Loader2 className="w-4 h-4 animate-spin" />
 									Deleting...
 								</>
 							:	<>
 									<Trash2 className="w-4 h-4" />
-									Delete Project
+									Delete Task
 								</>
 							}
 						</Button>
@@ -2618,6 +2367,9 @@ function EditResourcePopoverContent({
 				placeholder="Link"
 				value={url}
 				onChange={(e) => setUrl(e.target.value)}
+				onKeyDown={(e) => {
+					if (e.key === "Enter") handleSubmit();
+				}}
 				className="w-full py-[5px] text-[12px] rounded-md bg-primary text-secondary px-2 outline-none"
 			/>
 			<Button
@@ -2630,57 +2382,5 @@ function EditResourcePopoverContent({
 				:	"Save"}
 			</Button>
 		</div>
-	);
-}
-
-function renderActivityText(act: any) {
-	const rawText = act.description || act.title || "";
-	const targetTaskId = act.taskId || act.task?.id;
-
-	if (!targetTaskId) {
-		return <span>{rawText}</span>;
-	}
-
-	const quoteMatch = rawText.match(/task\s+["']([^"']+)["']/i);
-	if (quoteMatch && quoteMatch[1]) {
-		const matchedTitle = quoteMatch[1];
-		const parts = rawText.split(`"${matchedTitle}"`);
-		if (parts.length === 2) {
-			return (
-				<span>
-					{parts[0]}
-					<Link
-						href={`/tasks/${targetTaskId}`}
-						className="font-semibold text-primary underline hover:opacity-85 transition-opacity"
-					>
-						"{matchedTitle}"
-					</Link>
-					{parts[1]}
-				</span>
-			);
-		}
-	}
-
-	if (act.task?.title) {
-		return (
-			<span className="inline-flex items-center gap-1 flex-wrap">
-				<span>{rawText}</span>
-				<Link
-					href={`/tasks/${targetTaskId}`}
-					className="font-semibold text-primary underline hover:opacity-85 transition-opacity"
-				>
-					({act.task.title})
-				</Link>
-			</span>
-		);
-	}
-
-	return (
-		<Link
-			href={`/tasks/${targetTaskId}`}
-			className="hover:underline hover:opacity-85 transition-opacity font-semibold"
-		>
-			{rawText}
-		</Link>
 	);
 }

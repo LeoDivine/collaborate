@@ -28,7 +28,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { FaBell } from "react-icons/fa";
-import { Workspace } from "../../../../../generated/prisma/client";
+import type { Workspace } from "../../../../../generated/prisma/client";
 import {
 	DeskMode,
 	WorkspaceRoles,
@@ -87,7 +87,7 @@ export default function ProtectedNavbar({
 		});
 
 		setActiveWorkspaceId(updatedSession?.user?.currentWorkspaceId ?? id);
-		router.refresh();
+		router.push("/dashboard");
 	}
 
 	// console.log({ activeWorkspaceId });

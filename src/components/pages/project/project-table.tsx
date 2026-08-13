@@ -262,6 +262,41 @@ export default function ProjectTable({
 								const normalizedEnd = new Date(endDate);
 								normalizedEnd.setHours(23, 59, 59, 999);
 
+								const totalTasks = i.tasks?.length || 0;
+								let projectProgress = 0;
+								if (totalTasks > 0) {
+									const totalTaskProgressSum = i.tasks.reduce(
+										(acc, t) => {
+											const totalMilestones =
+												t.milestones?.length || 0;
+											if (totalMilestones > 0) {
+												const doneMilestones =
+													t.milestones?.filter(
+														(m) => m.status === "DONE",
+													).length || 0;
+												return (
+													acc +
+													(doneMilestones /
+														totalMilestones) *
+														100
+												);
+											}
+											if (t.status === "COMPLETED")
+												return acc + 100;
+											if (t.status === "IN_PROGRESS")
+												return acc + 50;
+											return acc;
+										},
+										0,
+									);
+									projectProgress = Math.round(
+										totalTaskProgressSum / totalTasks,
+									);
+								} else {
+									projectProgress =
+										i.status === "COMPLETED" ? 100 : 0;
+								}
+
 								return (
 									<TableRow key={i.id}>
 										<TableCell className="">
@@ -302,7 +337,7 @@ export default function ProjectTable({
 																"LLL d",
 															)}
 														</p>
-													</div>
+														</div>
 												</HoverCardTrigger>
 												<HoverCardContent className="w-auto p-0 rounded-[20px] bg-primary text-secondary border-0 shadow-md">
 													<Calendar
@@ -356,7 +391,9 @@ export default function ProjectTable({
 											</Badge>
 										</TableCell>
 										<TableCell className=" w-[320px]">
-											<ProjectTaskProgress />
+											<ProjectTaskProgress
+												value={projectProgress}
+											/>
 										</TableCell>
 									</TableRow>
 								);

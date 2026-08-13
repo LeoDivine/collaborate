@@ -37,6 +37,7 @@ interface WysiwygEditorProps {
 	minHeight?: string;
 	height?: string;
 	maxHeight?: string;
+	textColor?: string;
 }
 
 export default function WysiwygEditor({
@@ -47,6 +48,7 @@ export default function WysiwygEditor({
 	minHeight = "300px",
 	height = "350px",
 	maxHeight = "400px",
+	textColor = "text-primary",
 }: WysiwygEditorProps) {
 	const [linkUrl, setLinkUrl] = useState("");
 	const [isLinkOpen, setIsLinkOpen] = useState(false);
@@ -448,11 +450,11 @@ export default function WysiwygEditor({
 
 			{/* Editor Content Box */}
 			<div
-				className="p-4 text-primary text-left bg-transparent border-0 outline-none focus:outline-none focus:ring-0 custom-scrollbar overflow-y-auto overflow-x-hidden cursor-text w-full max-w-full break-words whitespace-pre-wrap"
+				className={`p-4 ${textColor} text-left bg-transparent border-0 outline-none focus:outline-none focus:ring-0 custom-scrollbar overflow-y-auto overflow-x-hidden cursor-text w-full max-w-full break-words whitespace-pre-wrap`}
 				style={{ height, maxHeight, minHeight }}
 				onClick={() => editor.chain().focus().run()}
 			>
-				<EditorContent editor={editor} className="wysiwyg-content text-left border-0 outline-none text-primary focus:outline-none focus:ring-0 w-full max-w-full break-words whitespace-pre-wrap" />
+				<EditorContent editor={editor} className={`wysiwyg-content text-left border-0 outline-none ${textColor} focus:outline-none focus:ring-0 w-full max-w-full break-words whitespace-pre-wrap`} />
 			</div>
 		</div>
 	);

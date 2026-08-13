@@ -11,57 +11,58 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { PRIORITY_LEVEL } from "@/lib/const";
-import { getMembersByWorkspaceId } from "@/lib/services/member.services";
-import { createProject } from "@/lib/services/project.services";
-import { MembersUsers } from "@/lib/types";
+import { createTask } from "@/lib/services/task.services";
+import type { MembersUsers, Projects } from "@/lib/types";
 import {
 	CalendarRange,
 	Check,
 	CircleSlash,
+	Box,
 	FolderSymlink,
 	Gauge,
 	Hash,
 	Loader2,
-	LoaderCircle,
 	LucideIcon,
+	Plus,
 	Search,
-	User,
 	Users,
 	X,
 	Zap,
 } from "lucide-react";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { PriorityLevel } from "../../../generated/prisma/enums";
+import { PriorityLevel, Status } from "../../../generated/prisma/enums";
 import { Button } from "../ui/button";
 import { Calendar } from "../ui/calendar";
 import { Checkbox } from "../ui/checkbox";
 import { DialogClose } from "../ui/dialog";
 import { Separator } from "../ui/separator";
 import { Textarea } from "../ui/textarea";
-import WysiwygEditor from "../ui/wysiwyg-editor";
 import { useRouter } from "next/navigation";
 import { Badge } from "../ui/badge";
-import Link from "next/link";
 
 const PAGE_SIZE = 10;
 
-export default function CreateProject({
-	members,
+export default function CreateTask({
+	projects = [],
+	members = [],
 	workspaceId,
-	initialTotal,
+	currentMemberId,
+	initialTotal = 0,
+	onSuccess,
 }: {
+	projects: Projects[];
 	members: MembersUsers[];
 	workspaceId: string;
-	initialTotal: number;
+	currentMemberId: string;
+	initialTotal?: number;
+	onSuccess?: () => void;
 }) {
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
+	const [selectedProjectId, setSelectedProjectId] = useState<string>(
+		projects[0]?.id || "",
+	);
 	const [startDate, setStartDate] = useState<Date | undefined>();
 	const [dueDate, setDueDate] = useState<Date | undefined>();
 	const [priority, setPriority] = useState<{
@@ -70,33 +71,16 @@ export default function CreateProject({
 		value: PriorityLevel;
 	}>();
 
-	const [projectMembers, setProjectMembers] = useState<string[]>([]);
-	const [projectLeadId, setProjectLeadId] = useState<string | undefined>();
+	const [taskMembers, setTaskMembers] = useState<string[]>([]);
 	const today = new Date();
 	today.setHours(0, 0, 0, 0);
 
 	const [memberSearch, setMemberSearch] = useState("");
-	const [memberPage, setMemberPage] = useState(1);
-	const [displayedMembers, setDisplayedMembers] =
-		useState<MembersUsers[]>(members);
-	const [hasMoreMembers, setHasMoreMembers] = useState(
-		members.length < initialTotal,
-	);
-	const [isFetchingMembers, setIsFetchingMembers] = useState(false);
-	const sentinelRef = useRef<HTMLDivElement>(null);
-	const leadSentinelRef = useRef<HTMLDivElement>(null);
-	const searchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-		undefined,
-	);
-	const isMounted = useRef(false);
-	// Refs so the IntersectionObserver callback always reads the latest values
-	const isFetchingRef = useRef(false);
-	const memberPageRef = useRef(1);
-	const hasMoreRef = useRef(members.length < initialTotal);
-	const memberSearchRef = useRef("");
 	const [labels, setLabels] = useState<string[]>([]);
 	const [labelInput, setLabelInput] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [isFetchingMembers, setIsFetchingMembers] = useState(false);
+	const isFetchingRef = useRef(false);
 	const [resources, setResources] = useState<
 		{
 			name: string;
@@ -107,6 +91,44 @@ export default function CreateProject({
 		name?: string;
 		url?: string;
 	}>({ name: "", url: "" });
+
+	// Selected project & project members
+	const selectedProject = useMemo(() => {
+		return projects.find((p) => p.id === selectedProjectId);
+	}, [projects, selectedProjectId]);
+
+	const projectMembersList = useMemo(() => {
+		if (!selectedProject || !selectedProject.projectMembers) return [];
+		return selectedProject.projectMembers.map((pm) => pm.member);
+	}, [selectedProject]);
+
+	// Filter project members based on search query
+	const filteredProjectMembers = useMemo(() => {
+		if (!memberSearch.trim()) return projectMembersList;
+		const query = memberSearch.toLowerCase();
+		return projectMembersList.filter((m) => {
+			const fullName = m.user?.fullName?.toLowerCase() || "";
+			const userName = m.user?.userName?.toLowerCase() || "";
+			const email = m.user?.email?.toLowerCase() || "";
+			return (
+				fullName.includes(query) ||
+				userName.includes(query) ||
+				email.includes(query)
+			);
+		});
+	}, [projectMembersList, memberSearch]);
+
+	// Clear task members that do not belong to newly selected project
+	useEffect(() => {
+		if (!selectedProject || !selectedProject.projectMembers) {
+			setTaskMembers([]);
+			return;
+		}
+		const validMemberIds = new Set(
+			selectedProject.projectMembers.map((pm) => pm.memberId),
+		);
+		setTaskMembers((prev) => prev.filter((id) => validMemberIds.has(id)));
+	}, [selectedProjectId, selectedProject]);
 
 	const setFetching = (val: boolean) => {
 		isFetchingRef.current = val;
@@ -140,8 +162,8 @@ export default function CreateProject({
 		setResources((prev) => [
 			...prev,
 			{
-				name: resourceField.name!.trim(),
-				url: resourceField.url!.trim(),
+				name: resourceField.name!,
+				url: resourceField.url!,
 			},
 		]);
 		setResourceField({ name: "", url: "" });
@@ -156,88 +178,14 @@ export default function CreateProject({
 	};
 
 	const toggleMember = (id: string) => {
-		setProjectMembers((prev) => {
-			const next =
-				prev.includes(id) ?
-					prev.filter((m) => m !== id)
-				:	[...prev, id];
-			if (!next.includes(id) && projectLeadId === id) {
-				setProjectLeadId(undefined);
-			}
-			return next;
-		});
+		setTaskMembers((prev) =>
+			prev.includes(id) ?
+				prev.filter((m) => m !== id)
+			:	[...prev, id],
+		);
 	};
 
-	useEffect(() => {
-		if (projectLeadId && !projectMembers.includes(projectLeadId)) {
-			setProjectLeadId(undefined);
-		}
-	}, [projectLeadId, projectMembers]);
 
-	// Debounced search -- resets list and fetches page 1
-	useEffect(() => {
-		memberSearchRef.current = memberSearch;
-		if (!isMounted.current) {
-			isMounted.current = true;
-			return;
-		}
-		clearTimeout(searchTimerRef.current);
-		searchTimerRef.current = setTimeout(async () => {
-			setFetching(true);
-			const res = await getMembersByWorkspaceId(
-				1,
-				PAGE_SIZE,
-				workspaceId,
-				memberSearchRef.current || undefined,
-			);
-			setDisplayedMembers(res.members as MembersUsers[]);
-			const more = res.members.length === PAGE_SIZE;
-			setHasMoreMembers(more);
-			hasMoreRef.current = more;
-			memberPageRef.current = 1;
-			setMemberPage(1);
-			setFetching(false);
-		}, 300);
-		return () => clearTimeout(searchTimerRef.current);
-	}, [memberSearch, workspaceId]);
-
-	// IntersectionObserver -- load next page when sentinel scrolls into view
-	useEffect(() => {
-		const sentinel = sentinelRef.current;
-		if (!sentinel) return;
-
-		const observer = new IntersectionObserver(
-			async ([entry]) => {
-				if (!entry.isIntersecting) return;
-				if (isFetchingRef.current || !hasMoreRef.current) return;
-				setFetching(true);
-				const nextPage = memberPageRef.current + 1;
-				const res = await getMembersByWorkspaceId(
-					nextPage,
-					PAGE_SIZE,
-					workspaceId,
-					memberSearchRef.current || undefined,
-				);
-				setDisplayedMembers((prev) => [
-					...prev,
-					...(res.members as MembersUsers[]),
-				]);
-				const more = res.members.length === PAGE_SIZE;
-				setHasMoreMembers(more);
-				hasMoreRef.current = more;
-				memberPageRef.current = nextPage;
-				setMemberPage(nextPage);
-				setFetching(false);
-			},
-			{ threshold: 1.0 },
-		);
-
-		observer.observe(sentinel);
-		if (leadSentinelRef.current) {
-			observer.observe(leadSentinelRef.current);
-		}
-		return () => observer.disconnect();
-	}, [workspaceId]);
 
 	const formatStartDate = (date: Date) =>
 		date.toLocaleDateString(undefined, {
@@ -253,64 +201,122 @@ export default function CreateProject({
 	const triggerOpacity = (selected: boolean) =>
 		selected ? "opacity-100" : "opacity-60 md:opacity-100";
 	const router = useRouter();
-	const handlSubmit = async () => {
+
+	const handleSubmit = async () => {
+		if (!title.trim()) {
+			toast.error("Please enter a task title");
+			return;
+		}
+
+		if (!selectedProjectId) {
+			toast.error("Please select a project for this task");
+			return;
+		}
+
+		if (!startDate || !dueDate) {
+			toast.error("Please select both start date and due date");
+			return;
+		}
+
 		setIsSubmitting(true);
 		try {
-			const projectRes = await createProject({
-				values: {
-					description,
-					dueDate: dueDate!,
-					labels,
-					priority: priority?.value!,
-					projectLead: projectLeadId!,
-					projectMembers,
-					startDate: startDate!,
-					title,
-					resources: resources,
-				},
+			const taskRes = await createTask({
+				title: title.trim(),
+				description: description.trim(),
+				projectId: selectedProjectId,
+				workspaceId,
+				createdById: currentMemberId,
+				priority: priority?.value || PriorityLevel.MEDIUM,
+				status: Status.TODO,
+				startPeriod: startDate,
+				endPeriod: dueDate,
+				memberIds: taskMembers,
+				labels,
 			});
 
-			if (!projectRes.success) {
-				toast.error(projectRes.message);
+			if (!taskRes.success) {
+				toast.error(taskRes.message || "Failed to create task");
 			} else {
-				toast.success(projectRes.message);
-				router.push("/projects");
+				toast.success("Task created successfully!");
+				if (onSuccess) onSuccess();
+				router.refresh();
 			}
+		} catch (error: any) {
+			toast.error("An error occurred while creating task");
 		} finally {
 			setIsSubmitting(false);
 		}
 	};
+
+	const selectedProjectTitle =
+		projects.find((p) => p.id === selectedProjectId)?.title ||
+		"Select Project";
 
 	return (
 		<div
 			className={`w-full text-left ${isSubmitting ? "pointer-events-none opacity-70" : ""}`}
 		>
 			<div className="flex flex-col md:flex-row gap-4">
+				{/* Main Content Area: Title & Wysiwyg Editor */}
 				<div className="mt-[20px] w-full md:w-[78%] shrink-0">
 					<input
 						disabled={isSubmitting}
 						value={title}
 						onChange={(e) => setTitle(e.target.value)}
 						autoFocus
-						placeholder="Project name"
-						className="w-full outline-none bg-transparent placeholder:text-2xl md:placeholder:text-[40px] placeholder:font-bold text-2xl md:text-[40px] font-bold border-0"
+						placeholder="Task title"
+						className="w-full outline-none bg-transparent placeholder:text-2xl md:placeholder:text-[40px] placeholder:font-bold text-2xl md:text-[40px] font-bold border-0 text-accent"
 					/>
 					<Separator className="bg-secondary/20 my-[10px]" />
 					<div className="w-full mt-2">
-						<WysiwygEditor
+						<Textarea
 							disabled={isSubmitting}
 							value={description}
-							onChange={setDescription}
-							placeholder="Type a detailed description for your project..."
-							height="400px"
-							maxHeight="400px"
-							minHeight="350px"
-							textColor="text-accent"
+							onChange={(e) => setDescription(e.target.value)}
+							placeholder="Type a detailed description for your task..."
+							className="w-full outline-none bg-transparent border-0 text-accent placeholder:text-accent/40 text-[12px] placeholder:text-[12px] min-h-[350px] max-h-[400px] resize-y p-0 focus-visible:ring-0 focus-visible:border-0 focus:outline-none"
 						/>
 					</div>
 				</div>
 
+				{/* Right Sidebar Options: Project, Priority, Members, Dates, Labels, Resources */}
 				<div className="px-[10px] flex flex-row flex-wrap justify-center md:justify-start md:flex-col gap-2.5 py-[10px] w-full md:w-[20%] rounded-[20px]">
+					{/* Project Selector */}
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								disabled={isSubmitting}
+								className={`bg-accent text-[13px] hover:bg-accent text-primary rounded-full ${triggerOpacity(!!selectedProjectId)}`}
+							>
+								<Box className="w-4 h-4 shrink-0" />
+								<span className="md:inline hidden truncate max-w-[120px]">
+									{selectedProjectTitle}
+								</span>
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent className="w-[200px] flex flex-col gap-1 border-0 bg-accent p-2 max-h-[220px] overflow-y-auto custom-scrollbar">
+							<p className="text-[10px] font-bold text-primary/60 px-2 py-1 uppercase">
+								Select Project
+							</p>
+							{projects.map((p) => {
+								const isSelected = p.id === selectedProjectId;
+								return (
+									<div
+										key={p.id}
+										onClick={() => setSelectedProjectId(p.id)}
+										className={`${isSelected ? "bg-primary text-accent font-semibold" : "bg-accent text-primary"} py-[6px] cursor-pointer transition-all rounded-[12px] px-[10px] hover:bg-primary hover:text-accent items-center justify-between flex text-xs`}
+									>
+										<span className="truncate">{p.title}</span>
+										{isSelected && (
+											<Check className="w-3 h-3 shrink-0" />
+										)}
+									</div>
+								);
+							})}
+						</DropdownMenuContent>
+					</DropdownMenu>
+
+					{/* Priority Level Selector */}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
@@ -321,7 +327,7 @@ export default function CreateProject({
 									const Icon = priority?.icon ?? Gauge;
 									return (
 										<>
-											<Icon className="w-4 h-4" />
+											<Icon className="w-4 h-4 shrink-0" />
 											<span className="md:inline hidden">
 												{priority?.title ??
 													"Priority level"}
@@ -362,18 +368,18 @@ export default function CreateProject({
 						</DropdownMenuContent>
 					</DropdownMenu>
 
+					{/* Task Members / Assignees Selector */}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
 								disabled={isSubmitting}
-								className={`bg-accent text-[13px] hover:bg-accent text-primary rounded-full ${triggerOpacity(projectMembers.length > 0)}`}
+								className={`bg-accent text-[13px] hover:bg-accent text-primary rounded-full ${triggerOpacity(taskMembers.length > 0)}`}
 							>
-								<Users />
+								<Users className="w-4 h-4 shrink-0" />
 								<p className="md:inline hidden">
-									{projectMembers.length > 0 ?
-										projectMembers.length +
-										" Contributor(s)"
-									:	"Contributors"}
+									{taskMembers.length > 0 ?
+										taskMembers.length + " Assignee(s)"
+									:	"Assignees"}
 								</p>
 							</Button>
 						</DropdownMenuTrigger>
@@ -391,11 +397,11 @@ export default function CreateProject({
 									}
 									onKeyDown={(e) => e.stopPropagation()}
 									placeholder="Search members..."
-									className="flex-1 outline-none bg-transparent text-sm placeholder:text-primary/30"
+									className="flex-1 outline-none bg-transparent text-sm placeholder:text-primary/30 text-primary"
 								/>
 							</div>
 							<div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1">
-								{displayedMembers.map((i) => (
+								{filteredProjectMembers.map((i) => (
 									<div
 										key={i.id}
 										onClick={() => toggleMember(i.id)}
@@ -403,145 +409,47 @@ export default function CreateProject({
 									>
 										<Checkbox
 											disabled={isSubmitting}
-											checked={projectMembers.includes(
+											checked={taskMembers.includes(
 												i.id,
 											)}
 										/>
-										<div>
-											<p className="font-semibold text-[13px]">
-												{i.user.fullName}
+										<div className="min-w-0">
+											<p className="font-semibold text-[13px] text-primary truncate">
+												{i.user?.fullName || "Member"}
 											</p>
-											<p className="text-[13px] text-primary/60">
-												@{i.user.userName}
+											<p className="text-[11px] text-primary/60 truncate">
+												@{i.user?.userName || i.user?.email || "user"}
 											</p>
 										</div>
 									</div>
 								))}
-								{!isFetchingMembers &&
-									displayedMembers.length === 0 && (
-										<p className="px-2 py-3 text-xs text-primary text-center">
+								{filteredProjectMembers.length === 0 && (
+									<div className="px-2 py-3 text-xs text-primary text-center">
+										<p className="opacity-70 mb-1">
 											{memberSearch.trim() ?
-												"No members match your search."
-											:	"No members in this workspace yet."
-											}
+												"No project members match search."
+											:	"No members assigned to this project."}
 										</p>
-									)}
-								{isFetchingMembers && (
-									<div className="flex justify-center py-2">
-										<Loader2 className="w-4 h-4 animate-spin text-primary/40" />
+										<p className="text-[10px] text-primary/60 italic">
+											To assign members, add them to this project first.
+										</p>
 									</div>
 								)}
-								<div ref={sentinelRef} className="h-px" />
+							</div>
+							<div className="mt-1.5 pt-1.5 border-t border-primary/10 px-2 text-[10px] text-primary/60 text-center">
+								To assign new members, add them to the project first.
 							</div>
 						</DropdownMenuContent>
 					</DropdownMenu>
 
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button
-								disabled={isSubmitting}
-								className={`text-[13px] bg-accent hover:bg-accent text-primary rounded-full ${triggerOpacity(!!projectLeadId)}`}
-							>
-								<User />
-								<p className="md:inline hidden">
-									{projectLeadId ?
-										((
-											displayedMembers.find(
-												(member) =>
-													member.id === projectLeadId,
-											) ||
-											members.find(
-												(member) =>
-													member.id === projectLeadId,
-											)
-										)?.user.fullName ?? "Project Lead")
-									:	"Project Lead"}
-								</p>
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent className="w-[220px] border-0 bg-accent p-2">
-							<div
-								className="flex items-center gap-2 border-b border-primary/10 pb-2 mb-2"
-								onPointerDown={(e) => e.stopPropagation()}
-							>
-								<Search className="w-3.5 h-3.5 text-primary/40 shrink-0" />
-								<input
-									disabled={isSubmitting}
-									value={memberSearch}
-									onChange={(e) =>
-										setMemberSearch(e.target.value)
-									}
-									onKeyDown={(e) => e.stopPropagation()}
-									placeholder="Search members..."
-									className="flex-1 outline-none bg-transparent text-sm placeholder:text-primary/30"
-								/>
-							</div>
-							<div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1">
-								{displayedMembers
-									.filter((member) =>
-										projectMembers.includes(member.id),
-									)
-									.map((member) => (
-										<div
-											key={member.id}
-											onClick={() =>
-												setProjectLeadId(member.id)
-											}
-											className={`cursor-pointer flex items-center gap-3 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors ${member.id === projectLeadId ? "bg-primary/10" : ""}`}
-										>
-											<Checkbox
-												disabled={isSubmitting}
-												checked={
-													member.id === projectLeadId
-												}
-											/>
-											<div>
-												<p className="font-semibold text-[13px]">
-													{member.user.fullName}
-												</p>
-												<p className="text-[13px] text-primary/60">
-													@{member.user.userName}
-												</p>
-											</div>
-										</div>
-									))}
-								{!isFetchingMembers &&
-									projectMembers.length === 0 && (
-										<div className="flex items-center gap-2 px-2 py-2 text-primary/50 text-xs">
-											<CircleSlash className="w-4 h-4" />
-											<p>
-												Select contributors to assign a
-												lead.
-											</p>
-										</div>
-									)}
-								{!isFetchingMembers &&
-									projectMembers.length > 0 &&
-									displayedMembers.filter((member) =>
-										projectMembers.includes(member.id),
-									).length === 0 && (
-										<p className="px-2 py-3 text-xs text-primary text-center">
-											No selected contributors match your
-											search.
-										</p>
-									)}
-								{isFetchingMembers && (
-									<div className="flex justify-center py-2">
-										<Loader2 className="w-4 h-4 animate-spin text-primary/40" />
-									</div>
-								)}
-								<div ref={leadSentinelRef} className="h-px" />
-							</div>
-						</DropdownMenuContent>
-					</DropdownMenu>
-
+					{/* Start Date Picker */}
 					<Popover>
 						<PopoverTrigger asChild>
 							<Button
 								disabled={isSubmitting}
 								className={`text-[13px] bg-accent hover:bg-accent text-primary rounded-full ${triggerOpacity(!!startDate)}`}
 							>
-								<CalendarRange />
+								<CalendarRange className="w-4 h-4 shrink-0" />
 								<p className="md:inline hidden">
 									{startDate ?
 										formatStartDate(startDate)
@@ -568,13 +476,14 @@ export default function CreateProject({
 						</PopoverContent>
 					</Popover>
 
+					{/* Due Date Picker */}
 					<Popover>
 						<PopoverTrigger asChild>
 							<Button
 								disabled={isSubmitting}
 								className={`text-[13px] bg-accent hover:bg-accent text-primary rounded-full ${triggerOpacity(!!dueDate)}`}
 							>
-								<Zap />
+								<Zap className="w-4 h-4 shrink-0" />
 								<p className="md:inline hidden">
 									{dueDate ?
 										formatStartDate(dueDate)
@@ -601,6 +510,7 @@ export default function CreateProject({
 						</PopoverContent>
 					</Popover>
 
+					{/* Labels Picker */}
 					<Popover>
 						<PopoverTrigger asChild>
 							<Button
@@ -670,6 +580,7 @@ export default function CreateProject({
 						</PopoverContent>
 					</Popover>
 
+					{/* Resources Picker */}
 					<Popover>
 						<PopoverTrigger asChild>
 							<Button
@@ -679,7 +590,7 @@ export default function CreateProject({
 								<FolderSymlink className="w-4 h-4 shrink-0" />
 								<p className="md:inline hidden">
 									{resources.length > 0 ?
-										`Resources (${resources.length})`
+										resources.length + " Resources"
 									:	"Resources"}
 								</p>
 							</Button>
@@ -690,7 +601,7 @@ export default function CreateProject({
 							</p>
 							<input
 								disabled={isSubmitting}
-								value={resourceField.name || ""}
+								value={resourceField.name}
 								onChange={(e) =>
 									setResourceField((prev) => ({
 										...prev,
@@ -702,7 +613,7 @@ export default function CreateProject({
 							/>
 							<input
 								disabled={isSubmitting}
-								value={resourceField.url || ""}
+								value={resourceField.url}
 								onChange={(e) =>
 									setResourceField((prev) => ({
 										...prev,
@@ -745,26 +656,32 @@ export default function CreateProject({
 				</div>
 			</div>
 
-			<div className="mt-[20px] flex justify-center md:justify-end gap-4">
+			<Separator className="bg-secondary/20 my-[15px]" />
+
+			{/* Footer Actions */}
+			<div className="flex justify-end items-center gap-3">
 				<DialogClose asChild>
 					<Button
+						type="button"
+						variant="ghost"
 						disabled={isSubmitting}
-						className="rounded-full hover:bg-accent bg-accent text-primary"
+						className="rounded-full text-secondary hover:bg-secondary/20 text-sm font-semibold"
 					>
-						Close
+						Cancel
 					</Button>
 				</DialogClose>
 				<Button
+					type="button"
+					onClick={handleSubmit}
 					disabled={isSubmitting}
-					onClick={() => handlSubmit()}
-					className="rounded-full hover:bg-accent bg-accent text-primary"
+					className="bg-accent text-primary rounded-full hover:bg-accent/80 font-bold px-6 text-sm"
 				>
 					{isSubmitting ?
-						<div className=" flex items-center gap-3">
-							<LoaderCircle className=" animate-spin" />
-							Creating...
+						<div className="flex items-center gap-2">
+							<Loader2 className="w-4 h-4 animate-spin" />
+							<span>Creating...</span>
 						</div>
-					:	"Create Project"}
+					:	"Create Task"}
 				</Button>
 			</div>
 		</div>

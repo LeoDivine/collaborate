@@ -1,31 +1,36 @@
 "use client";
 
-import type { MembersUsers, Projects } from "@/lib/types";
+import type { MembersUsers, Projects, Tasks } from "@/lib/types";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import ProjectViewHeader from "./project-view-header";
-import ProjectTable from "./project-table";
-import type { Project } from "../../../../generated/prisma/client";
+import TaskTable from "./task-table";
+import TaskViewHeader from "./task-view-header";
 
-export default function ProjectView({
+export default function TaskView({
 	isCreating,
-	members,
+	members = [],
+	projects = [],
+	tasks = [],
 	workspaceId,
-	initialTotal,
-	projects,
-	projectsTotal,
+	currentUserId,
+	currentMemberId,
+	tasksTotal = 0,
+	initialTotal = 0,
 }: {
 	isCreating: string;
 	members: MembersUsers[];
-	workspaceId: string;
-	initialTotal: number;
 	projects: Projects[];
-	projectsTotal: number;
+	tasks: Tasks[];
+	workspaceId: string;
+	currentUserId?: string;
+	currentMemberId: string;
+	tasksTotal: number;
+	initialTotal?: number;
 }) {
 	const searchParams = useSearchParams();
 	const creating = searchParams.get("creating") || isCreating;
 
-	const [open, setOpen] = useState(creating === "false" ? false : true);
+	const [open, setOpen] = useState(creating === "true");
 
 	useEffect(() => {
 		if (creating === "false") {
@@ -58,18 +63,22 @@ export default function ProjectView({
 
 	return (
 		<div>
-			<ProjectViewHeader
-				projectsTotal={projectsTotal}
+			<TaskViewHeader
+				tasksTotal={tasksTotal}
 				open={open}
 				members={members}
+				projects={projects}
 				workspaceId={workspaceId}
+				currentMemberId={currentMemberId}
 				initialTotal={initialTotal}
 				onOpenDialog={handleOpenDialog}
 				onDialogChange={handleDialogChange}
 			/>
-			<ProjectTable
-				project={projects}
-				totalItems={projectsTotal}
+			<TaskTable
+				tasks={tasks}
+				projects={projects}
+				currentUserId={currentUserId}
+				totalItems={tasksTotal}
 			/>
 		</div>
 	);

@@ -187,7 +187,7 @@ model TaskMember {
   member     Member   @relation(fields: [memberId], references: [id])
   memberId   String
   assignedAt DateTime @default(now())
-
+  
   @@map("task-members")
 }
 

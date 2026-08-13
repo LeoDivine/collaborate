@@ -163,7 +163,11 @@ export const getProjectsByWorkspaceId = async (
 					},
 				},
 			},
-			tasks: true,
+			tasks: {
+				include: {
+					milestones: true,
+				},
+			},
 		},
 		orderBy: {
 			createdAt: "desc",
@@ -277,6 +281,7 @@ export const getProjectById = async (id: string, workspaceId: string) => {
 							user: true,
 						},
 					},
+					task: true,
 				},
 				orderBy: {
 					createdAt: "desc",
@@ -424,9 +429,10 @@ export const deleteProjectResource = async (resourceId: string) => {
 				data: {
 					type: ActivityType.PROJECTS,
 					title: "Resource Removed",
-					description: `removed resource "${resource.name}" from this project`,
+					description: `removed resource "${resource.name}"`,
 					workspaceId,
 					projectId: resource.projectId,
+					taskId: resource.taskId || undefined,
 					memberId: member?.id,
 				},
 				include: {
@@ -868,9 +874,11 @@ export const updateProjectMembers = async ({
 export const addProjectComment = async ({
 	projectId,
 	message,
+	replyCommentId,
 }: {
 	projectId: string;
 	message: string;
+	replyCommentId?: string;
 }) => {
 	const session = await auth();
 	const workspaceId = session?.user?.currentWorkspaceId;
@@ -916,6 +924,7 @@ export const addProjectComment = async ({
 				projectId,
 				workspaceId,
 				memberId: member.id,
+				...(replyCommentId && { replyCommentId }),
 			},
 			include: {
 				member: {
@@ -928,7 +937,7 @@ export const addProjectComment = async ({
 
 		return {
 			success: true,
-			message: "Comment added successfully",
+			message: replyCommentId ? "Reply added successfully" : "Comment added successfully",
 			comment,
 		};
 	} catch (e) {
@@ -938,6 +947,21 @@ export const addProjectComment = async ({
 			message: "Failed to add comment",
 		};
 	}
+};
+
+const getAllDescendantCommentIds = async (
+	tx: any,
+	parentIds: string[],
+): Promise<string[]> => {
+	if (parentIds.length === 0) return [];
+	const children = await tx.comment.findMany({
+		where: { replyCommentId: { in: parentIds } },
+		select: { id: true },
+	});
+	const childIds = children.map((c: { id: string }) => c.id);
+	if (childIds.length === 0) return [];
+	const grandChildIds = await getAllDescendantCommentIds(tx, childIds);
+	return [...childIds, ...grandChildIds];
 };
 
 export const deleteProjectComment = async (commentId: string) => {
@@ -988,6 +1012,15 @@ export const deleteProjectComment = async (commentId: string) => {
 		}
 
 		const activity = await db.$transaction(async (tx) => {
+			const descendantIds = await getAllDescendantCommentIds(tx, [
+				commentId,
+			]);
+			if (descendantIds.length > 0) {
+				await tx.comment.deleteMany({
+					where: { id: { in: descendantIds } },
+				});
+			}
+
 			await tx.comment.delete({
 				where: { id: commentId },
 			});
@@ -1141,41 +1174,16 @@ export const deleteProject = async (projectId: string) => {
 			};
 		}
 
-		await db.$transaction(async (tx) => {
-			const tasks = await tx.task.findMany({
-				where: { projectId, workspaceId },
-				select: { id: true },
-			});
-			const taskIds = tasks.map((t) => t.id);
-
-			if (taskIds.length > 0) {
-				await tx.taskMember.deleteMany({
-					where: { taskId: { in: taskIds } },
-				});
-				await tx.mileStone.deleteMany({
-					where: { taskId: { in: taskIds } },
-				});
-			}
-
-			await tx.comment.deleteMany({
-				where: { projectId, workspaceId },
-			});
-			await tx.resource.deleteMany({
-				where: { projectId, workspaceId },
-			});
-			await tx.projectMember.deleteMany({
-				where: { projectId },
-			});
-			await tx.task.deleteMany({
-				where: { projectId, workspaceId },
-			});
-			await tx.activity.deleteMany({
-				where: { projectId, workspaceId },
-			});
-			await tx.project.delete({
-				where: { id: projectId, workspaceId },
-			});
-		});
+		await db.$transaction([
+			db.taskMember.deleteMany({ where: { task: { projectId } } }),
+			db.mileStone.deleteMany({ where: { task: { projectId } } }),
+			db.comment.deleteMany({ where: { projectId } }),
+			db.resource.deleteMany({ where: { projectId } }),
+			db.projectMember.deleteMany({ where: { projectId } }),
+			db.task.deleteMany({ where: { projectId } }),
+			db.activity.deleteMany({ where: { projectId } }),
+			db.project.delete({ where: { id: projectId, workspaceId } }),
+		]);
 
 		return {
 			success: true,
