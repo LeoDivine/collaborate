@@ -1,9 +1,12 @@
 "use server";
 
 import { auth } from "../../../auth";
-import { ActivityType, PriorityLevel, ProjectAccess, Status } from "../../../generated/prisma/enums";
+import { ActivityType, PriorityLevel, ProjectAccess, ProjectVisibility, Status, WorkspaceRoles } from "../../../generated/prisma/enums";
 import { db } from "../db";
 import type { ProjectMembers, Projects } from "../types";
+import { triggerPusherEvent } from "@/lib/pusher/server";
+import { PUSHER_CHANNELS, PUSHER_EVENTS } from "@/lib/pusher/events";
+import { computeProjectAccess, ProjectAccessResult } from "@/lib/permissions/project-permissions";
 
 export const createProject = async ({
 	values,
@@ -17,6 +20,7 @@ export const createProject = async ({
 		title: string;
 		description: string;
 		labels: string[];
+		visibility?: ProjectVisibility;
 		resources: {
 			name: string;
 			url: string;
@@ -71,6 +75,7 @@ export const createProject = async ({
 					createdById: member.id,
 					priority: values.priority,
 					labels: values.labels,
+					visibility: values.visibility || ("PUBLIC" as ProjectVisibility),
 				},
 			});
 
@@ -85,14 +90,19 @@ export const createProject = async ({
 				});
 			}
 
+			const memberIdsToAssign = Array.from(
+				new Set([...values.projectMembers, member.id]),
+			);
+
 			await tx.projectMember.createMany({
-				data: values.projectMembers.map((memberId) => ({
+				data: memberIdsToAssign.map((memberId) => ({
 					projectId: project.id,
 					memberId: memberId,
 					projectRole:
-						values.projectLead === memberId ?
-							("PROJECT_LEAD" as ProjectAccess)
-						:	("CONTRIBUTOR" as ProjectAccess),
+						values.projectLead === memberId ||
+						(!values.projectLead && memberId === member.id)
+							? ("PROJECT_LEAD" as ProjectAccess)
+							: ("CONTRIBUTOR" as ProjectAccess),
 				})),
 			});
 
@@ -113,6 +123,56 @@ export const createProject = async ({
 				project,
 			};
 		});
+
+		if (projectCreationProcess.success && projectCreationProcess.project) {
+			const fullProject = await db.project.findUnique({
+				where: { id: projectCreationProcess.project.id },
+				include: {
+					projectMembers: {
+						include: {
+							member: {
+								include: {
+									user: true,
+								},
+							},
+						},
+					},
+					resources: true,
+					tasks: {
+						include: {
+							resources: true,
+							milestones: true,
+							createdBy: {
+								include: {
+									user: true,
+								},
+							},
+							taskMembers: {
+								include: {
+									member: {
+										include: {
+											user: true,
+										},
+									},
+								},
+							},
+						},
+					},
+					createdBy: {
+						include: {
+							user: true,
+						},
+					},
+				},
+			});
+
+			await triggerPusherEvent(
+				PUSHER_CHANNELS.getWorkspaceChannel(workspaceId),
+				PUSHER_EVENTS.PROJECT_CREATED,
+				{ project: fullProject || projectCreationProcess.project, projectId: projectCreationProcess.project.id, workspaceId }
+			);
+		}
+
 		return projectCreationProcess;
 	} catch (e) {
 		console.log("Something went wrong", e);
@@ -141,9 +201,39 @@ export const getProjectsByWorkspaceId = async (
 		};
 	}
 
+	const session = await auth();
+	const userId = session?.user?.id;
+	let currentMember = null;
+	if (userId) {
+		currentMember = await db.member.findUnique({
+			where: {
+				userId_workspaceId: {
+					userId,
+					workspaceId,
+				},
+			},
+		});
+	}
+
+	const isWorkspaceAdmin =
+		currentMember?.role === WorkspaceRoles.OWNER ||
+		currentMember?.role === WorkspaceRoles.ADMIN;
+
+	const visibilityFilter =
+		isWorkspaceAdmin || !currentMember
+			? {}
+			: {
+					OR: [
+						{ visibility: "PUBLIC" as ProjectVisibility },
+						{ projectMembers: { some: { memberId: currentMember.id } } },
+						{ createdById: currentMember.id },
+					],
+				};
+
 	const projects = await db.project.findMany({
 		where: {
 			workspaceId,
+			...visibilityFilter,
 			...(query ?
 				{
 					title: {
@@ -163,9 +253,25 @@ export const getProjectsByWorkspaceId = async (
 					},
 				},
 			},
+			resources: true,
 			tasks: {
 				include: {
+					resources: true,
 					milestones: true,
+					createdBy: {
+						include: {
+							user: true,
+						},
+					},
+					taskMembers: {
+						include: {
+							member: {
+								include: {
+									user: true,
+								},
+							},
+						},
+					},
 				},
 			},
 		},
@@ -262,7 +368,11 @@ export const getProjectById = async (id: string, workspaceId: string) => {
 					createdAt: "desc",
 				},
 			},
-			createdBy: true,
+			createdBy: {
+				include: {
+					user: true,
+				},
+			},
 			projectMembers: {
 				include: {
 					member: {
@@ -273,7 +383,29 @@ export const getProjectById = async (id: string, workspaceId: string) => {
 				},
 			},
 			resources: true,
-			tasks: true,
+			tasks: {
+				include: {
+					resources: true,
+					createdBy: {
+						include: {
+							user: true,
+						},
+					},
+					taskMembers: {
+						include: {
+							member: {
+								include: {
+									user: true,
+								},
+							},
+						},
+					},
+					milestones: true,
+				},
+				orderBy: {
+					createdAt: "desc",
+				},
+			},
 			activities: {
 				include: {
 					member: {
@@ -290,17 +422,120 @@ export const getProjectById = async (id: string, workspaceId: string) => {
 			},
 		},
 	});
-	if (!id) {
+	if (!projectInfo) {
 		return {
 			success: false,
 			message: "This project does not exist",
 		};
 	}
 
+	if (projectInfo.visibility === ("PRIVATE" as ProjectVisibility)) {
+		const session = await auth();
+		const userId = session?.user?.id;
+		if (userId) {
+			const member = await db.member.findUnique({
+				where: {
+					userId_workspaceId: {
+						userId,
+						workspaceId,
+					},
+				},
+			});
+			const isWorkspaceAdmin =
+				member?.role === WorkspaceRoles.OWNER ||
+				member?.role === WorkspaceRoles.ADMIN;
+			const isProjectMember = projectInfo.projectMembers.some(
+				(pm) => pm.memberId === member?.id,
+			);
+			const isCreator = projectInfo.createdById === member?.id;
+
+			if (!isWorkspaceAdmin && !isProjectMember && !isCreator) {
+				return {
+					success: false,
+					message: "You do not have permission to view this private project",
+				};
+			}
+		}
+	}
+
 	return {
 		success: true,
 		message: "Project information found",
 		projectInfo,
+	};
+};
+
+export const resolveProjectMemberAndAccess = async (
+	userId: string,
+	workspaceId: string,
+	projectId: string,
+): Promise<{
+	member: any;
+	project: any;
+	access: ProjectAccessResult;
+} | null> => {
+	const member = await db.member.findUnique({
+		where: {
+			userId_workspaceId: {
+				userId,
+				workspaceId,
+			},
+		},
+	});
+
+	if (!member) return null;
+
+	const project = await db.project.findUnique({
+		where: {
+			id: projectId,
+			workspaceId,
+		},
+		include: {
+			projectMembers: true,
+		},
+	});
+
+	if (!project) return null;
+
+	const projectMember = project.projectMembers.find(
+		(pm) => pm.memberId === member.id,
+	);
+
+	const access = computeProjectAccess({
+		workspaceRole: member.role,
+		projectRole: projectMember?.projectRole,
+		isProjectCreator: project.createdById === member.id,
+	});
+
+	return { member, project, access };
+};
+
+const checkProjectEditPermission = async (
+	userId: string,
+	workspaceId: string,
+	projectId: string,
+): Promise<{ allowed: boolean; member?: any; access?: ProjectAccessResult; message?: string }> => {
+	const resolved = await resolveProjectMemberAndAccess(userId, workspaceId, projectId);
+	if (!resolved) {
+		return {
+			allowed: false,
+			message: "Project not found or unauthorized",
+		};
+	}
+
+	if (!resolved.access.canConfigureProject) {
+		return {
+			allowed: false,
+			member: resolved.member,
+			access: resolved.access,
+			message: "Only project leads, creator, and workspace admins can configure this project",
+		};
+	}
+
+	return {
+		allowed: true,
+		member: resolved.member,
+		access: resolved.access,
 	};
 };
 
@@ -332,33 +567,35 @@ export const addProjectResource = async ({
 	}
 
 	try {
-		const result = await db.$transaction(async (tx) => {
-			const resource = await tx.resource.create({
-				data: {
-					name: name.trim(),
-					url: url.trim(),
-					projectId,
-					workspaceId,
-				},
-			});
+		const resolved = await resolveProjectMemberAndAccess(userId, workspaceId, projectId);
+		if (!resolved || !resolved.access.canManageResources) {
+			return {
+				success: false,
+				message: "You do not have permission to add resources to this project",
+			};
+		}
 
-			const member = await tx.member.findUnique({
-				where: {
-					userId_workspaceId: {
-						userId,
-						workspaceId,
-					},
-				},
-			});
+		const member = resolved.member;
 
-			const activity = await tx.activity.create({
+		const resource = await db.resource.create({
+			data: {
+				name: name.trim(),
+				url: url.trim(),
+				projectId,
+				workspaceId,
+			},
+		});
+
+		let activity = null;
+		if (member) {
+			activity = await db.activity.create({
 				data: {
 					type: ActivityType.PROJECTS,
 					title: "Resource Added",
 					description: `added resource "${name.trim()}" to this project`,
 					workspaceId,
 					projectId,
-					memberId: member?.id,
+					memberId: member.id,
 				},
 				include: {
 					member: {
@@ -368,21 +605,33 @@ export const addProjectResource = async ({
 					},
 				},
 			});
+		}
 
-			return { resource, activity };
-		});
+		if (activity) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getProjectChannel(projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity }
+			);
+		}
+
+		await triggerPusherEvent(
+			PUSHER_CHANNELS.getProjectChannel(projectId),
+			PUSHER_EVENTS.RESOURCE_ADDED,
+			{ projectId, resource }
+		);
 
 		return {
 			success: true,
 			message: "Resource added successfully",
-			resource: result.resource,
-			activity: result.activity,
+			resource,
+			activity,
 		};
-	} catch (e) {
+	} catch (e: any) {
 		console.error("Failed to add resource", e);
 		return {
 			success: false,
-			message: "Failed to add resource",
+			message: e?.message || "Failed to add resource",
 		};
 	}
 };
@@ -400,32 +649,37 @@ export const deleteProjectResource = async (resourceId: string) => {
 	}
 
 	try {
-		const member = await db.member.findUnique({
+		const resource = await db.resource.findUnique({
+			where: { id: resourceId },
+		});
+
+		if (!resource || resource.workspaceId !== workspaceId) {
+			return {
+				success: false,
+				message: "Resource not found or unauthorized",
+			};
+		}
+
+		const resolved = await resolveProjectMemberAndAccess(userId, workspaceId, resource.projectId);
+		if (!resolved || !resolved.access.canManageResources) {
+			return {
+				success: false,
+				message: "You do not have permission to delete resources from this project",
+			};
+		}
+
+		const member = resolved.member;
+
+		await db.resource.delete({
 			where: {
-				userId_workspaceId: {
-					userId,
-					workspaceId,
-				},
+				id: resourceId,
+				workspaceId,
 			},
 		});
 
-		const result = await db.$transaction(async (tx) => {
-			const resource = await tx.resource.findUnique({
-				where: { id: resourceId },
-			});
-
-			if (!resource || resource.workspaceId !== workspaceId) {
-				return null;
-			}
-
-			await tx.resource.delete({
-				where: {
-					id: resourceId,
-					workspaceId,
-				},
-			});
-
-			const activity = await tx.activity.create({
+		let activity = null;
+		if (member) {
+			activity = await db.activity.create({
 				data: {
 					type: ActivityType.PROJECTS,
 					title: "Resource Removed",
@@ -433,7 +687,7 @@ export const deleteProjectResource = async (resourceId: string) => {
 					workspaceId,
 					projectId: resource.projectId,
 					taskId: resource.taskId || undefined,
-					memberId: member?.id,
+					memberId: member.id,
 				},
 				include: {
 					member: {
@@ -443,27 +697,34 @@ export const deleteProjectResource = async (resourceId: string) => {
 					},
 				},
 			});
+		}
 
-			return activity;
-		});
+		if (activity && resource.projectId) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getProjectChannel(resource.projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity }
+			);
+		}
 
-		if (!result) {
-			return {
-				success: false,
-				message: "Resource not found or unauthorized",
-			};
+		if (resource.projectId) {
+			await triggerPusherEvent(
+				PUSHER_CHANNELS.getProjectChannel(resource.projectId),
+				PUSHER_EVENTS.RESOURCE_DELETED,
+				{ projectId: resource.projectId, resourceId }
+			);
 		}
 
 		return {
 			success: true,
 			message: "Resource deleted successfully",
-			activity: result,
+			activity,
 		};
-	} catch (e) {
+	} catch (e: any) {
 		console.error("Failed to delete resource", e);
 		return {
 			success: false,
-			message: "Failed to delete resource",
+			message: e?.message || "Failed to delete resource",
 		};
 	}
 };
@@ -496,35 +757,48 @@ export const updateProjectResource = async ({
 	}
 
 	try {
-		const result = await db.$transaction(async (tx) => {
-			const updatedResource = await tx.resource.update({
-				where: {
-					id: resourceId,
-					workspaceId,
-				},
-				data: {
-					name: name.trim(),
-					url: url.trim(),
-				},
-			});
+		const resource = await db.resource.findUnique({
+			where: { id: resourceId },
+		});
 
-			const member = await tx.member.findUnique({
-				where: {
-					userId_workspaceId: {
-						userId,
-						workspaceId,
-					},
-				},
-			});
+		if (!resource || resource.workspaceId !== workspaceId) {
+			return {
+				success: false,
+				message: "Resource not found or unauthorized",
+			};
+		}
 
-			const activity = await tx.activity.create({
+		const resolved = await resolveProjectMemberAndAccess(userId, workspaceId, resource.projectId);
+		if (!resolved || !resolved.access.canManageResources) {
+			return {
+				success: false,
+				message: "You do not have permission to update resources in this project",
+			};
+		}
+
+		const member = resolved.member;
+
+		const updatedResource = await db.resource.update({
+			where: {
+				id: resourceId,
+				workspaceId,
+			},
+			data: {
+				name: name.trim(),
+				url: url.trim(),
+			},
+		});
+
+		let activity = null;
+		if (member) {
+			activity = await db.activity.create({
 				data: {
 					type: ActivityType.PROJECTS,
 					title: "Resource Updated",
 					description: `updated resource "${name.trim()}" in this project`,
 					workspaceId,
 					projectId: updatedResource.projectId,
-					memberId: member?.id,
+					memberId: member.id,
 				},
 				include: {
 					member: {
@@ -534,15 +808,29 @@ export const updateProjectResource = async ({
 					},
 				},
 			});
+		}
 
-			return { updatedResource, activity };
-		});
+		if (activity && updatedResource.projectId) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getProjectChannel(updatedResource.projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity }
+			);
+		}
+
+		if (updatedResource.projectId) {
+			await triggerPusherEvent(
+				PUSHER_CHANNELS.getProjectChannel(updatedResource.projectId),
+				PUSHER_EVENTS.RESOURCE_UPDATED,
+				{ projectId: updatedResource.projectId, resource: updatedResource }
+			);
+		}
 
 		return {
 			success: true,
 			message: "Resource updated successfully",
-			resource: result.updatedResource,
-			activity: result.activity,
+			resource: updatedResource,
+			activity,
 		};
 	} catch (e) {
 		console.error("Failed to update resource", e);
@@ -586,14 +874,15 @@ export const updateProjectDetails = async ({
 	}
 
 	try {
-		const member = await db.member.findUnique({
-			where: {
-				userId_workspaceId: {
-					userId,
-					workspaceId,
-				},
-			},
-		});
+		const permCheck = await checkProjectEditPermission(userId, workspaceId, projectId);
+		if (!permCheck.allowed) {
+			return {
+				success: false,
+				message: permCheck.message || "You do not have permission to update this project",
+			};
+		}
+
+		const member = permCheck.member;
 
 		const result = await db.$transaction(async (tx) => {
 			const updatedProject = await tx.project.update({
@@ -644,6 +933,20 @@ export const updateProjectDetails = async ({
 			return { updatedProject, activity };
 		});
 
+		if (result.activity) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getProjectChannel(projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity: result.activity }
+			);
+		}
+
+		await triggerPusherEvent(
+			[PUSHER_CHANNELS.getProjectChannel(projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+			PUSHER_EVENTS.PROJECT_UPDATED,
+			{ projectId, updates: values, project: result.updatedProject }
+		);
+
 		return {
 			success: true,
 			message: "Project updated successfully",
@@ -679,107 +982,122 @@ export const updateProjectMembers = async ({
 	}
 
 	try {
-		const member = await db.member.findUnique({
-			where: {
-				userId_workspaceId: {
-					userId,
-					workspaceId,
-				},
-			},
-		});
+		const resolved = await resolveProjectMemberAndAccess(userId, workspaceId, projectId);
+		if (!resolved || !resolved.access.canManageMembers) {
+			return {
+				success: false,
+				message: "You do not have permission to update project members",
+			};
+		}
 
-		const existingProjectMembers = await db.projectMember.findMany({
-			where: { projectId },
-			include: {
-				member: {
-					include: {
-						user: true,
-					},
-				},
-			},
-		});
-
-		const previousLeadRecord = existingProjectMembers.find(
-			(pm) => pm.projectRole === ("PROJECT_LEAD" as ProjectAccess)
-		);
-		const previousLeadId = previousLeadRecord?.memberId;
-		const previousMemberIds = existingProjectMembers.map((pm) => pm.memberId);
-
-		const isLeadChanged = projectLeadId !== previousLeadId;
-		const addedMemberIds = projectMembers.filter((id) => !previousMemberIds.includes(id));
-		const removedMemberIds = previousMemberIds.filter((id) => !projectMembers.includes(id));
+		const member = resolved.member;
 
 		const createdActivities: any[] = [];
 
 		await db.$transaction(async (tx) => {
-			await tx.projectMember.deleteMany({
+			const currentProject = await tx.project.findUnique({
 				where: {
-					projectId,
+					id: projectId,
+					workspaceId,
+				},
+				include: {
+					projectMembers: {
+						include: {
+							member: {
+								include: {
+									user: true,
+								},
+							},
+						},
+					},
 				},
 			});
 
-			if (projectMembers.length > 0) {
+			if (!currentProject) {
+				throw new Error("Project not found");
+			}
+
+			const currentMemberIds = currentProject.projectMembers.map((pm) => pm.memberId);
+			const currentLead = currentProject.projectMembers.find((pm) => pm.projectRole === ProjectAccess.PROJECT_LEAD);
+			const currentLeadId = currentLead?.memberId;
+
+			const isLeadChanged = projectLeadId !== undefined && projectLeadId !== currentLeadId;
+
+			const addedMemberIds = projectMembers.filter((id) => !currentMemberIds.includes(id));
+			const removedMemberIds = currentMemberIds.filter((id) => !projectMembers.includes(id));
+
+			if (removedMemberIds.length > 0) {
+				await tx.projectMember.deleteMany({
+					where: {
+						projectId,
+						memberId: {
+							in: removedMemberIds,
+						},
+					},
+				});
+			}
+
+			if (addedMemberIds.length > 0) {
 				await tx.projectMember.createMany({
-					data: projectMembers.map((memberId) => ({
+					data: addedMemberIds.map((memberId) => ({
 						projectId,
 						memberId,
-						projectRole:
-							projectLeadId === memberId ?
-								("PROJECT_LEAD" as ProjectAccess)
-							:	("CONTRIBUTOR" as ProjectAccess),
+						projectRole: memberId === projectLeadId ? ProjectAccess.PROJECT_LEAD : ProjectAccess.CONTRIBUTOR,
 					})),
 				});
 			}
 
-			if (isLeadChanged) {
-				if (projectLeadId) {
-					let leadMember = existingProjectMembers.find((pm) => pm.memberId === projectLeadId)?.member;
-					if (!leadMember) {
-						const fetched = await tx.member.findUnique({
-							where: { id: projectLeadId },
-							include: { user: true },
-						});
-						if (fetched) leadMember = fetched;
-					}
-					const leadName = leadMember?.user?.fullName || leadMember?.user?.userName || "a member";
-					const act = await tx.activity.create({
-						data: {
-							type: ActivityType.PROJECTS,
-							title: "Project Lead Changed",
-							description: `changed project lead of this project to ${leadName}`,
-							workspaceId,
+			if (projectLeadId && currentLeadId !== projectLeadId) {
+				if (currentLeadId) {
+					await tx.projectMember.updateMany({
+						where: {
 							projectId,
-							memberId: member?.id,
+							memberId: currentLeadId,
 						},
-						include: {
-							member: {
-								include: {
-									user: true,
-								},
-							},
+						data: {
+							projectRole: ProjectAccess.CONTRIBUTOR,
 						},
 					});
-					createdActivities.push(act);
-				} else if (previousLeadId) {
-					const act = await tx.activity.create({
-						data: {
-							type: ActivityType.PROJECTS,
-							title: "Project Lead Removed",
-							description: "unassigned project lead of this project",
-							workspaceId,
-							projectId,
-							memberId: member?.id,
-						},
-						include: {
-							member: {
-								include: {
-									user: true,
-								},
-							},
-						},
-					});
-					createdActivities.push(act);
 				}
+
+				await tx.projectMember.updateMany({
+					where: {
+						projectId,
+						memberId: projectLeadId,
+					},
+					data: {
+						projectRole: ProjectAccess.PROJECT_LEAD,
+					},
+				});
+			}
+
+			if (isLeadChanged) {
+				let leadName = "Unknown";
+				if (projectLeadId) {
+					const newLeadMember = await tx.member.findUnique({
+						where: { id: projectLeadId },
+						include: { user: true },
+					});
+					leadName = newLeadMember?.user.fullName || newLeadMember?.user.userName || "Unknown";
+				}
+				const act = await tx.activity.create({
+					data: {
+						type: ActivityType.PROJECTS,
+						title: "Project Lead Assigned",
+						description: `assigned ${leadName} as the project lead`,
+						workspaceId,
+						projectId,
+						memberId: member?.id,
+					},
+					include: {
+						member: {
+							include: {
+								user: true,
+							},
+						},
+					},
+				});
+				createdActivities.push(act);
 			}
 
 			if (addedMemberIds.length > 0) {
@@ -787,9 +1105,7 @@ export const updateProjectMembers = async ({
 					where: { id: { in: addedMemberIds } },
 					include: { user: true },
 				});
-				const addedNames = addedMembers
-					.map((m) => m.user.fullName || m.user.userName)
-					.join(", ");
+				const addedNames = addedMembers.map((m) => m.user.fullName || m.user.userName).join(", ");
 				const act = await tx.activity.create({
 					data: {
 						type: ActivityType.PROJECTS,
@@ -811,10 +1127,8 @@ export const updateProjectMembers = async ({
 			}
 
 			if (removedMemberIds.length > 0) {
-				const removedNames = existingProjectMembers
-					.filter((pm) => removedMemberIds.includes(pm.memberId))
-					.map((pm) => pm.member.user.fullName || pm.member.user.userName)
-					.join(", ");
+				const removedMembers = currentProject.projectMembers.filter((pm) => removedMemberIds.includes(pm.memberId));
+				const removedNames = removedMembers.map((pm) => pm.member.user.fullName || pm.member.user.userName).join(", ");
 				const act = await tx.activity.create({
 					data: {
 						type: ActivityType.PROJECTS,
@@ -834,28 +1148,21 @@ export const updateProjectMembers = async ({
 				});
 				createdActivities.push(act);
 			}
-
-			if (!isLeadChanged && addedMemberIds.length === 0 && removedMemberIds.length === 0) {
-				const act = await tx.activity.create({
-					data: {
-						type: ActivityType.PROJECTS,
-						title: "Project Members Updated",
-						description: `updated members of this project (${projectMembers.length} member${projectMembers.length === 1 ? "" : "s"})`,
-						workspaceId,
-						projectId,
-						memberId: member?.id,
-					},
-					include: {
-						member: {
-							include: {
-								user: true,
-							},
-						},
-					},
-				});
-				createdActivities.push(act);
-			}
 		});
+
+		for (const act of createdActivities) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getProjectChannel(projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity: act }
+			);
+		}
+
+		await triggerPusherEvent(
+			PUSHER_CHANNELS.getProjectChannel(projectId),
+			PUSHER_EVENTS.MEMBERS_UPDATED,
+			{ projectId, memberIds: projectMembers, leadId: projectLeadId }
+		);
 
 		return {
 			success: true,
@@ -935,10 +1242,44 @@ export const addProjectComment = async ({
 			},
 		});
 
+		const activity = await db.activity.create({
+			data: {
+				type: ActivityType.PROJECTS,
+				title: replyCommentId ? "Reply Added" : "Comment Added",
+				description: replyCommentId ? "replied to a comment on this project" : "commented on this project",
+				workspaceId,
+				projectId,
+				memberId: member.id,
+			},
+			include: {
+				member: {
+					include: {
+						user: true,
+					},
+				},
+			},
+		});
+
+		// Broadcast real-time comment creation and activity to all project and workspace viewers
+		if (activity) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getProjectChannel(projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity }
+			);
+		}
+
+		await triggerPusherEvent(
+			PUSHER_CHANNELS.getProjectChannel(projectId),
+			PUSHER_EVENTS.COMMENT_CREATED,
+			{ comment }
+		);
+
 		return {
 			success: true,
 			message: replyCommentId ? "Reply added successfully" : "Comment added successfully",
 			comment,
+			activity,
 		};
 	} catch (e) {
 		console.error("Failed to add comment", e);
@@ -1048,6 +1389,23 @@ export const deleteProjectComment = async (commentId: string) => {
 			return null;
 		});
 
+		// Broadcast real-time comment deletion and activity
+		if (comment.projectId) {
+			if (activity) {
+				await triggerPusherEvent(
+					[PUSHER_CHANNELS.getProjectChannel(comment.projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+					PUSHER_EVENTS.ACTIVITY_CREATED,
+					{ activity }
+				);
+			}
+
+			await triggerPusherEvent(
+				PUSHER_CHANNELS.getProjectChannel(comment.projectId),
+				PUSHER_EVENTS.COMMENT_DELETED,
+				{ commentId }
+			);
+		}
+
 		return {
 			success: true,
 			message: "Comment deleted successfully",
@@ -1136,10 +1494,49 @@ export const updateProjectComment = async ({
 			},
 		});
 
+		let activity = null;
+		if (updatedComment.projectId) {
+			activity = await db.activity.create({
+				data: {
+					type: ActivityType.PROJECTS,
+					title: "Comment Updated",
+					description: "updated a comment in this project",
+					workspaceId,
+					projectId: updatedComment.projectId,
+					memberId: member.id,
+				},
+				include: {
+					member: {
+						include: {
+							user: true,
+						},
+					},
+				},
+			});
+		}
+
+		// Broadcast real-time comment update and activity
+		if (updatedComment.projectId) {
+			if (activity) {
+				await triggerPusherEvent(
+					[PUSHER_CHANNELS.getProjectChannel(updatedComment.projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+					PUSHER_EVENTS.ACTIVITY_CREATED,
+					{ activity }
+				);
+			}
+
+			await triggerPusherEvent(
+				PUSHER_CHANNELS.getProjectChannel(updatedComment.projectId),
+				PUSHER_EVENTS.COMMENT_UPDATED,
+				{ commentId, message: updatedComment.message, comment: updatedComment }
+			);
+		}
+
 		return {
 			success: true,
 			message: "Comment updated successfully",
 			comment: updatedComment,
+			activity,
 		};
 	} catch (e) {
 		console.error("Failed to update comment", e);
@@ -1163,6 +1560,14 @@ export const deleteProject = async (projectId: string) => {
 	}
 
 	try {
+		const resolved = await resolveProjectMemberAndAccess(userId, workspaceId, projectId);
+		if (!resolved || !resolved.access.canDeleteProject) {
+			return {
+				success: false,
+				message: "You do not have permission to delete this project",
+			};
+		}
+
 		const project = await db.project.findUnique({
 			where: { id: projectId },
 		});
@@ -1184,6 +1589,12 @@ export const deleteProject = async (projectId: string) => {
 			db.activity.deleteMany({ where: { projectId } }),
 			db.project.delete({ where: { id: projectId, workspaceId } }),
 		]);
+
+		await triggerPusherEvent(
+			[PUSHER_CHANNELS.getWorkspaceChannel(workspaceId), PUSHER_CHANNELS.getProjectChannel(projectId)],
+			PUSHER_EVENTS.PROJECT_DELETED,
+			{ projectId, workspaceId }
+		);
 
 		return {
 			success: true,

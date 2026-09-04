@@ -43,13 +43,13 @@ export default function PublicNavbar() {
 					<div className="  flex gap-3 flex-row">
 						<Button
 							asChild
-							className="text-[13px] shadow rounded-full"
+							className="text-[13px] shadow rounded-full bg-[#C4BEBE] text-primary hover:bg-[#C4BEBE]/90"
 							variant={"secondary"}
 						>
 							<Link href={"/sign-up"}>Get started</Link>
 						</Button>
 						<Button
-							className="text-[13px] rounded-full"
+							className="text-[13px] rounded-full bg-[#C4BEBE] text-primary hover:bg-[#C4BEBE]/90"
 							variant={"secondary"}
 							asChild
 						>
@@ -95,7 +95,7 @@ export default function PublicNavbar() {
 								<div className=" w-full  flex gap-5 flex-col">
 									<Button
 										asChild
-										className="text-[13px] py-[20px] shadow rounded-full"
+										className="text-[13px] py-[20px] shadow rounded-full bg-[#C4BEBE] text-primary hover:bg-[#C4BEBE]/90"
 										variant={"secondary"}
 									>
 										<Link href={"/sign-up"}>
@@ -104,7 +104,7 @@ export default function PublicNavbar() {
 									</Button>
 									<Button
 										asChild
-										className="text-[13px] py-[20px] rounded-full"
+										className="text-[13px] py-[20px] rounded-full bg-[#C4BEBE] text-primary hover:bg-[#C4BEBE]/90"
 										variant={"secondary"}
 									>
 										<Link href={"/sign-in"}>Sign In</Link>

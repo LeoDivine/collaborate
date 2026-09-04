@@ -20,9 +20,11 @@ import {
 	CircleSlash,
 	FolderSymlink,
 	Gauge,
+	Globe,
 	Hash,
 	Loader2,
 	LoaderCircle,
+	Lock,
 	LucideIcon,
 	Search,
 	User,
@@ -37,7 +39,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { PriorityLevel } from "../../../generated/prisma/enums";
+import { PriorityLevel, ProjectVisibility } from "../../../generated/prisma/enums";
 import { Button } from "../ui/button";
 import { Calendar } from "../ui/calendar";
 import { Checkbox } from "../ui/checkbox";
@@ -70,6 +72,7 @@ export default function CreateProject({
 		value: PriorityLevel;
 	}>();
 
+	const [visibility, setVisibility] = useState<ProjectVisibility>("PUBLIC");
 	const [projectMembers, setProjectMembers] = useState<string[]>([]);
 	const [projectLeadId, setProjectLeadId] = useState<string | undefined>();
 	const today = new Date();
@@ -266,6 +269,7 @@ export default function CreateProject({
 					projectMembers,
 					startDate: startDate!,
 					title,
+					visibility,
 					resources: resources,
 				},
 			});
@@ -292,8 +296,8 @@ export default function CreateProject({
 						value={title}
 						onChange={(e) => setTitle(e.target.value)}
 						autoFocus
-						placeholder="Project name"
-						className="w-full outline-none bg-transparent placeholder:text-2xl md:placeholder:text-[40px] placeholder:font-bold text-2xl md:text-[40px] font-bold border-0"
+						placeholder="Project title"
+						className="w-full outline-none bg-transparent placeholder:text-2xl md:placeholder:text-[40px] placeholder:font-bold text-2xl md:text-[40px] font-bold border-0 text-accent placeholder:text-accent/50"
 					/>
 					<Separator className="bg-secondary/20 my-[10px]" />
 					<div className="w-full mt-2">
@@ -359,6 +363,67 @@ export default function CreateProject({
 									</div>
 								);
 							})}
+						</DropdownMenuContent>
+					</DropdownMenu>
+
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								disabled={isSubmitting}
+								className={`bg-accent text-[13px] hover:bg-accent text-primary rounded-full ${triggerOpacity(true)}`}
+							>
+								{visibility === "PUBLIC" ? (
+									<>
+										<Globe className="w-4 h-4" />
+										<span className="md:inline hidden">
+											Public
+										</span>
+									</>
+								) : (
+									<>
+										<Lock className="w-4 h-4 text-amber-500" />
+										<span className="md:inline hidden text-amber-500 font-medium">
+											Private
+										</span>
+									</>
+								)}
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent className="w-[190px] flex flex-col gap-1 border-0 bg-accent p-1.5">
+							<div
+								onClick={() => setVisibility("PUBLIC" as ProjectVisibility)}
+								className={`${visibility === "PUBLIC" ? "bg-primary text-accent" : "bg-accent text-primary"} py-[6px] cursor-pointer transition-all rounded-[10px] px-[10px] hover:bg-primary hover:text-accent items-center justify-between flex`}
+							>
+								<div className="flex flex-col">
+									<div className="items-center gap-1.5 flex">
+										<Globe className="w-3.5 h-3.5" />
+										<p className="text-[13px] font-medium">Public</p>
+									</div>
+									<p className={`text-[11px] ${visibility === "PUBLIC" ? "text-accent/80" : "text-primary/60"}`}>
+										Visible to workspace
+									</p>
+								</div>
+								{visibility === "PUBLIC" && (
+									<Check className="w-3 h-3 shrink-0" />
+								)}
+							</div>
+							<div
+								onClick={() => setVisibility("PRIVATE" as ProjectVisibility)}
+								className={`${visibility === "PRIVATE" ? "bg-primary text-accent" : "bg-accent text-primary"} py-[6px] cursor-pointer transition-all rounded-[10px] px-[10px] hover:bg-primary hover:text-accent items-center justify-between flex`}
+							>
+								<div className="flex flex-col">
+									<div className="items-center gap-1.5 flex">
+										<Lock className="w-3.5 h-3.5" />
+										<p className="text-[13px] font-medium">Private</p>
+									</div>
+									<p className={`text-[11px] ${visibility === "PRIVATE" ? "text-accent/80" : "text-primary/60"}`}>
+										Assigned members only
+									</p>
+								</div>
+								{visibility === "PRIVATE" && (
+									<Check className="w-3 h-3 shrink-0" />
+								)}
+							</div>
 						</DropdownMenuContent>
 					</DropdownMenu>
 

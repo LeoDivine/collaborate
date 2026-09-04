@@ -128,17 +128,11 @@ export default function WorkspaceSignUp({
 				value={tab}
 				className=" w-full mt-[10px]"
 			>
-				<TabsList className=" md:w-[50%] w-full">
-					<TabsTrigger
-						className="data-[state=active]:bg-primary text-primary"
-						value="owner"
-					>
+				<TabsList className="w-fit self-start">
+					<TabsTrigger value="owner">
 						Owner
 					</TabsTrigger>
-					<TabsTrigger
-						className="data-[state=active]:bg-primary text-primary"
-						value="workspace"
-					>
+					<TabsTrigger value="workspace">
 						Workspace
 					</TabsTrigger>
 				</TabsList>

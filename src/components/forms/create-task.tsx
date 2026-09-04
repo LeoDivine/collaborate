@@ -49,6 +49,7 @@ export default function CreateTask({
 	workspaceId,
 	currentMemberId,
 	initialTotal = 0,
+	defaultProjectId,
 	onSuccess,
 }: {
 	projects: Projects[];
@@ -56,12 +57,13 @@ export default function CreateTask({
 	workspaceId: string;
 	currentMemberId: string;
 	initialTotal?: number;
-	onSuccess?: () => void;
+	defaultProjectId?: string;
+	onSuccess?: (createdTask?: any, createdActivity?: any) => void;
 }) {
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
 	const [selectedProjectId, setSelectedProjectId] = useState<string>(
-		projects[0]?.id || "",
+		defaultProjectId || projects[0]?.id || "",
 	);
 	const [startDate, setStartDate] = useState<Date | undefined>();
 	const [dueDate, setDueDate] = useState<Date | undefined>();
@@ -135,10 +137,24 @@ export default function CreateTask({
 		setIsFetchingMembers(val);
 	};
 
+	const extractLabels = (value: string) => {
+		if (!value.trim()) return [];
+		const hashTags = value.match(/#[\w-]+/g);
+		if (hashTags && hashTags.length > 0) {
+			return hashTags;
+		}
+		return value
+			.split(/[\s,]+/)
+			.map((v) => v.trim())
+			.filter((v) => v.length > 0)
+			.map((v) => (v.startsWith("#") ? v : `#${v}`));
+	};
+
 	const addLabels = (values: string[]) => {
 		const normalized = values
 			.map((value) => value.trim())
-			.filter((value) => value.startsWith("#") && value.length > 1);
+			.filter((value) => value.length > 1)
+			.map((value) => (value.startsWith("#") ? value : `#${value}`));
 		if (normalized.length === 0) return;
 		setLabels((prev) => {
 			const next = new Set(prev);
@@ -179,13 +195,9 @@ export default function CreateTask({
 
 	const toggleMember = (id: string) => {
 		setTaskMembers((prev) =>
-			prev.includes(id) ?
-				prev.filter((m) => m !== id)
-			:	[...prev, id],
+			prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id],
 		);
 	};
-
-
 
 	const formatStartDate = (date: Date) =>
 		date.toLocaleDateString(undefined, {
@@ -197,7 +209,6 @@ export default function CreateTask({
 	const minDueDate = startDate ? new Date(startDate) : today;
 	minDueDate.setHours(0, 0, 0, 0);
 
-	const extractLabels = (value: string) => value.match(/#[\w-]+/g) ?? [];
 	const triggerOpacity = (selected: boolean) =>
 		selected ? "opacity-100" : "opacity-60 md:opacity-100";
 	const router = useRouter();
@@ -218,6 +229,30 @@ export default function CreateTask({
 			return;
 		}
 
+		let finalLabels = [...labels];
+		if (labelInput.trim()) {
+			const pending = extractLabels(labelInput);
+			const normalized = pending
+				.map((value) => value.trim())
+				.filter((value) => value.length > 1)
+				.map((value) => (value.startsWith("#") ? value : `#${value}`));
+			const set = new Set([...finalLabels, ...normalized]);
+			finalLabels = Array.from(set);
+		}
+
+		let finalResources = [...resources];
+		if (
+			resourceField?.name &&
+			resourceField?.url &&
+			resourceField.name.trim() &&
+			resourceField.url.trim()
+		) {
+			finalResources.push({
+				name: resourceField.name.trim(),
+				url: resourceField.url.trim(),
+			});
+		}
+
 		setIsSubmitting(true);
 		try {
 			const taskRes = await createTask({
@@ -231,14 +266,15 @@ export default function CreateTask({
 				startPeriod: startDate,
 				endPeriod: dueDate,
 				memberIds: taskMembers,
-				labels,
+				labels: finalLabels,
+				resources: finalResources,
 			});
 
 			if (!taskRes.success) {
 				toast.error(taskRes.message || "Failed to create task");
 			} else {
 				toast.success("Task created successfully!");
-				if (onSuccess) onSuccess();
+				if (onSuccess) onSuccess(taskRes.task, taskRes.activity);
 				router.refresh();
 			}
 		} catch (error: any) {
@@ -303,10 +339,14 @@ export default function CreateTask({
 								return (
 									<div
 										key={p.id}
-										onClick={() => setSelectedProjectId(p.id)}
+										onClick={() =>
+											setSelectedProjectId(p.id)
+										}
 										className={`${isSelected ? "bg-primary text-accent font-semibold" : "bg-accent text-primary"} py-[6px] cursor-pointer transition-all rounded-[12px] px-[10px] hover:bg-primary hover:text-accent items-center justify-between flex text-xs`}
 									>
-										<span className="truncate">{p.title}</span>
+										<span className="truncate">
+											{p.title}
+										</span>
 										{isSelected && (
 											<Check className="w-3 h-3 shrink-0" />
 										)}
@@ -409,16 +449,17 @@ export default function CreateTask({
 									>
 										<Checkbox
 											disabled={isSubmitting}
-											checked={taskMembers.includes(
-												i.id,
-											)}
+											checked={taskMembers.includes(i.id)}
 										/>
 										<div className="min-w-0">
 											<p className="font-semibold text-[13px] text-primary truncate">
 												{i.user?.fullName || "Member"}
 											</p>
 											<p className="text-[11px] text-primary/60 truncate">
-												@{i.user?.userName || i.user?.email || "user"}
+												@
+												{i.user?.userName ||
+													i.user?.email ||
+													"user"}
 											</p>
 										</div>
 									</div>
@@ -428,16 +469,19 @@ export default function CreateTask({
 										<p className="opacity-70 mb-1">
 											{memberSearch.trim() ?
 												"No project members match search."
-											:	"No members assigned to this project."}
+											:	"No members assigned to this project."
+											}
 										</p>
 										<p className="text-[10px] text-primary/60 italic">
-											To assign members, add them to this project first.
+											To assign members, add them to this
+											project first.
 										</p>
 									</div>
 								)}
 							</div>
 							<div className="mt-1.5 pt-1.5 border-t border-primary/10 px-2 text-[10px] text-primary/60 text-center">
-								To assign new members, add them to the project first.
+								To assign new members, add them to the project
+								first.
 							</div>
 						</DropdownMenuContent>
 					</DropdownMenu>
@@ -608,6 +652,12 @@ export default function CreateTask({
 										name: e.target.value,
 									}))
 								}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										e.preventDefault();
+										addResources();
+									}
+								}}
 								placeholder="Resource name..."
 								className="outline-none bg-primary/10 rounded-[8px] p-2 text-xs text-primary placeholder:text-primary/40"
 							/>
@@ -620,6 +670,12 @@ export default function CreateTask({
 										url: e.target.value,
 									}))
 								}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										e.preventDefault();
+										addResources();
+									}
+								}}
 								placeholder="https://..."
 								className="outline-none bg-primary/10 rounded-[8px] p-2 text-xs text-primary placeholder:text-primary/40"
 							/>
@@ -662,19 +718,17 @@ export default function CreateTask({
 			<div className="flex justify-end items-center gap-3">
 				<DialogClose asChild>
 					<Button
-						type="button"
-						variant="ghost"
 						disabled={isSubmitting}
-						className="rounded-full text-secondary hover:bg-secondary/20 text-sm font-semibold"
+						className="rounded-full hover:bg-accent bg-accent text-primary"
 					>
-						Cancel
+						Close
 					</Button>
 				</DialogClose>
 				<Button
 					type="button"
 					onClick={handleSubmit}
 					disabled={isSubmitting}
-					className="bg-accent text-primary rounded-full hover:bg-accent/80 font-bold px-6 text-sm"
+					className="bg-accent text-primary rounded-full hover:bg-accent/80 px-6 text-sm"
 				>
 					{isSubmitting ?
 						<div className="flex items-center gap-2">

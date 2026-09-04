@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import TaskTable from "./task-table";
 import TaskViewHeader from "./task-view-header";
+import { useWorkspaceRealtime } from "@/hooks/use-pusher";
 
 export default function TaskView({
 	isCreating,
@@ -31,6 +32,58 @@ export default function TaskView({
 	const creating = searchParams.get("creating") || isCreating;
 
 	const [open, setOpen] = useState(creating === "true");
+	const [taskList, setTaskList] = useState<Tasks[]>(tasks || []);
+	const [total, setTotal] = useState<number>(tasksTotal || 0);
+
+	useEffect(() => {
+		setTaskList((prev) => {
+			const serverTasks = tasks || [];
+			if (serverTasks.length === 0) return prev.length > 0 ? prev : [];
+			const serverIds = new Set(serverTasks.map((t) => t.id));
+			const localOnly = prev.filter((t) => !serverIds.has(t.id));
+			return [...localOnly, ...serverTasks];
+		});
+		setTotal(tasksTotal || 0);
+	}, [tasks, tasksTotal]);
+
+	useWorkspaceRealtime(workspaceId, {
+		onTaskCreated: (data: any) => {
+			const newTask = data?.task || data;
+			if (newTask && newTask.id) {
+				setTaskList((prev) => {
+					if (prev.some((t) => t.id === newTask.id)) {
+						return prev.map((t) => (t.id === newTask.id ? { ...t, ...newTask } : t));
+					}
+					return [newTask, ...prev];
+				});
+				setTotal((prev) => prev + 1);
+			}
+		},
+		onTaskUpdated: (data: any) => {
+			const taskId = data?.taskId || data?.task?.id || data?.id;
+			const updatedTask = data?.task;
+			const updates = data?.updates || (data?.task ? undefined : data);
+			if (taskId) {
+				setTaskList((prev) =>
+					prev.map((t) => {
+						if (t.id === taskId) {
+							return updatedTask ?
+									{ ...t, ...updatedTask }
+								:	{ ...t, ...(updates || {}) };
+						}
+						return t;
+					}),
+				);
+			}
+		},
+		onTaskDeleted: (data: any) => {
+			const taskId = data?.taskId || data?.id;
+			if (taskId) {
+				setTaskList((prev) => prev.filter((t) => t.id !== taskId));
+				setTotal((prev) => Math.max(0, prev - 1));
+			}
+		},
+	});
 
 	useEffect(() => {
 		if (creating === "false") {
@@ -64,7 +117,7 @@ export default function TaskView({
 	return (
 		<div>
 			<TaskViewHeader
-				tasksTotal={tasksTotal}
+				tasksTotal={total}
 				open={open}
 				members={members}
 				projects={projects}
@@ -75,10 +128,13 @@ export default function TaskView({
 				onDialogChange={handleDialogChange}
 			/>
 			<TaskTable
-				tasks={tasks}
+				tasks={taskList}
 				projects={projects}
+				members={members}
+				workspaceId={workspaceId}
 				currentUserId={currentUserId}
-				totalItems={tasksTotal}
+				currentMemberId={currentMemberId}
+				totalItems={total}
 			/>
 		</div>
 	);

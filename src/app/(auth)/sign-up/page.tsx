@@ -21,14 +21,14 @@ export default function SignUp() {
 				<div className=" flex-row flex gap-3">
 					<Button
 						asChild
-						className="text-[13px] px-[20px] py-[20px] rounded-full"
+						className="text-[13px] px-[20px] py-[20px] rounded-full bg-[#C4BEBE] text-primary hover:bg-[#C4BEBE]/90"
 						variant={"secondary"}
 					>
 						<Link href={"/sign-up/workspace-auth"}>Workspace</Link>
 					</Button>
 					<Button
 						asChild
-						className=" text-[13px] px-[20px] py-[20px] rounded-full"
+						className="text-[13px] px-[20px] py-[20px] rounded-full bg-[#C4BEBE] text-primary hover:bg-[#C4BEBE]/90"
 						variant={"secondary"}
 					>
 						<Link href={"/sign-up/individual-auth"}>

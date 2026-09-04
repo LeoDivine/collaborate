@@ -4,6 +4,45 @@ import { db } from "../db";
 import { auth } from "../../../auth";
 import { MileStoneStatus, PriorityLevel, Status } from "../../../generated/prisma/client";
 import { revalidatePath } from "next/cache";
+import { triggerPusherEvent } from "@/lib/pusher/server";
+import { PUSHER_CHANNELS, PUSHER_EVENTS } from "@/lib/pusher/events";
+import { computeTaskAccess } from "@/lib/permissions/task-permissions";
+
+export async function resolveTaskMemberAndAccess(
+	taskId: string,
+	userId?: string,
+	workspaceId?: string,
+) {
+	if (!userId || !workspaceId) return null;
+
+	const member = await db.member.findUnique({
+		where: { userId_workspaceId: { userId, workspaceId } },
+	});
+	if (!member) return null;
+
+	const task = await db.task.findUnique({
+		where: { id: taskId },
+		include: { taskMembers: true },
+	});
+	if (!task) return null;
+
+	const projectMember = await db.projectMember.findFirst({
+		where: {
+			projectId: task.projectId,
+			memberId: member.id,
+		},
+	});
+
+	const access = computeTaskAccess({
+		workspaceRole: member.role,
+		projectRole: projectMember?.projectRole,
+		isTaskCreator: task.createdById === member.id,
+		isTaskAssignee: task.taskMembers.some((tm) => tm.memberId === member.id),
+	});
+
+	return { member, task, projectMember, access };
+}
+
 
 export interface CreateTaskInput {
 	title: string;
@@ -17,6 +56,7 @@ export interface CreateTaskInput {
 	endPeriod: Date;
 	memberIds?: string[];
 	labels?: string[];
+	resources?: { name: string; url: string }[];
 }
 
 export const getTasksByWorkspaceId = async (workspaceId: string) => {
@@ -30,9 +70,40 @@ export const getTasksByWorkspaceId = async (workspaceId: string) => {
 	}
 
 	try {
+		const session = await auth();
+		const userId = session?.user?.id;
+		let currentMember = null;
+		if (userId) {
+			currentMember = await db.member.findUnique({
+				where: {
+					userId_workspaceId: {
+						userId,
+						workspaceId,
+					},
+				},
+			});
+		}
+
+		const isWorkspaceAdmin =
+			currentMember?.role === "OWNER" || currentMember?.role === "ADMIN";
+
+		const projectPrivacyFilter =
+			isWorkspaceAdmin || !currentMember
+				? {}
+				: {
+						project: {
+							OR: [
+								{ visibility: "PUBLIC" as any },
+								{ projectMembers: { some: { memberId: currentMember.id } } },
+								{ createdById: currentMember.id },
+							],
+						},
+				  };
+
 		const tasks = await db.task.findMany({
 			where: {
 				workspaceId,
+				...projectPrivacyFilter,
 			},
 			include: {
 				project: true,
@@ -46,6 +117,7 @@ export const getTasksByWorkspaceId = async (workspaceId: string) => {
 					},
 				},
 				milestones: true,
+				resources: true,
 				createdBy: {
 					include: {
 						user: true,
@@ -91,6 +163,7 @@ export const getTaskById = async (taskId: string) => {
 			include: {
 				project: {
 					include: {
+						resources: true,
 						projectMembers: {
 							include: {
 								member: {
@@ -154,6 +227,45 @@ export const getTaskById = async (taskId: string) => {
 			};
 		}
 
+		if ((task.project as any)?.visibility === "PRIVATE") {
+			const session = await auth();
+			const userId = session?.user?.id;
+			if (userId) {
+				const member = await db.member.findUnique({
+					where: {
+						userId_workspaceId: {
+							userId,
+							workspaceId: task.workspaceId,
+						},
+					},
+				});
+				const isWorkspaceAdmin =
+					member?.role === "OWNER" || member?.role === "ADMIN";
+				const isProjectMember = task.project?.projectMembers?.some(
+					(pm: any) => pm.memberId === member?.id,
+				);
+				const isProjectCreator = task.project?.createdById === member?.id;
+				const isTaskCreator = task.createdById === member?.id;
+				const isTaskAssignee = task.taskMembers?.some(
+					(tm: any) => tm.memberId === member?.id,
+				);
+
+				if (
+					!isWorkspaceAdmin &&
+					!isProjectMember &&
+					!isProjectCreator &&
+					!isTaskCreator &&
+					!isTaskAssignee
+				) {
+					return {
+						success: false,
+						message: "You do not have permission to view this task",
+						task: null,
+					};
+				}
+			}
+		}
+
 		if (task.projectId) {
 			const allProjectResources = await db.resource.findMany({
 				where: {
@@ -178,6 +290,457 @@ export const getTaskById = async (taskId: string) => {
 	}
 };
 
+export const checkAndAutoCompleteProject = async (
+	projectId: string,
+	memberId?: string,
+) => {
+	if (!projectId) return { projectAutoCompleted: false };
+
+	try {
+		const tasks = await db.task.findMany({
+			where: { projectId },
+		});
+
+		if (tasks.length > 0 && tasks.every((t) => t.status === Status.COMPLETED)) {
+			const project = await db.project.findUnique({
+				where: { id: projectId },
+			});
+
+			if (project && project.status !== Status.COMPLETED) {
+				await db.project.update({
+					where: { id: projectId },
+					data: { status: Status.COMPLETED },
+				});
+
+				let memberIdToUse = memberId;
+				if (!memberIdToUse) {
+					const session = await auth();
+					const workspaceId = session?.user?.currentWorkspaceId;
+					const userId = session?.user?.id;
+					if (userId && workspaceId) {
+						const member = await db.member.findUnique({
+							where: { userId_workspaceId: { userId, workspaceId } },
+						});
+						memberIdToUse = member?.id;
+					}
+				}
+
+				if (memberIdToUse) {
+					await db.activity.create({
+						data: {
+							type: "PROJECTS",
+							title: "Project Status Changed",
+							description: `All tasks completed. Changed status of project "${project.title}" to Completed`,
+							workspaceId: project.workspaceId,
+							projectId,
+							memberId: memberIdToUse,
+						},
+					});
+				}
+
+				revalidatePath("/projects");
+				revalidatePath(`/projects/${projectId}`);
+
+				return { projectAutoCompleted: true };
+			}
+		}
+	} catch (error) {
+		console.error("Error in checkAndAutoCompleteProject:", error);
+	}
+
+	return { projectAutoCompleted: false };
+};
+
+export const checkAndUpdateProjectOnTaskRemovedFromTodo = async (
+	projectId: string,
+	memberId?: string,
+) => {
+	if (!projectId) return { projectSetToInProgress: false };
+
+	try {
+		const project = await db.project.findUnique({
+			where: { id: projectId },
+		});
+
+		if (project && project.status === Status.TODO) {
+			await db.project.update({
+				where: { id: projectId },
+				data: { status: Status.IN_PROGRESS },
+			});
+
+			let memberIdToUse = memberId;
+			if (!memberIdToUse) {
+				const session = await auth();
+				const workspaceId = session?.user?.currentWorkspaceId;
+				const userId = session?.user?.id;
+				if (userId && workspaceId) {
+					const member = await db.member.findUnique({
+						where: { userId_workspaceId: { userId, workspaceId } },
+					});
+					memberIdToUse = member?.id;
+				}
+			}
+
+			if (memberIdToUse) {
+				await db.activity.create({
+					data: {
+						type: "PROJECTS",
+						title: "Project Status Changed",
+						description: `Task status updated from TODO. Changed status of project "${project.title}" to In Progress`,
+						workspaceId: project.workspaceId,
+						projectId,
+						memberId: memberIdToUse,
+					},
+				});
+			}
+
+			revalidatePath("/projects");
+			revalidatePath(`/projects/${projectId}`);
+
+			return { projectSetToInProgress: true };
+		}
+	} catch (error) {
+		console.error("Error in checkAndUpdateProjectOnTaskRemovedFromTodo:", error);
+	}
+
+	return { projectSetToInProgress: false };
+};
+
+export const checkAndUpdateProjectOnTaskUncompleted = async (
+	projectId: string,
+	memberId?: string,
+) => {
+	if (!projectId) return { projectSetToInProgress: false };
+
+	try {
+		const project = await db.project.findUnique({
+			where: { id: projectId },
+			include: { tasks: true },
+		});
+
+		if (project && project.status === Status.COMPLETED) {
+			const hasIncompleteTasks = project.tasks.some(
+				(t) => t.status !== Status.COMPLETED,
+			);
+
+			if (hasIncompleteTasks) {
+				await db.project.update({
+					where: { id: projectId },
+					data: { status: Status.IN_PROGRESS },
+				});
+
+				let memberIdToUse = memberId;
+				if (!memberIdToUse) {
+					const session = await auth();
+					const workspaceId = session?.user?.currentWorkspaceId;
+					const userId = session?.user?.id;
+					if (userId && workspaceId) {
+						const member = await db.member.findUnique({
+							where: { userId_workspaceId: { userId, workspaceId } },
+						});
+						memberIdToUse = member?.id;
+					}
+				}
+
+				if (memberIdToUse) {
+					await db.activity.create({
+						data: {
+							type: "PROJECTS",
+							title: "Project Status Changed",
+							description: `Task status updated from Completed. Changed status of project "${project.title}" to In Progress`,
+							workspaceId: project.workspaceId,
+							projectId,
+							memberId: memberIdToUse,
+						},
+					});
+				}
+
+				revalidatePath("/projects");
+				revalidatePath(`/projects/${projectId}`);
+
+				return { projectSetToInProgress: true };
+			}
+		}
+	} catch (error) {
+		console.error("Error in checkAndUpdateProjectOnTaskUncompleted:", error);
+	}
+
+	return { projectSetToInProgress: false };
+};
+
+export const checkAndUpdateTaskOnMilestoneUncompleted = async (
+	taskId: string,
+	memberId?: string,
+) => {
+	if (!taskId)
+		return {
+			taskSetToInProgress: false,
+			projectSetToInProgress: false,
+		};
+
+	try {
+		const task = await db.task.findUnique({
+			where: { id: taskId },
+			include: { milestones: true },
+		});
+
+		if (!task)
+			return {
+				taskSetToInProgress: false,
+				projectSetToInProgress: false,
+			};
+
+		let taskSetToInProgress = false;
+		let projectSetToInProgress = false;
+
+		const hasIncompleteMilestones = task.milestones.some(
+			(m) => m.status !== MileStoneStatus.DONE,
+		);
+
+		if (hasIncompleteMilestones && task.status === Status.COMPLETED) {
+			await db.task.update({
+				where: { id: taskId },
+				data: { status: Status.IN_PROGRESS },
+			});
+			taskSetToInProgress = true;
+
+			let memberIdToUse = memberId;
+			if (!memberIdToUse) {
+				const session = await auth();
+				const workspaceId = session?.user?.currentWorkspaceId;
+				const userId = session?.user?.id;
+				if (userId && workspaceId) {
+					const member = await db.member.findUnique({
+						where: { userId_workspaceId: { userId, workspaceId } },
+					});
+					memberIdToUse = member?.id;
+				}
+			}
+
+			if (memberIdToUse) {
+				await db.activity.create({
+					data: {
+						type: "TASKS",
+						title: "Task Status Changed",
+						description: `Milestone status updated from Completed. Changed status of task "${task.title}" to In Progress`,
+						workspaceId: task.workspaceId,
+						projectId: task.projectId,
+						taskId,
+						memberId: memberIdToUse,
+					},
+				});
+			}
+
+			const projRes = await checkAndUpdateProjectOnTaskUncompleted(
+				task.projectId,
+				memberIdToUse,
+			);
+			projectSetToInProgress = projRes.projectSetToInProgress;
+
+			revalidatePath("/tasks");
+			revalidatePath(`/tasks/${taskId}`);
+			revalidatePath(`/projects/${task.projectId}`);
+		} else {
+			const projRes = await checkAndUpdateProjectOnTaskUncompleted(
+				task.projectId,
+				memberId,
+			);
+			projectSetToInProgress = projRes.projectSetToInProgress;
+		}
+
+		return {
+			taskSetToInProgress,
+			projectSetToInProgress,
+			taskStatus: taskSetToInProgress ? Status.IN_PROGRESS : task.status,
+		};
+	} catch (error) {
+		console.error(
+			"Error in checkAndUpdateTaskOnMilestoneUncompleted:",
+			error,
+		);
+	}
+
+	return {
+		taskSetToInProgress: false,
+		projectSetToInProgress: false,
+	};
+};
+
+export const checkAndUpdateTaskOnMilestoneComplete = async (
+	taskId: string,
+	memberId?: string,
+) => {
+	if (!taskId)
+		return {
+			taskSetToInProgress: false,
+			projectSetToInProgress: false,
+			taskAutoCompleted: false,
+			projectAutoCompleted: false,
+		};
+
+	try {
+		const task = await db.task.findUnique({
+			where: { id: taskId },
+			include: { milestones: true },
+		});
+
+		if (!task)
+			return {
+				taskSetToInProgress: false,
+				projectSetToInProgress: false,
+				taskAutoCompleted: false,
+				projectAutoCompleted: false,
+			};
+
+		let taskSetToInProgress = false;
+		let projectSetToInProgress = false;
+
+		if (task.status === Status.TODO) {
+			await db.task.update({
+				where: { id: taskId },
+				data: { status: Status.IN_PROGRESS },
+			});
+			taskSetToInProgress = true;
+
+			let memberIdToUse = memberId;
+			if (!memberIdToUse) {
+				const session = await auth();
+				const workspaceId = session?.user?.currentWorkspaceId;
+				const userId = session?.user?.id;
+				if (userId && workspaceId) {
+					const member = await db.member.findUnique({
+						where: { userId_workspaceId: { userId, workspaceId } },
+					});
+					memberIdToUse = member?.id;
+				}
+			}
+
+			if (memberIdToUse) {
+				await db.activity.create({
+					data: {
+						type: "TASKS",
+						title: "Task Status Changed",
+						description: `Milestone completed. Changed status of task "${task.title}" to In Progress`,
+						workspaceId: task.workspaceId,
+						projectId: task.projectId,
+						taskId,
+						memberId: memberIdToUse,
+					},
+				});
+			}
+
+			const projRes = await checkAndUpdateProjectOnTaskRemovedFromTodo(
+				task.projectId,
+				memberId,
+			);
+			projectSetToInProgress = projRes.projectSetToInProgress;
+
+			revalidatePath("/tasks");
+			revalidatePath(`/tasks/${taskId}`);
+			revalidatePath(`/projects/${task.projectId}`);
+		}
+
+		const autoRes = await checkAndAutoCompleteTask(taskId, memberId);
+
+		return {
+			taskSetToInProgress,
+			projectSetToInProgress:
+				projectSetToInProgress || autoRes.projectAutoCompleted,
+			taskAutoCompleted: autoRes.taskAutoCompleted,
+			projectAutoCompleted: autoRes.projectAutoCompleted,
+			taskStatus:
+				autoRes.taskAutoCompleted ? Status.COMPLETED
+				: taskSetToInProgress ? Status.IN_PROGRESS
+				: task.status,
+		};
+	} catch (error) {
+		console.error("Error in checkAndUpdateTaskOnMilestoneComplete:", error);
+	}
+
+	return {
+		taskSetToInProgress: false,
+		projectSetToInProgress: false,
+		taskAutoCompleted: false,
+		projectAutoCompleted: false,
+	};
+};
+
+export const checkAndAutoCompleteTask = async (
+	taskId: string,
+	memberId?: string,
+) => {
+	if (!taskId) return { taskAutoCompleted: false, projectAutoCompleted: false };
+
+	try {
+		const task = await db.task.findUnique({
+			where: { id: taskId },
+			include: { milestones: true },
+		});
+
+		if (!task) return { taskAutoCompleted: false, projectAutoCompleted: false };
+
+		const milestones = task.milestones;
+		if (
+			milestones.length > 0 &&
+			milestones.every((m) => m.status === MileStoneStatus.DONE)
+		) {
+			let taskAutoCompleted = false;
+			if (task.status !== Status.COMPLETED) {
+				await db.task.update({
+					where: { id: taskId },
+					data: { status: Status.COMPLETED },
+				});
+				taskAutoCompleted = true;
+
+				let memberIdToUse = memberId;
+				if (!memberIdToUse) {
+					const session = await auth();
+					const workspaceId = session?.user?.currentWorkspaceId;
+					const userId = session?.user?.id;
+					if (userId && workspaceId) {
+						const member = await db.member.findUnique({
+							where: { userId_workspaceId: { userId, workspaceId } },
+						});
+						memberIdToUse = member?.id;
+					}
+				}
+
+				if (memberIdToUse) {
+					await db.activity.create({
+						data: {
+							type: "TASKS",
+							title: "Task Status Changed",
+							description: `All milestones completed. Changed status of task "${task.title}" to Completed`,
+							workspaceId: task.workspaceId,
+							projectId: task.projectId,
+							taskId,
+							memberId: memberIdToUse,
+						},
+					});
+				}
+
+				revalidatePath("/tasks");
+				revalidatePath(`/tasks/${taskId}`);
+				revalidatePath(`/projects/${task.projectId}`);
+			}
+
+			const projectRes = await checkAndAutoCompleteProject(
+				task.projectId,
+				memberId,
+			);
+
+			return {
+				taskAutoCompleted: taskAutoCompleted || task.status === Status.COMPLETED,
+				projectAutoCompleted: projectRes.projectAutoCompleted,
+			};
+		}
+	} catch (error) {
+		console.error("Error in checkAndAutoCompleteTask:", error);
+	}
+
+	return { taskAutoCompleted: false, projectAutoCompleted: false };
+};
+
 export const createTask = async (input: CreateTaskInput) => {
 	const {
 		title,
@@ -191,6 +754,7 @@ export const createTask = async (input: CreateTaskInput) => {
 		endPeriod,
 		memberIds = [],
 		labels = [],
+		resources = [],
 	} = input;
 
 	if (!title || !projectId || !workspaceId || !createdById) {
@@ -219,6 +783,17 @@ export const createTask = async (input: CreateTaskInput) => {
 						memberId,
 					})),
 				},
+				resources:
+					resources.length > 0 ?
+						{
+							create: resources.map((r) => ({
+								name: r.name,
+								url: r.url,
+								workspaceId,
+								projectId,
+							})),
+						}
+					:	undefined,
 				activities: {
 					create: {
 						type: "TASKS",
@@ -242,9 +817,19 @@ export const createTask = async (input: CreateTaskInput) => {
 					},
 				},
 				milestones: true,
+				resources: true,
 				createdBy: {
 					include: {
 						user: true,
+					},
+				},
+				activities: {
+					include: {
+						member: {
+							include: {
+								user: true,
+							},
+						},
 					},
 				},
 			},
@@ -253,10 +838,53 @@ export const createTask = async (input: CreateTaskInput) => {
 		revalidatePath("/tasks");
 		revalidatePath(`/projects/${projectId}`);
 
+		const createdActivity = newTask.activities?.[0];
+
+		if (createdActivity) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getProjectChannel(projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity: createdActivity }
+			);
+		}
+
+		await triggerPusherEvent(
+			[PUSHER_CHANNELS.getProjectChannel(projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+			PUSHER_EVENTS.TASK_CREATED,
+			{ task: newTask, taskId: newTask.id, projectId, workspaceId }
+		);
+
+		let projectSetToInProgress = false;
+		if (newTask.status !== Status.TODO) {
+			const res = await checkAndUpdateProjectOnTaskRemovedFromTodo(
+				projectId,
+				createdById,
+			);
+			projectSetToInProgress = res.projectSetToInProgress;
+		}
+
+		if (newTask.status !== Status.COMPLETED) {
+			const res = await checkAndUpdateProjectOnTaskUncompleted(
+				projectId,
+				createdById,
+			);
+			projectSetToInProgress =
+				projectSetToInProgress || res.projectSetToInProgress;
+		}
+
+		let projectAutoCompleted = false;
+		if (newTask.status === Status.COMPLETED) {
+			const res = await checkAndAutoCompleteProject(projectId, createdById);
+			projectAutoCompleted = res.projectAutoCompleted;
+		}
+
 		return {
 			success: true,
 			message: "Task created successfully",
 			task: newTask,
+			activity: createdActivity,
+			projectSetToInProgress,
+			projectAutoCompleted,
 		};
 	} catch (error: any) {
 		console.error("Error creating task:", error);
@@ -292,16 +920,27 @@ export const updateTaskDetails = async ({
 	}
 
 	try {
-		const existingTask = await db.task.findUnique({
-			where: { id: taskId },
-		});
+		const session = await auth();
+		const workspaceId = session?.user?.currentWorkspaceId;
+		const userId = session?.user?.id;
 
-		if (!existingTask) {
+		const resolved = await resolveTaskMemberAndAccess(taskId, userId, workspaceId);
+		if (!resolved) {
 			return {
 				success: false,
-				message: "Task not found",
+				message: "Unauthorized or task not found",
 			};
 		}
+
+		if (!resolved.access.canEditTask) {
+			return {
+				success: false,
+				message:
+					"Only assigned task members and the task creator can edit this task.",
+			};
+		}
+
+		const existingTask = resolved.task;
 
 		const updatedTask = await db.task.update({
 			where: { id: taskId },
@@ -336,11 +975,24 @@ export const updateTaskDetails = async ({
 			}
 		}
 
+		let createdActivity = null;
 		if (memberIdToUse) {
 			let activityTitle = "Task Updated";
 			let activityDesc = `Updated task "${updatedTask.title}"`;
 
-			if (values.status && values.status !== existingTask.status) {
+			if (values.title && values.title !== existingTask.title) {
+				activityTitle = "Task Title Updated";
+				activityDesc = `Changed task title from "${existingTask.title}" to "${values.title}"`;
+			} else if (
+				values.description !== undefined &&
+				values.description !== existingTask.description
+			) {
+				activityTitle = "Task Description Updated";
+				activityDesc = `Updated description for task "${updatedTask.title}"`;
+			} else if (
+				values.status &&
+				values.status !== existingTask.status
+			) {
 				activityTitle = "Task Status Changed";
 				activityDesc = `Changed status of task "${updatedTask.title}" to ${values.status.replaceAll("_", " ")}`;
 			} else if (
@@ -349,9 +1001,23 @@ export const updateTaskDetails = async ({
 			) {
 				activityTitle = "Task Priority Changed";
 				activityDesc = `Changed priority of task "${updatedTask.title}" to ${values.priority}`;
+			} else if (
+				values.startPeriod &&
+				new Date(values.startPeriod).getTime() !==
+					new Date(existingTask.startPeriod).getTime()
+			) {
+				activityTitle = "Task Start Date Updated";
+				activityDesc = `Updated start date for task "${updatedTask.title}"`;
+			} else if (
+				values.endPeriod &&
+				new Date(values.endPeriod).getTime() !==
+					new Date(existingTask.endPeriod).getTime()
+			) {
+				activityTitle = "Task Due Date Updated";
+				activityDesc = `Updated due date for task "${updatedTask.title}"`;
 			}
 
-			await db.activity.create({
+			createdActivity = await db.activity.create({
 				data: {
 					type: "TASKS",
 					title: activityTitle,
@@ -361,16 +1027,70 @@ export const updateTaskDetails = async ({
 					taskId,
 					memberId: memberIdToUse,
 				},
+				include: {
+					member: {
+						include: {
+							user: true,
+						},
+					},
+				},
 			});
 		}
 
 		revalidatePath("/tasks");
 		revalidatePath(`/projects/${existingTask.projectId}`);
 
+		if (createdActivity) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getTaskChannel(taskId), PUSHER_CHANNELS.getWorkspaceChannel(existingTask.workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity: createdActivity }
+			);
+		}
+
+		await triggerPusherEvent(
+			[PUSHER_CHANNELS.getTaskChannel(taskId), PUSHER_CHANNELS.getWorkspaceChannel(existingTask.workspaceId)],
+			PUSHER_EVENTS.TASK_UPDATED,
+			{ taskId, updates: values, task: updatedTask, status: updatedTask.status }
+		);
+
+		let projectSetToInProgress = false;
+		if (existingTask.status === Status.TODO && updatedTask.status !== Status.TODO) {
+			const res = await checkAndUpdateProjectOnTaskRemovedFromTodo(
+				existingTask.projectId,
+				memberIdToUse,
+			);
+			projectSetToInProgress = res.projectSetToInProgress;
+		}
+
+		if (
+			existingTask.status === Status.COMPLETED &&
+			updatedTask.status !== Status.COMPLETED
+		) {
+			const res = await checkAndUpdateProjectOnTaskUncompleted(
+				existingTask.projectId,
+				memberIdToUse,
+			);
+			projectSetToInProgress =
+				projectSetToInProgress || res.projectSetToInProgress;
+		}
+
+		let projectAutoCompleted = false;
+		if (updatedTask.status === Status.COMPLETED) {
+			const projectRes = await checkAndAutoCompleteProject(
+				existingTask.projectId,
+				memberIdToUse,
+			);
+			projectAutoCompleted = projectRes.projectAutoCompleted;
+		}
+
 		return {
 			success: true,
 			message: "Task updated successfully",
 			task: updatedTask,
+			activity: createdActivity,
+			projectSetToInProgress,
+			projectAutoCompleted,
 		};
 	} catch (error: any) {
 		console.error("Error updating task:", error);
@@ -398,17 +1118,26 @@ export const updateTaskMembers = async ({
 	}
 
 	try {
-		const existingTask = await db.task.findUnique({
-			where: { id: taskId },
-			include: { taskMembers: true },
-		});
+		const session = await auth();
+		const workspaceId = session?.user?.currentWorkspaceId;
+		const userId = session?.user?.id;
 
-		if (!existingTask) {
+		const resolved = await resolveTaskMemberAndAccess(taskId, userId, workspaceId);
+		if (!resolved) {
 			return {
 				success: false,
-				message: "Task not found",
+				message: "Unauthorized or task not found",
 			};
 		}
+
+		if (!resolved.access.canManageMembers) {
+			return {
+				success: false,
+				message: "You do not have permission to manage assignees for this task.",
+			};
+		}
+
+		const existingTask = resolved.task;
 
 		// Delete current task members
 		await db.taskMember.deleteMany({
@@ -425,8 +1154,10 @@ export const updateTaskMembers = async ({
 			});
 		}
 
-		if (actorMemberId) {
-			await db.activity.create({
+		let createdActivity = null;
+		const memberIdToUse = actorMemberId || resolved.member.id;
+		if (memberIdToUse) {
+			createdActivity = await db.activity.create({
 				data: {
 					type: "TASKS",
 					title: "Task Assignees Updated",
@@ -434,7 +1165,14 @@ export const updateTaskMembers = async ({
 					workspaceId: existingTask.workspaceId,
 					projectId: existingTask.projectId,
 					taskId,
-					memberId: actorMemberId,
+					memberId: memberIdToUse,
+				},
+				include: {
+					member: {
+						include: {
+							user: true,
+						},
+					},
 				},
 			});
 		}
@@ -442,9 +1180,24 @@ export const updateTaskMembers = async ({
 		revalidatePath("/tasks");
 		revalidatePath(`/projects/${existingTask.projectId}`);
 
+		if (createdActivity) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getTaskChannel(taskId), PUSHER_CHANNELS.getWorkspaceChannel(existingTask.workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity: createdActivity }
+			);
+		}
+
+		await triggerPusherEvent(
+			PUSHER_CHANNELS.getTaskChannel(taskId),
+			PUSHER_EVENTS.MEMBERS_UPDATED,
+			{ taskId, memberIds }
+		);
+
 		return {
 			success: true,
 			message: "Task assignees updated successfully",
+			activity: createdActivity,
 		};
 	} catch (error: any) {
 		console.error("Error updating task members:", error);
@@ -464,29 +1217,27 @@ export const deleteTask = async (taskId: string, actorMemberId?: string) => {
 	}
 
 	try {
-		const existingTask = await db.task.findUnique({
-			where: { id: taskId },
-		});
+		const session = await auth();
+		const workspaceId = session?.user?.currentWorkspaceId;
+		const userId = session?.user?.id;
 
-		if (!existingTask) {
+		const resolved = await resolveTaskMemberAndAccess(taskId, userId, workspaceId);
+		if (!resolved) {
 			return {
 				success: false,
-				message: "Task not found",
+				message: "Unauthorized or task not found",
 			};
 		}
 
-		let memberIdToUse = actorMemberId;
-		if (!memberIdToUse) {
-			const session = await auth();
-			const workspaceId = session?.user?.currentWorkspaceId;
-			const userId = session?.user?.id;
-			if (userId && workspaceId) {
-				const member = await db.member.findUnique({
-					where: { userId_workspaceId: { userId, workspaceId } },
-				});
-				memberIdToUse = member?.id;
-			}
+		if (!resolved.access.canDeleteTask) {
+			return {
+				success: false,
+				message: "You do not have permission to delete this task.",
+			};
 		}
+
+		const existingTask = resolved.task;
+		const memberIdToUse = actorMemberId || resolved.member.id;
 
 		await db.taskMember.deleteMany({ where: { taskId } });
 		await db.mileStone.deleteMany({ where: { taskId } });
@@ -496,7 +1247,7 @@ export const deleteTask = async (taskId: string, actorMemberId?: string) => {
 		await db.task.delete({ where: { id: taskId } });
 
 		// Create project activity record for task deletion
-		await db.activity.create({
+		const deletedActivity = await db.activity.create({
 			data: {
 				type: "PROJECTS",
 				title: "Task Deleted",
@@ -505,10 +1256,37 @@ export const deleteTask = async (taskId: string, actorMemberId?: string) => {
 				projectId: existingTask.projectId,
 				memberId: memberIdToUse,
 			},
+			include: {
+				member: {
+					include: {
+						user: true,
+					},
+				},
+			},
 		});
 
 		revalidatePath("/tasks");
 		revalidatePath(`/projects/${existingTask.projectId}`);
+
+		if (deletedActivity) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getProjectChannel(existingTask.projectId), PUSHER_CHANNELS.getWorkspaceChannel(existingTask.workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity: deletedActivity }
+			);
+		}
+
+		await triggerPusherEvent(
+			[PUSHER_CHANNELS.getProjectChannel(existingTask.projectId), PUSHER_CHANNELS.getWorkspaceChannel(existingTask.workspaceId)],
+			PUSHER_EVENTS.TASK_DELETED,
+			{ taskId, projectId: existingTask.projectId }
+		);
+
+		await checkAndUpdateProjectOnTaskUncompleted(
+			existingTask.projectId,
+			memberIdToUse,
+		);
+		await checkAndAutoCompleteProject(existingTask.projectId, memberIdToUse);
 
 		return {
 			success: true,
@@ -526,10 +1304,12 @@ export const deleteTask = async (taskId: string, actorMemberId?: string) => {
 export const addMilestone = async ({
 	taskId,
 	title,
+	description,
 	dueDate,
 }: {
 	taskId: string;
 	title: string;
+	description?: string;
 	dueDate?: Date;
 }) => {
 	const session = await auth();
@@ -542,17 +1322,26 @@ export const addMilestone = async ({
 		return { success: false, message: "Milestone title is required" };
 	}
 	try {
-		const task = await db.task.findUnique({ where: { id: taskId } });
-		if (!task) return { success: false, message: "Task not found" };
+		const resolved = await resolveTaskMemberAndAccess(taskId, userId, workspaceId);
+		if (!resolved) {
+			return { success: false, message: "Unauthorized or task not found" };
+		}
 
-		const member = await db.member.findUnique({
-			where: { userId_workspaceId: { userId, workspaceId } },
-		});
+		if (!resolved.access.canEditTask) {
+			return {
+				success: false,
+				message:
+					"Only assigned task members and the task creator can add milestones to this task.",
+			};
+		}
+
+		const task = resolved.task;
+		const member = resolved.member;
 
 		const milestone = await db.mileStone.create({
 			data: {
 				title: title.trim(),
-				description: "",
+				description: description?.trim() || "",
 				taskId,
 				dueDate: dueDate || task.endPeriod,
 				status: MileStoneStatus.NOT_STARTED,
@@ -560,7 +1349,7 @@ export const addMilestone = async ({
 			},
 		});
 
-		await db.activity.create({
+		const activity = await db.activity.create({
 			data: {
 				type: "TASKS",
 				title: "Milestone Created",
@@ -570,13 +1359,42 @@ export const addMilestone = async ({
 				taskId,
 				memberId: member?.id,
 			},
+			include: {
+				member: {
+					include: { user: true },
+				},
+			},
 		});
 
 		revalidatePath(`/tasks/${taskId}`);
+		await checkAndUpdateTaskOnMilestoneUncompleted(
+			taskId,
+			member?.id,
+		);
+
+		if (activity) {
+			await triggerPusherEvent(
+				[
+					PUSHER_CHANNELS.getTaskChannel(taskId),
+					...(task.projectId ? [PUSHER_CHANNELS.getProjectChannel(task.projectId)] : []),
+					PUSHER_CHANNELS.getWorkspaceChannel(workspaceId),
+				],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity }
+			);
+		}
+
+		await triggerPusherEvent(
+			PUSHER_CHANNELS.getTaskChannel(taskId),
+			PUSHER_EVENTS.MILESTONE_CREATED,
+			{ taskId, milestone }
+		);
+
 		return {
 			success: true,
 			message: "Milestone added successfully",
 			milestone,
+			activity,
 		};
 	} catch (e: any) {
 		console.error("Error adding milestone:", e);
@@ -598,17 +1416,40 @@ export const toggleMilestoneStatus = async ({
 		return { success: false, message: "Unauthorized" };
 	}
 	try {
+		const existingMilestone = await db.mileStone.findUnique({
+			where: { id: milestoneId },
+			include: { task: true },
+		});
+		if (!existingMilestone) {
+			return { success: false, message: "Milestone not found" };
+		}
+
+		const resolved = await resolveTaskMemberAndAccess(
+			existingMilestone.taskId,
+			userId,
+			workspaceId,
+		);
+		if (!resolved) {
+			return { success: false, message: "Unauthorized or task not found" };
+		}
+
+		if (!resolved.access.canEditTask) {
+			return {
+				success: false,
+				message:
+					"Only assigned task members and the task creator can update milestones for this task.",
+			};
+		}
+
+		const member = resolved.member;
+
 		const milestone = await db.mileStone.update({
 			where: { id: milestoneId },
 			data: { status },
 			include: { task: true },
 		});
 
-		const member = await db.member.findUnique({
-			where: { userId_workspaceId: { userId, workspaceId } },
-		});
-
-		await db.activity.create({
+		const activity = await db.activity.create({
 			data: {
 				type: "TASKS",
 				title: "Milestone Updated",
@@ -618,10 +1459,91 @@ export const toggleMilestoneStatus = async ({
 				taskId: milestone.taskId,
 				memberId: member?.id,
 			},
+			include: {
+				member: {
+					include: { user: true },
+				},
+			},
 		});
 
 		revalidatePath(`/tasks/${milestone.taskId}`);
-		return { success: true, message: "Milestone updated", milestone };
+		revalidatePath(`/projects/${milestone.task.projectId}`);
+
+		let autoRes = {
+			taskSetToInProgress: false,
+			projectSetToInProgress: false,
+			taskAutoCompleted: false,
+			projectAutoCompleted: false,
+			taskStatus: undefined as Status | undefined,
+		};
+
+		if (status === MileStoneStatus.DONE) {
+			const res = await checkAndUpdateTaskOnMilestoneComplete(
+				milestone.taskId,
+				member?.id,
+			);
+			autoRes = {
+				taskSetToInProgress: res.taskSetToInProgress,
+				projectSetToInProgress: res.projectSetToInProgress,
+				taskAutoCompleted: res.taskAutoCompleted,
+				projectAutoCompleted: res.projectAutoCompleted,
+				taskStatus: res.taskStatus,
+			};
+		} else {
+			const res = await checkAndUpdateTaskOnMilestoneUncompleted(
+				milestone.taskId,
+				member?.id,
+			);
+			autoRes = {
+				taskSetToInProgress: res.taskSetToInProgress,
+				projectSetToInProgress: res.projectSetToInProgress,
+				taskAutoCompleted: false,
+				projectAutoCompleted: false,
+				taskStatus: res.taskStatus,
+			};
+		}
+
+		if (activity) {
+			await triggerPusherEvent(
+				[
+					PUSHER_CHANNELS.getTaskChannel(milestone.taskId),
+					...(milestone.task.projectId ? [PUSHER_CHANNELS.getProjectChannel(milestone.task.projectId)] : []),
+					PUSHER_CHANNELS.getWorkspaceChannel(workspaceId),
+				],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity }
+			);
+		}
+
+		await triggerPusherEvent(
+			PUSHER_CHANNELS.getTaskChannel(milestone.taskId),
+			PUSHER_EVENTS.MILESTONE_UPDATED,
+			{ taskId: milestone.taskId, milestoneId, milestone, taskStatus: autoRes.taskStatus }
+		);
+
+		if (autoRes.taskStatus) {
+			await triggerPusherEvent(
+				[
+					PUSHER_CHANNELS.getTaskChannel(milestone.taskId),
+					...(milestone.task.projectId ? [PUSHER_CHANNELS.getProjectChannel(milestone.task.projectId)] : []),
+					PUSHER_CHANNELS.getWorkspaceChannel(workspaceId),
+				],
+				PUSHER_EVENTS.TASK_UPDATED,
+				{ taskId: milestone.taskId, updates: { status: autoRes.taskStatus }, status: autoRes.taskStatus }
+			);
+		}
+
+		return {
+			success: true,
+			message: "Milestone updated",
+			milestone,
+			activity,
+			taskSetToInProgress: autoRes.taskSetToInProgress,
+			projectSetToInProgress: autoRes.projectSetToInProgress,
+			taskAutoCompleted: autoRes.taskAutoCompleted,
+			projectAutoCompleted: autoRes.projectAutoCompleted,
+			taskStatus: autoRes.taskStatus,
+		};
 	} catch (e: any) {
 		console.error("Error updating milestone:", e);
 		return { success: false, message: "Failed to update milestone" };
@@ -631,17 +1553,108 @@ export const toggleMilestoneStatus = async ({
 export const deleteMilestone = async (milestoneId: string) => {
 	const session = await auth();
 	const workspaceId = session?.user?.currentWorkspaceId;
-	if (!workspaceId) return { success: false, message: "Unauthorized" };
+	const userId = session?.user?.id;
+	if (!workspaceId || !userId) return { success: false, message: "Unauthorized" };
 	try {
 		const milestone = await db.mileStone.findUnique({
 			where: { id: milestoneId },
+			include: { task: true },
 		});
 		if (!milestone)
 			return { success: false, message: "Milestone not found" };
 
+		const resolved = await resolveTaskMemberAndAccess(
+			milestone.taskId,
+			userId,
+			workspaceId,
+		);
+		if (!resolved) {
+			return { success: false, message: "Unauthorized or task not found" };
+		}
+
+		if (!resolved.access.canEditTask) {
+			return {
+				success: false,
+				message:
+					"Only assigned task members and the task creator can delete milestones for this task.",
+			};
+		}
+
+		const member = resolved.member;
+
 		await db.mileStone.delete({ where: { id: milestoneId } });
+
+		const activity = await db.activity.create({
+			data: {
+				type: "TASKS",
+				title: "Milestone Deleted",
+				description: `Deleted milestone "${milestone.title}" from this task`,
+				workspaceId,
+				projectId: milestone.task.projectId,
+				taskId: milestone.taskId,
+				memberId: member?.id,
+			},
+			include: {
+				member: {
+					include: { user: true },
+				},
+			},
+		});
+
 		revalidatePath(`/tasks/${milestone.taskId}`);
-		return { success: true, message: "Milestone deleted" };
+		revalidatePath(`/projects/${milestone.task.projectId}`);
+
+		const uncompRes = await checkAndUpdateTaskOnMilestoneUncompleted(
+			milestone.taskId,
+			member?.id,
+		);
+
+		const autoRes = await checkAndAutoCompleteTask(
+			milestone.taskId,
+			member?.id,
+		);
+
+		if (activity) {
+			await triggerPusherEvent(
+				[
+					PUSHER_CHANNELS.getTaskChannel(milestone.taskId),
+					...(milestone.task.projectId ? [PUSHER_CHANNELS.getProjectChannel(milestone.task.projectId)] : []),
+					PUSHER_CHANNELS.getWorkspaceChannel(workspaceId),
+				],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity }
+			);
+		}
+
+		await triggerPusherEvent(
+			PUSHER_CHANNELS.getTaskChannel(milestone.taskId),
+			PUSHER_EVENTS.MILESTONE_DELETED,
+			{ taskId: milestone.taskId, milestoneId }
+		);
+
+		const updatedStatus = autoRes.taskAutoCompleted ? Status.COMPLETED : uncompRes.taskStatus;
+		if (updatedStatus) {
+			await triggerPusherEvent(
+				[
+					PUSHER_CHANNELS.getTaskChannel(milestone.taskId),
+					...(milestone.task.projectId ? [PUSHER_CHANNELS.getProjectChannel(milestone.task.projectId)] : []),
+					PUSHER_CHANNELS.getWorkspaceChannel(workspaceId),
+				],
+				PUSHER_EVENTS.TASK_UPDATED,
+				{ taskId: milestone.taskId, updates: { status: updatedStatus }, status: updatedStatus }
+			);
+		}
+
+		return {
+			success: true,
+			message: "Milestone deleted",
+			activity,
+			taskSetToInProgress: uncompRes.taskSetToInProgress,
+			projectSetToInProgress: uncompRes.projectSetToInProgress,
+			taskAutoCompleted: autoRes.taskAutoCompleted,
+			projectAutoCompleted: autoRes.projectAutoCompleted,
+			taskStatus: autoRes.taskAutoCompleted ? Status.COMPLETED : uncompRes.taskStatus,
+		};
 	} catch (e: any) {
 		console.error("Error deleting milestone:", e);
 		return { success: false, message: "Failed to delete milestone" };
@@ -689,13 +1702,25 @@ export const addTaskComment = async ({
 	}
 	try {
 		return await withRetry(async () => {
-			const member = await db.member.findUnique({
-				where: { userId_workspaceId: { userId, workspaceId } },
-			});
-			if (!member) return { success: false, message: "Member not found" };
+			const resolved = await resolveTaskMemberAndAccess(
+				taskId,
+				userId,
+				workspaceId,
+			);
+			if (!resolved) {
+				return { success: false, message: "Unauthorized or task not found" };
+			}
 
-			const task = await db.task.findUnique({ where: { id: taskId } });
-			if (!task) return { success: false, message: "Task not found" };
+			if (!resolved.access.canCommentOnTask) {
+				return {
+					success: false,
+					message:
+						"Only assigned task members, the task creator, and project leads can comment on this task.",
+				};
+			}
+
+			const member = resolved.member;
+			const task = resolved.task;
 
 			const comment = await db.comment.create({
 				data: {
@@ -713,9 +1738,42 @@ export const addTaskComment = async ({
 				},
 			});
 
+			const activity = await db.activity.create({
+				data: {
+					type: "TASKS",
+					title: replyCommentId ? "Reply Added" : "Comment Added",
+					description:
+						replyCommentId ?
+							`replied to a comment on task "${task.title}"`
+						:	`commented on task "${task.title}"`,
+					workspaceId,
+					projectId: task.projectId,
+					taskId,
+					memberId: member.id,
+				},
+				include: {
+					member: {
+						include: { user: true },
+					},
+				},
+			});
+
 			revalidatePath(`/tasks/${taskId}`);
 			revalidatePath(`/projects/${task.projectId}`);
-			return { success: true, message: "Comment posted", comment };
+
+			// Broadcast real-time comment creation to task channel
+			await triggerPusherEvent(
+				PUSHER_CHANNELS.getTaskChannel(taskId),
+				PUSHER_EVENTS.COMMENT_CREATED,
+				{ comment }
+			);
+
+			return {
+				success: true,
+				message: "Comment posted",
+				comment,
+				activity,
+			};
 		});
 	} catch (e: any) {
 		console.error("Error posting comment:", e);
@@ -749,6 +1807,10 @@ export const updateTaskComment = async ({
 		return { success: false, message: "Message cannot be empty" };
 	try {
 		return await withRetry(async () => {
+			const member = await db.member.findUnique({
+				where: { userId_workspaceId: { userId, workspaceId } },
+			});
+
 			const updated = await db.comment.update({
 				where: { id: commentId },
 				data: { message: message.trim() },
@@ -759,13 +1821,51 @@ export const updateTaskComment = async ({
 				},
 			});
 
+			let activity = null;
+			if (updated.taskId && member) {
+				const taskObj = await db.task.findUnique({
+					where: { id: updated.taskId },
+					select: { title: true },
+				});
+				activity = await db.activity.create({
+					data: {
+						type: "TASKS",
+						title: "Comment Updated",
+						description:
+							taskObj ?
+								`Updated a comment on task "${taskObj.title}"`
+							:	"Updated a comment",
+						workspaceId,
+						projectId: updated.projectId || undefined,
+						taskId: updated.taskId,
+						memberId: member.id,
+					},
+					include: {
+						member: {
+							include: { user: true },
+						},
+					},
+				});
+			}
+
 			if (updated.taskId) revalidatePath(`/tasks/${updated.taskId}`);
 			if (updated.projectId)
 				revalidatePath(`/projects/${updated.projectId}`);
+
+			// Broadcast real-time comment update to task channel
+			if (updated.taskId) {
+				await triggerPusherEvent(
+					PUSHER_CHANNELS.getTaskChannel(updated.taskId),
+					PUSHER_EVENTS.COMMENT_UPDATED,
+					{ commentId, message: updated.message, comment: updated }
+				);
+			}
+
 			return {
 				success: true,
 				message: "Comment updated",
 				comment: updated,
+				activity,
 			};
 		});
 	} catch (e: any) {
@@ -828,6 +1928,15 @@ export const deleteTaskComment = async (commentId: string) => {
 						},
 					},
 				});
+			}
+
+			if (existing.taskId) {
+				// Broadcast real-time comment deletion to task channel
+				await triggerPusherEvent(
+					PUSHER_CHANNELS.getTaskChannel(existing.taskId),
+					PUSHER_EVENTS.COMMENT_DELETED,
+					{ commentId }
+				);
 				revalidatePath(`/tasks/${existing.taskId}`);
 			}
 
@@ -898,6 +2007,21 @@ export const addTaskResource = async ({
 
 		revalidatePath(`/tasks/${taskId}`);
 		revalidatePath(`/projects/${task.projectId}`);
+
+		if (activity) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getTaskChannel(taskId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity }
+			);
+		}
+
+		await triggerPusherEvent(
+			PUSHER_CHANNELS.getTaskChannel(taskId),
+			PUSHER_EVENTS.RESOURCE_ADDED,
+			{ taskId, resource }
+		);
+
 		return { success: true, message: "Resource added", resource, activity };
 	} catch (e: any) {
 		console.error("Error adding resource:", e);
@@ -966,6 +2090,22 @@ export const deleteTaskResource = async (
 		}
 		if (resource.projectId) {
 			revalidatePath(`/projects/${resource.projectId}`);
+		}
+
+		if (activity && targetTaskId) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getTaskChannel(targetTaskId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity }
+			);
+		}
+
+		if (targetTaskId) {
+			await triggerPusherEvent(
+				PUSHER_CHANNELS.getTaskChannel(targetTaskId),
+				PUSHER_EVENTS.RESOURCE_DELETED,
+				{ taskId: targetTaskId, resourceId }
+			);
 		}
 
 		return { success: true, message: "Resource deleted", activity };
@@ -1052,6 +2192,22 @@ export const updateTaskResource = async ({
 		}
 		if (resource.projectId) {
 			revalidatePath(`/projects/${resource.projectId}`);
+		}
+
+		if (activity && targetTaskId) {
+			await triggerPusherEvent(
+				[PUSHER_CHANNELS.getTaskChannel(targetTaskId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
+				PUSHER_EVENTS.ACTIVITY_CREATED,
+				{ activity }
+			);
+		}
+
+		if (targetTaskId) {
+			await triggerPusherEvent(
+				PUSHER_CHANNELS.getTaskChannel(targetTaskId),
+				PUSHER_EVENTS.RESOURCE_UPDATED,
+				{ taskId: targetTaskId, resource }
+			);
 		}
 
 		return {

@@ -231,7 +231,7 @@ export default function IndividualSignUp() {
 						<Button
 							onClick={() => handleOAuthUsage("google")}
 							type="button"
-							className=" py-[20px] bg-accent rounded-full text-secondary"
+							className=" py-[20px] bg-[#575757] hover:bg-[#575757] rounded-full text-secondary"
 						>
 							<AiOutlineGoogle className=" w-60 h-60" />
 							Sign in with Google

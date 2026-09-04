@@ -18,7 +18,7 @@ export default function ProtectedSidebar({ user }: { user: User }) {
 	const pathName = usePathname();
 	console.log({ user });
 	return (
-		<div className=" hidden  bg-primary rounded-[20px]  py-[20px] md:flex flex-col items-center justify-between  h-[calc(100vh-30px)] ">
+		<div className=" hidden bg-primary text-secondary rounded-[20px] py-[20px] md:flex flex-col items-center justify-between h-[calc(100vh-30px)] w-full">
 			<div className="flex flex-col gap-11 items-start">
 				<div className=" flex items-center justify-center">
 					<Image
@@ -41,7 +41,7 @@ export default function ProtectedSidebar({ user }: { user: User }) {
 								<Link
 									href={i.link}
 									key={k}
-									className={`${pathName.includes(i.link) ? "bg-secondary text-primary" : " bg-transparent"}  px-[20px] rounded-[13px] py-[10px] w-full text-[13px]  items-center flex gap-4`}
+									className={`${pathName.includes(i.link) ? "bg-secondary text-primary" : " bg-transparent"} px-[20px] rounded-[13px] py-[10px] w-full text-[13px] items-center flex gap-4`}
 								>
 									<span className=" text-[10px]">
 										<Icon className=" w-4 h-4" />

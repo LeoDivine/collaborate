@@ -126,6 +126,7 @@ model Project {
   workspaceId    String
   createdBy      Member          @relation("ProjectCreator", fields: [createdById], references: [id])
   createdById    String
+  visibility     ProjectVisibility @default(PUBLIC)
   status         Status          @default(TODO)
   startPeriod    DateTime
   endPeriod      DateTime
@@ -187,7 +188,7 @@ model TaskMember {
   member     Member   @relation(fields: [memberId], references: [id])
   memberId   String
   assignedAt DateTime @default(now())
-  
+
   @@map("task-members")
 }
 
@@ -298,9 +299,13 @@ enum WorkspaceRoles {
 
 enum ProjectAccess {
   PROJECT_LEAD
-  PROJECT_MANAGER
   CONTRIBUTOR
   VIEWER
+}
+
+enum ProjectVisibility {
+  PUBLIC
+  PRIVATE
 }
 
 enum RequestStatus {

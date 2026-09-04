@@ -14,19 +14,25 @@ export default async function Projects(props: { searchParams: SearchParams }) {
 
 	const session = await auth();
 	const workspaceId = session?.user?.currentWorkspaceId;
+	const userId = session?.user?.id;
 
 	const membersResponse = await getMembersByWorkspaceId(1, 10, workspaceId!);
 	const projectsResponse = await getProjectsByWorkspaceId(workspaceId!);
 	const allProjects: Projects[] = projectsResponse.projects;
+	const allMembers = membersResponse.members || [];
+	const currentMember = allMembers.find((m) => m.userId === userId);
+
 	return (
 		<div>
 			<ProjectView
-				members={membersResponse.members}
+				members={allMembers}
 				isCreating={currentState}
 				workspaceId={workspaceId!}
 				initialTotal={membersResponse.total}
 				projects={allProjects}
 				projectsTotal={projectsResponse.total}
+				currentUserId={userId}
+				currentMemberId={currentMember?.id || ""}
 			/>
 		</div>
 	);

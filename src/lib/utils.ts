@@ -58,7 +58,7 @@ export const renderNavigationByRole = (
 	}
 	switch (role) {
 		case "ADMIN":
-			return PROTECTEDPERSONALNAVBAR;
+			return PROTECTEADMINNAVBAR;
 		case "MEMBER":
 			return PROTECTEDMEMBERNAVBAR;
 		case "OWNER":
@@ -80,7 +80,7 @@ export const renderRequestStatusBadge = (status: RequestStatus) => {
 export const renderWorkspaceRoleBadge = (role: WorkspaceRoles) => {
 	switch (role) {
 		case "ADMIN":
-			return " bg-[#B1AD44]";
+			return " text-primary bg-[#B1AD44]";
 		case "MEMBER":
 			return " bg-accent text-primary";
 		case "OWNER":
@@ -152,3 +152,18 @@ export const renderStatus = (status: Status) => {
 			return "bg-[#555353]";
 	}
 };
+
+export function stripHtml(html?: string | null): string {
+	if (!html) return "";
+	return html
+		.replace(/<[^>]*>/g, " ")
+		.replace(/&nbsp;/gi, " ")
+		.replace(/&amp;/gi, "&")
+		.replace(/&lt;/gi, "<")
+		.replace(/&gt;/gi, ">")
+		.replace(/&quot;/gi, '"')
+		.replace(/&#39;/gi, "'")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+

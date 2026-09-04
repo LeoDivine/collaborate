@@ -1,17 +1,44 @@
 import React from "react";
 
-export default function ActivitiesOverview() {
+export interface ActivitiesOverviewProps {
+	activity: {
+		id: string;
+		title: string;
+		description: string;
+		createdAt: Date;
+		type: string;
+	};
+}
+
+export default function ActivitiesOverview({
+	activity,
+}: ActivitiesOverviewProps) {
+	const formattedDate = new Date(activity.createdAt).toLocaleDateString(
+		undefined,
+		{
+			month: "short",
+			day: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+		},
+	);
+
 	return (
-		<div className=" mt-[10px] text-primary">
-			<div className="">
-				<p className="text-[15px]">Task Created</p>
-				<p className=" text-[12px] line-clamp-2">
-					Lorem ipsum dolor sit amet consectetur adipisicing elit.
-					Possimus quas dolorum iusto magnam accusamus eligendi
-					explicabo laudantium eos in. Dolores perferendis laudantium
-					dolor! Fugiat qui cupiditate esse voluptatem ea quo.
+		<div className="mt-[10px] text-primary border-b border-primary/10 pb-2 last:border-b-0">
+			<div>
+				<div className="flex justify-between items-baseline gap-2">
+					<p className="text-[14px] font-medium line-clamp-1">
+						{activity.title}
+					</p>
+					<span className="text-[10px] opacity-75 shrink-0">
+						{formattedDate}
+					</span>
+				</div>
+				<p className="text-[12px] line-clamp-2 opacity-80 mt-0.5">
+					{activity.description}
 				</p>
 			</div>
 		</div>
 	);
 }
+

@@ -57,14 +57,27 @@ export interface ProjectActivity extends Activity {
 
 export interface Projects extends Project {
 	projectMembers: ProjectMembers[];
-	tasks: (Task & { milestones?: MileStone[] })[];
+	tasks: (Task & {
+		milestones?: MileStone[];
+		resources?: Resource[];
+		taskMembers?: TaskMembers[];
+		createdBy?: Member & {
+			user: User;
+		};
+	})[];
 	resources: Resource[];
 	comments?: ProjectComment[];
 	activities?: ProjectActivity[];
+	createdBy?: Member & {
+		user: User;
+	};
 }
 
 export interface Tasks extends Task {
-	project: Project;
+	project: Project & {
+		resources?: Resource[];
+		projectMembers?: ProjectMembers[];
+	};
 	taskMembers: TaskMembers[];
 	milestones: MileStone[];
 	comments?: ProjectComment[];

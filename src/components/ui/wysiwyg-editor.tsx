@@ -28,6 +28,7 @@ import {
 import { Button } from "./button";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { Input } from "./input";
+import { cn } from "@/lib/utils";
 
 interface WysiwygEditorProps {
 	value: string;
@@ -38,6 +39,7 @@ interface WysiwygEditorProps {
 	height?: string;
 	maxHeight?: string;
 	textColor?: string;
+	toolbarClassName?: string;
 }
 
 export default function WysiwygEditor({
@@ -49,6 +51,7 @@ export default function WysiwygEditor({
 	height = "350px",
 	maxHeight = "400px",
 	textColor = "text-primary",
+	toolbarClassName,
 }: WysiwygEditorProps) {
 	const [linkUrl, setLinkUrl] = useState("");
 	const [isLinkOpen, setIsLinkOpen] = useState(false);
@@ -126,7 +129,12 @@ export default function WysiwygEditor({
 	return (
 		<div className="w-full text-left flex flex-col rounded-[20px] border-0 bg-transparent overflow-hidden">
 			{/* Toolbar */}
-			<div className="flex flex-wrap items-center gap-1 p-2 bg-accent rounded-t-[20px] border-0">
+			<div
+				className={cn(
+					"flex flex-wrap items-center gap-1 p-2 rounded-t-[20px] border-0",
+					toolbarClassName || "bg-accent",
+				)}
+			>
 				{/* Text formatting group */}
 				<div className="flex items-center gap-0.5 pr-2 border-r border-primary/10">
 					<Button

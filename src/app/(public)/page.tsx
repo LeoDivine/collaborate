@@ -20,7 +20,7 @@ export default function Home() {
 						<div className="">
 							<Button
 								asChild
-								className="text-[13px] rounded-full"
+								className="text-[13px] rounded-full bg-[#C4BEBE] text-primary hover:bg-[#C4BEBE]/90"
 								variant={"secondary"}
 							>
 								<Link href="/sign-up">

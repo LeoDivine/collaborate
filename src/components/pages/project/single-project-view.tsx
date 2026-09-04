@@ -53,9 +53,12 @@ import {
 	CircleX,
 	Copy,
 	CornerDownRight,
+	Diamond,
 	Flag,
+	Globe,
 	Loader2,
 	LoaderCircle,
+	Lock,
 	LucideIcon,
 	MessageSquare,
 	MoreHorizontal,
@@ -83,6 +86,7 @@ import {
 	ProjectAccess,
 	Status,
 } from "../../../../generated/prisma/enums";
+import { computeProjectAccess } from "@/lib/permissions/project-permissions";
 import { useSession } from "next-auth/react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -95,7 +99,9 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
+	DialogTrigger,
 } from "@/components/ui/dialog";
+import CreateTask from "@/components/forms/create-task";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -128,21 +134,40 @@ import {
 	updateProjectResource,
 } from "@/lib/services/project.services";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useProjectRealtime } from "@/hooks/use-pusher";
 
 export default function SingleProjectView({
 	project,
 	workspaceId,
 	members = [],
 	initialTotal = 0,
+	projects = [],
 }: {
 	project: Projects;
 	workspaceId?: string;
 	members?: MembersUsers[];
 	initialTotal?: number;
+	projects?: Projects[];
 }) {
 	const router = useRouter();
 	const { data: session } = useSession();
 	const user = session?.user;
+
+	const currentMember =
+		members.find((m) => m.userId === user?.id) ||
+		(project.projectMembers || []).find((pm) => pm.member?.userId === user?.id)?.member ||
+		(project.createdBy?.userId === user?.id ? project.createdBy : undefined);
+	const currentMemberId = currentMember?.id || "";
+	const availableProjects = projects.length > 0 ? projects : [project];
+
+	const isOwner = currentMember?.role === "OWNER";
+	const isAdmin = currentMember?.role === "ADMIN";
+	const isCreator = Boolean(
+		(currentMemberId && project.createdById === currentMemberId) ||
+		(user?.id && project.createdBy?.userId === user.id)
+	);
+
+	const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
 
 	// Editable field states
 	const [title, setTitle] = useState(project.title);
@@ -170,14 +195,15 @@ export default function SingleProjectView({
 	const [labels, setLabels] = useState<string[]>(project.labels || []);
 	const [labelInput, setLabelInput] = useState("");
 	const [isSavingLabels, setIsSavingLabels] = useState(false);
+	const [tasks, setTasks] = useState(project.tasks || []);
 	const [taskSearch, setTaskSearch] = useState("");
 
 	// Member selection state
-	const initialLead = project.projectMembers.find(
+	const initialLead = (project.projectMembers || []).find(
 		(e) => e.projectRole === ("PROJECT_LEAD" as ProjectAccess),
 	)?.memberId;
 
-	const initialMemberIds = project.projectMembers.map((e) => e.memberId);
+	const initialMemberIds = (project.projectMembers || []).map((e) => e.memberId);
 
 	const [selectedMembers, setSelectedMembers] =
 		useState<string[]>(initialMemberIds);
@@ -186,8 +212,32 @@ export default function SingleProjectView({
 	);
 	const [isSavingMembers, setIsSavingMembers] = useState(false);
 
+	const currentProjectMember = (project.projectMembers || []).find(
+		(pm) =>
+			(currentMemberId && pm.memberId === currentMemberId) ||
+			(user?.id && pm.member?.userId === user?.id),
+	);
+
+	const projectAccess = computeProjectAccess({
+		workspaceRole: currentMember?.role,
+		projectRole: currentProjectMember?.projectRole,
+		isProjectCreator: isCreator,
+	});
+
+	const {
+		canConfigureProject,
+		canManageMembers,
+		canDeleteProject,
+		canCreateTasks,
+		canManageResources,
+		canCommentOnProject,
+		isProjectLead,
+	} = projectAccess;
+
+	const canEditProject = canConfigureProject;
+
 	const [readMore, setReadMore] = useState(false);
-	const [resources, setResources] = useState(project.resources);
+	const [resources, setResources] = useState(project.resources || []);
 	const [comments, setComments] = useState<ProjectComment[]>(
 		project.comments || [],
 	);
@@ -201,9 +251,9 @@ export default function SingleProjectView({
 	);
 	const [editingMessage, setEditingMessage] = useState("");
 	const [isSavingComment, setIsSavingComment] = useState(false);
-	const [replyingToCommentId, setReplyingToCommentId] = useState<string | null>(
-		null,
-	);
+	const [replyingToCommentId, setReplyingToCommentId] = useState<
+		string | null
+	>(null);
 	const [replyInput, setReplyInput] = useState("");
 	const [isPostingReply, setIsPostingReply] = useState(false);
 
@@ -268,7 +318,10 @@ export default function SingleProjectView({
 		setValue: (val: string) => void,
 	) => {
 		if (!activeMention) return;
-		const textBeforeCursor = currentValue.slice(0, activeMention.cursorIndex);
+		const textBeforeCursor = currentValue.slice(
+			0,
+			activeMention.cursorIndex,
+		);
 		const lastAtIndex = textBeforeCursor.lastIndexOf("@");
 		if (lastAtIndex === -1) return;
 
@@ -296,7 +349,11 @@ export default function SingleProjectView({
 			e.preventDefault();
 			setActiveMention((prev) =>
 				prev ?
-					{ ...prev, selectedIndex: (prev.selectedIndex + 1) % suggestions.length }
+					{
+						...prev,
+						selectedIndex:
+							(prev.selectedIndex + 1) % suggestions.length,
+					}
 				:	prev,
 			);
 			return true;
@@ -308,7 +365,8 @@ export default function SingleProjectView({
 					{
 						...prev,
 						selectedIndex:
-							(prev.selectedIndex - 1 + suggestions.length) % suggestions.length,
+							(prev.selectedIndex - 1 + suggestions.length) %
+							suggestions.length,
 					}
 				:	prev,
 			);
@@ -318,7 +376,12 @@ export default function SingleProjectView({
 			e.preventDefault();
 			const chosen = suggestions[activeMention.selectedIndex];
 			if (chosen) {
-				insertMention(targetId, currentValue, chosen.user?.userName || "user", setValue);
+				insertMention(
+					targetId,
+					currentValue,
+					chosen.user?.userName || "user",
+					setValue,
+				);
 			}
 			return true;
 		}
@@ -429,8 +492,7 @@ export default function SingleProjectView({
 					const projectMember = (project.projectMembers || []).find(
 						(pm) =>
 							pm.member?.id === matchedMember.id ||
-							(pm.member?.userId &&
-								pm.member.userId === user.id),
+							(pm.member?.userId && pm.member.userId === user.id),
 					);
 					const projectRole = projectMember?.projectRole;
 
@@ -488,6 +550,107 @@ export default function SingleProjectView({
 		project.activities || [],
 	);
 
+	// Real-time Pusher subscription for all single project activities and updates
+	useProjectRealtime(project.id, {
+		onActivityCreated: ({ activity }) => {
+			setActivities((prev) => {
+				if (prev.some((a) => a.id === activity.id)) return prev;
+				return [activity as unknown as ProjectActivity, ...prev].slice(0, 20);
+			});
+		},
+		onProjectUpdated: ({ updates, project: updatedProj }) => {
+			if (updates?.title !== undefined) setTitle(updates.title as string);
+			if (updates?.description !== undefined) setDescription(updates.description as string);
+			if (updates?.status !== undefined) setStatus(updates.status as Status);
+			if (updates?.priority !== undefined) setPriority(updates.priority as PriorityLevel);
+			if (updates?.startDate !== undefined) setStartDate(new Date(updates.startDate as string | Date));
+			if (updates?.dueDate !== undefined) setDueDate(new Date(updates.dueDate as string | Date));
+			if (updates?.labels !== undefined) setLabels(updates.labels as string[]);
+		},
+		onCommentCreated: ({ comment }) => {
+			setComments((prev) => {
+				if (prev.some((c) => c.id === comment.id)) return prev;
+				return [comment as unknown as ProjectComment, ...prev];
+			});
+		},
+		onCommentUpdated: ({ commentId, message, comment }) => {
+			setComments((prev) =>
+				prev.map((c) =>
+					c.id === commentId ?
+						((comment as unknown as ProjectComment) || { ...c, message })
+					:	c,
+				),
+			);
+		},
+		onCommentDeleted: ({ commentId }) => {
+			setComments((prev) =>
+				prev.filter((c) => c.id !== commentId && c.replyCommentId !== commentId),
+			);
+		},
+		onResourceAdded: ({ resource }) => {
+			if (resource) {
+				setResources((prev: any[]) => {
+					if (prev.some((r) => r.id === (resource as any).id)) return prev;
+					return [...prev, resource];
+				});
+			}
+		},
+		onResourceUpdated: ({ resource }) => {
+			if (resource) {
+				setResources((prev: any[]) =>
+					prev.map((r) => (r.id === (resource as any).id ? resource : r)),
+				);
+			}
+		},
+		onResourceDeleted: ({ resourceId }) => {
+			if (resourceId) {
+				setResources((prev: any[]) => prev.filter((r) => r.id !== resourceId));
+			}
+		},
+		onMembersUpdated: ({ memberIds, leadId }) => {
+			if (memberIds) setSelectedMembers(memberIds);
+			if (leadId !== undefined) setSelectedLeadId(leadId);
+		},
+		onTaskCreated: (data: any) => {
+			const newTask = data?.task || data;
+			if (newTask && newTask.id) {
+				if (!newTask.projectId || newTask.projectId === project.id) {
+					setTasks((prev: any[]) => {
+						if (prev.some((t: any) => t.id === newTask.id)) {
+							return prev.map((t: any) =>
+								t.id === newTask.id ? { ...t, ...newTask } : t,
+							);
+						}
+						return [newTask, ...prev];
+					});
+				}
+			}
+		},
+		onTaskUpdated: (data: any) => {
+			const taskId = data?.taskId || data?.task?.id || data?.id;
+			const updatedTask = data?.task;
+			const updates = data?.updates || (data?.task ? undefined : data);
+			if (taskId) {
+				setTasks((prev: any[]) =>
+					prev.map((t: any) => {
+						if (t.id === taskId) {
+							return updatedTask ?
+									{ ...t, ...updatedTask }
+								:	{ ...t, ...(updates || {}) };
+						}
+						return t;
+					}),
+				);
+			}
+		},
+		onTaskDeleted: (data: any) => {
+			const taskId = data?.taskId || data?.id;
+			if (taskId) {
+				setTasks((prev: any[]) => prev.filter((t: any) => t.id !== taskId));
+			}
+		},
+	});
+
 	// Delete Project Dialog State
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
@@ -542,14 +705,21 @@ export default function SingleProjectView({
 		setStartDate(new Date(project.startPeriod));
 		setDueDate(new Date(project.endPeriod));
 		setLabels(project.labels || []);
-		setResources(project.resources);
+		setResources(project.resources || []);
 		setComments(project.comments || []);
+		setTasks((prev) => {
+			const serverTasks = project.tasks || [];
+			if (serverTasks.length === 0) return prev.length > 0 ? prev : [];
+			const serverIds = new Set(serverTasks.map((t: any) => t.id));
+			const localOnly = prev.filter((t: any) => !serverIds.has(t.id));
+			return [...localOnly, ...serverTasks];
+		});
 
-		const lead = project.projectMembers.find(
+		const lead = (project.projectMembers || []).find(
 			(e) => e.projectRole === ("PROJECT_LEAD" as ProjectAccess),
 		)?.memberId;
 		setSelectedLeadId(lead);
-		setSelectedMembers(project.projectMembers.map((e) => e.memberId));
+		setSelectedMembers((project.projectMembers || []).map((e) => e.memberId));
 		setActivities((project.activities || []).slice(0, 20));
 	}, [project]);
 
@@ -916,12 +1086,13 @@ export default function SingleProjectView({
 					prev.map((r) => (r.id === resourceId ? res.resource! : r)),
 				);
 				if (res.activity) {
-					setActivities((prev) =>
-						[
+					setActivities((prev) => {
+						if (prev.some((a) => a.id === (res.activity as any).id)) return prev;
+						return [
 							res.activity as unknown as ProjectActivity,
 							...prev,
-						].slice(0, 20),
-					);
+						].slice(0, 20);
+					});
 				}
 				router.refresh();
 			} else {
@@ -945,14 +1116,18 @@ export default function SingleProjectView({
 
 			if (res.success && res.resource) {
 				toast.success(res.message);
-				setResources((prev) => [...prev, res.resource]);
+				setResources((prev) => {
+					if (prev.some((r) => r.id === res.resource!.id)) return prev;
+					return [...prev, res.resource];
+				});
 				if (res.activity) {
-					setActivities((prev) =>
-						[
+					setActivities((prev) => {
+						if (prev.some((a) => a.id === (res.activity as any).id)) return prev;
+						return [
 							res.activity as unknown as ProjectActivity,
 							...prev,
-						].slice(0, 20),
-					);
+						].slice(0, 20);
+					});
 				}
 				setResourceField({ name: "", url: "" });
 				router.refresh();
@@ -978,7 +1153,19 @@ export default function SingleProjectView({
 			});
 			if (res.success && res.comment) {
 				toast.success("Comment posted");
-				setComments((prev) => [res.comment as ProjectComment, ...prev]);
+				setComments((prev) => {
+					if (prev.some((c) => c.id === res.comment.id)) return prev;
+					return [res.comment as ProjectComment, ...prev];
+				});
+				if (res.activity) {
+					setActivities((prev) => {
+						if (prev.some((a) => a.id === (res.activity as any).id)) return prev;
+						return [
+							res.activity as unknown as ProjectActivity,
+							...prev,
+						].slice(0, 20);
+					});
+				}
 				setCommentInput("");
 				router.refresh();
 			} else {
@@ -999,12 +1186,13 @@ export default function SingleProjectView({
 				toast.success("Comment deleted");
 				setComments((prev) => prev.filter((c) => c.id !== commentId));
 				if (res.activity) {
-					setActivities((prev) =>
-						[
+					setActivities((prev) => {
+						if (prev.some((a) => a.id === (res.activity as any).id)) return prev;
+						return [
 							res.activity as unknown as ProjectActivity,
 							...prev,
-						].slice(0, 20),
-					);
+						].slice(0, 20);
+					});
 				}
 				router.refresh();
 			} else {
@@ -1089,6 +1277,24 @@ export default function SingleProjectView({
 			:	leadMember.member.user.fullName;
 	})();
 
+	const creatorName = (() => {
+		const creatorUser = project.createdBy?.user;
+		const isCreatorYou =
+			user?.id ?
+				project.createdBy?.userId === user.id ||
+				creatorUser?.id === user.id ||
+				(Boolean(currentMemberId) &&
+					(project.createdById === currentMemberId ||
+						project.createdBy?.id === currentMemberId))
+			:	false;
+		return isCreatorYou ?
+				"YOU"
+			:	creatorUser?.fullName ||
+					creatorUser?.userName ||
+					creatorUser?.email ||
+					"Creator";
+	})();
+
 	const contributors = project.projectMembers.filter(
 		(e) => e.projectRole === ("CONTRIBUTOR" as ProjectAccess),
 	);
@@ -1123,51 +1329,70 @@ export default function SingleProjectView({
 							<p className="text-[14px]">Back</p>
 						</Link>
 
-						{isEditingTitle ?
-							<div className="flex items-center gap-2 flex-1 max-w-lg">
-								<Input
-									autoFocus
-									disabled={isSavingTitle}
-									value={title}
-									onChange={(e) => setTitle(e.target.value)}
-									onKeyDown={(e) => {
-										if (e.key === "Enter")
-											handleSaveTitle();
-										if (e.key === "Escape") {
-											setTitle(project.title);
-											setIsEditingTitle(false);
-										}
-									}}
-									onBlur={handleSaveTitle}
-									className="text-primary text-xl sm:text-2xl font-bold bg-accent rounded-xl border-primary/20"
-								/>
-								{isSavingTitle && (
-									<Loader2 className="w-4 h-4 animate-spin text-primary" />
-								)}
-							</div>
-						:	<div
-								onClick={() => setIsEditingTitle(true)}
-								className="group flex items-center gap-2 cursor-pointer min-w-0"
-							>
-								<p className="text-primary text-xl sm:text-2xl font-bold truncate hover:opacity-80">
-									{title}
-								</p>
-								<PenLine className="w-4 h-4 text-primary/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-							</div>
+						{canEditProject ?
+							isEditingTitle ?
+								<div className="flex items-center gap-2 flex-1 max-w-lg">
+									<Input
+										autoFocus
+										disabled={isSavingTitle}
+										value={title}
+										onChange={(e) => setTitle(e.target.value)}
+										onKeyDown={(e) => {
+											if (e.key === "Enter")
+												handleSaveTitle();
+											if (e.key === "Escape") {
+												setTitle(project.title);
+												setIsEditingTitle(false);
+											}
+										}}
+										onBlur={handleSaveTitle}
+										placeholder="Project title"
+										className="text-primary text-xl sm:text-2xl font-bold bg-accent rounded-xl border-primary/20 placeholder:text-primary/50"
+									/>
+									{isSavingTitle && (
+										<Loader2 className="w-4 h-4 animate-spin text-primary" />
+									)}
+								</div>
+							:	<div
+									onClick={() => setIsEditingTitle(true)}
+									className="group flex items-center gap-2 cursor-pointer min-w-0"
+								>
+									<p className="text-primary text-xl sm:text-2xl font-bold truncate hover:opacity-80">
+										{title}
+									</p>
+									<PenLine className="w-4 h-4 text-primary/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+								</div>
+						:	<p className="text-primary text-xl sm:text-2xl font-bold truncate">
+								{title}
+							</p>
 						}
+
+						{(project as any)?.visibility === "PRIVATE" ? (
+							<Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-0 flex items-center gap-1 text-[11px] py-0.5 px-2 rounded-full shrink-0">
+								<Lock className="w-3 h-3" />
+								Private
+							</Badge>
+						) : (
+							<Badge className="bg-primary/10 text-primary/70 border-0 flex items-center gap-1 text-[11px] py-0.5 px-2 rounded-full shrink-0">
+								<Globe className="w-3 h-3" />
+								Public
+							</Badge>
+						)}
 					</div>
 
-					<Button
-						onClick={() =>
-							setIsEditingDescription(!isEditingDescription)
-						}
-						className="rounded-full flex items-center gap-2"
-					>
-						<PenLine className="w-4 h-4" />
-						{isEditingDescription ?
-							"Close Editor"
-						:	"Edit Description"}
-					</Button>
+					{canEditProject && (
+						<Button
+							onClick={() =>
+								setIsEditingDescription(!isEditingDescription)
+							}
+							className="rounded-full flex items-center gap-2"
+						>
+							<PenLine className="w-4 h-4" />
+							{isEditingDescription ?
+								"Close Editor"
+							:	"Edit Description"}
+						</Button>
+					)}
 				</div>
 
 				<div className="mt-3">
@@ -1181,6 +1406,7 @@ export default function SingleProjectView({
 								height="250px"
 								minHeight="200px"
 								textColor="text-primary"
+								toolbarClassName="bg-[#969696]"
 							/>
 							<div className="flex justify-end gap-2 mt-2">
 								<Button
@@ -1229,97 +1455,116 @@ export default function SingleProjectView({
 					}
 				</div>
 
-				<div className="bg-accent w-full mt-[10px] py-[10px] px-3 sm:px-[20px] rounded-[20px] sm:rounded-[30px]">
+				<div className="bg-[#969696] w-full mt-[10px] py-[10px] px-3 sm:px-[20px] rounded-[20px] sm:rounded-[30px]">
 					<div className="flex flex-wrap items-center gap-2 sm:gap-3">
-						{/* Interactive Priority Selector */}
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<div
-									className={`text-[12px] text-primary cursor-pointer w-fit rounded-[10px] px-2 py-1 ${renderPriority(priority)} flex items-center gap-1.5 hover:opacity-80 transition-opacity`}
-								>
-									{isSavingPriority ?
-										<Loader2 className="w-3.5 h-3.5 animate-spin" />
-									:	<Flag className="w-4 h-4" />}
-									<span>{priority}</span>
-								</div>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent className="w-[160px] flex flex-col gap-1 border-0 bg-accent p-1">
-								{PRIORITY_LEVEL.map((item, idx) => {
-									const Icon: LucideIcon = item.icon;
-									const isSelected = item.value === priority;
-									return (
-										<div
-											key={idx}
-											onClick={() =>
-												handleUpdatePriority(item.value)
-											}
-											className={`${isSelected ? "bg-primary text-secondary" : "bg-accent text-primary"} py-[4px] cursor-pointer transition-all rounded-[12px] px-[10px] hover:bg-primary hover:text-secondary items-center justify-between flex`}
-										>
-											<div className="items-center gap-1.5 flex">
-												<Icon className="w-4 h-4" />
-												<p className="text-[13px]">
-													{item.title}
-												</p>
+						{/* Priority Selector */}
+						{canEditProject ?
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<div
+										className={`text-[12px] text-primary cursor-pointer w-fit rounded-[10px] px-2 py-1 ${renderPriority(priority)} flex items-center gap-1.5 hover:opacity-80 transition-opacity`}
+									>
+										{isSavingPriority ?
+											<Loader2 className="w-3.5 h-3.5 animate-spin" />
+										:	<Flag className="w-4 h-4" />}
+										<span>{priority}</span>
+									</div>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent className="w-[160px] flex flex-col gap-1 border-0 bg-accent p-1">
+									{PRIORITY_LEVEL.map((item, idx) => {
+										const Icon: LucideIcon = item.icon;
+										const isSelected = item.value === priority;
+										return (
+											<div
+												key={idx}
+												onClick={() =>
+													handleUpdatePriority(item.value)
+												}
+												className={`${isSelected ? "bg-primary text-secondary" : "bg-accent text-primary"} py-[4px] cursor-pointer transition-all rounded-[12px] px-[10px] hover:bg-primary hover:text-secondary items-center justify-between flex`}
+											>
+												<div className="items-center gap-1.5 flex">
+													<Icon className="w-4 h-4" />
+													<p className="text-[13px]">
+														{item.title}
+													</p>
+												</div>
+												{isSelected && (
+													<Check className="w-3 h-3" />
+												)}
 											</div>
-											{isSelected && (
-												<Check className="w-3 h-3" />
-											)}
-										</div>
-									);
-								})}
-							</DropdownMenuContent>
-						</DropdownMenu>
+										);
+									})}
+								</DropdownMenuContent>
+							</DropdownMenu>
+						:	<div
+								className={`text-[12px] text-primary w-fit rounded-[10px] px-2 py-1 ${renderPriority(priority)} flex items-center gap-1.5`}
+							>
+								<Flag className="w-4 h-4" />
+								<span>{priority}</span>
+							</div>
+						}
 
-						{/* Interactive Date Selectors */}
+						{/* Date Selectors */}
 						<div className="flex items-center gap-2 text-primary">
 							<CalendarDays className="w-4 h-4" />
-							<div className="flex gap-2 items-center">
-								<Popover>
-									<PopoverTrigger asChild>
-										<span className="text-[14px] cursor-pointer hover:underline">
-											{format(startDate, "LLL d")}
-										</span>
-									</PopoverTrigger>
-									<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
-										<Calendar
-											mode="single"
-											selected={startDate}
-											onSelect={handleUpdateStartDate}
-											className="bg-primary text-secondary"
-										/>
-									</PopoverContent>
-								</Popover>
+							{canEditProject ?
+								<div className="flex gap-2 items-center">
+									<Popover>
+										<PopoverTrigger asChild>
+											<span className="text-[14px] cursor-pointer hover:underline">
+												{format(startDate, "LLL d")}
+											</span>
+										</PopoverTrigger>
+										<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
+											<Calendar
+												mode="single"
+												selected={startDate}
+												onSelect={handleUpdateStartDate}
+												className="bg-primary text-secondary"
+											/>
+										</PopoverContent>
+									</Popover>
 
-								<MoveRight className="w-4 h-4" />
+									<MoveRight className="w-4 h-4" />
 
-								<Popover>
-									<PopoverTrigger asChild>
-										<span className="text-[14px] cursor-pointer hover:underline">
-											{format(dueDate, "LLL d")}
-										</span>
-									</PopoverTrigger>
-									<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
-										<Calendar
-											mode="single"
-											selected={dueDate}
-											onSelect={handleUpdateDueDate}
-											disabled={{ before: startDate }}
-											className="bg-primary text-secondary"
-										/>
-									</PopoverContent>
-								</Popover>
-							</div>
+									<Popover>
+										<PopoverTrigger asChild>
+											<span className="text-[14px] cursor-pointer hover:underline">
+												{format(dueDate, "LLL d")}
+											</span>
+										</PopoverTrigger>
+										<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
+											<Calendar
+												mode="single"
+												selected={dueDate}
+												onSelect={handleUpdateDueDate}
+												disabled={{ before: startDate }}
+												className="bg-primary text-secondary"
+											/>
+										</PopoverContent>
+									</Popover>
+								</div>
+							:	<div className="flex gap-2 items-center">
+									<span className="text-[14px]">
+										{format(startDate, "LLL d")}
+									</span>
+									<MoveRight className="w-4 h-4" />
+									<span className="text-[14px]">
+										{format(dueDate, "LLL d")}
+									</span>
+								</div>
+							}
 						</div>
 
 						<Badge className="py-[5px] px-[10px]">
 							<Squircle className="w-3.5 h-3.5 mr-1" />
 							<p>
 								{
-									(project.tasks || []).filter(
+									tasks.filter(
 										(t) => t.status === Status.COMPLETED,
 									).length
 								}{" "}
-								out of {(project.tasks || []).length} tasks done
+								out of {tasks.length} tasks done
 							</p>
 						</Badge>
 						<Badge className="py-[5px] px-[10px]">
@@ -1335,116 +1580,158 @@ export default function SingleProjectView({
 					</div>
 
 					<div className="mt-[10px] flex flex-wrap gap-2 items-center">
-						{resources.map((i) => {
-							return (
+						{/* Project-Level Resources */}
+						{(resources || [])
+							.filter((r) => !r.taskId)
+							.map((i) => {
+								return (
+									<div
+										key={i.id}
+										className="flex items-center rounded-full gap-2 px-[15px] py-[8px] h-8 bg-primary text-secondary text-[11px]"
+									>
+										<Link
+											target="__blank"
+											href={i.url}
+											className="flex items-center gap-1.5 hover:underline font-medium"
+										>
+											<Paperclip className="w-3.5 h-3.5" />
+											<span>{i.name}</span>
+										</Link>
+
+										{canManageResources && (
+											<>
+												<Popover>
+													<PopoverTrigger asChild>
+														<button
+															type="button"
+															className="p-0.5 hover:bg-secondary/20 rounded-full transition-colors text-secondary/70 hover:text-secondary"
+															title="Edit resource"
+														>
+															<PenLine className="w-3 h-3" />
+														</button>
+													</PopoverTrigger>
+													<PopoverContent className="rounded-[20px] bg-accent max-w-[200px] text-primary p-3 border-0">
+														<EditResourcePopoverContent
+															resource={i}
+															onSave={(name, url) =>
+																handleUpdateResourceItem(
+																	i.id,
+																	name,
+																	url,
+																)
+															}
+														/>
+													</PopoverContent>
+												</Popover>
+
+												<button
+													type="button"
+													disabled={deletingResourceId === i.id}
+													onClick={() =>
+														handleDeleteResource(i.id)
+													}
+													className="p-0.5 hover:bg-secondary/20 rounded-full transition-colors text-secondary/70 hover:text-secondary disabled:opacity-50"
+													title="Delete resource"
+												>
+													{deletingResourceId === i.id ?
+														<LoaderCircle className="w-3 h-3 animate-spin" />
+													:	<X className="w-3 h-3" />}
+												</button>
+											</>
+										)}
+									</div>
+								);
+							})}
+
+						{/* Task-Level Resources */}
+						{tasks.flatMap((t) =>
+							(t.resources || []).map((tr) => (
 								<div
-									key={i.id}
-									className="flex items-center rounded-full gap-2 px-[15px] py-[8px] h-8 bg-primary text-secondary text-[11px]"
+									key={`task-res-${tr.id}`}
+									className="flex items-center rounded-full gap-2 px-[15px] py-[8px] h-8 bg-primary/80 text-secondary text-[11px] border border-secondary/20"
 								>
 									<Link
-										target="__blank"
-										href={i.url}
-										className="flex items-center gap-1.5 hover:underline font-medium"
+										target="_blank"
+										href={tr.url}
+										className="flex items-center gap-1.5 hover:underline font-medium truncate max-w-[160px]"
 									>
-										<Paperclip className="w-3.5 h-3.5" />
-										<span>{i.name}</span>
+										<Paperclip className="w-3.5 h-3.5 shrink-0" />
+										<span className="truncate">{tr.name}</span>
 									</Link>
-
-									<Popover>
-										<PopoverTrigger asChild>
-											<button
-												type="button"
-												className="p-0.5 hover:bg-secondary/20 rounded-full transition-colors text-secondary/70 hover:text-secondary"
-												title="Edit resource"
-											>
-												<PenLine className="w-3 h-3" />
-											</button>
-										</PopoverTrigger>
-										<PopoverContent className="rounded-[20px] bg-accent max-w-[200px] text-primary p-3 border-0">
-											<EditResourcePopoverContent
-												resource={i}
-												onSave={(name, url) =>
-													handleUpdateResourceItem(
-														i.id,
-														name,
-														url,
-													)
-												}
-											/>
-										</PopoverContent>
-									</Popover>
-
-									<button
-										type="button"
-										disabled={deletingResourceId === i.id}
-										onClick={() =>
-											handleDeleteResource(i.id)
-										}
-										className="p-0.5 hover:bg-secondary/20 rounded-full transition-colors text-secondary/70 hover:text-secondary disabled:opacity-50"
-										title="Delete resource"
+									<Link
+										href={`/tasks/${t.id}`}
+										className="bg-secondary/20 text-secondary hover:bg-secondary/30 px-1.5 py-0.5 rounded-full text-[9px] font-semibold truncate max-w-[100px]"
+										title={`Belongs to task: ${t.title}`}
 									>
-										{deletingResourceId === i.id ?
-											<LoaderCircle className="w-3 h-3 animate-spin" />
-										:	<X className="w-3 h-3" />}
-									</button>
+										{t.title}
+									</Link>
 								</div>
-							);
-						})}
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<div className="gap-2 bg-primary text-secondary px-[8px] py-[8px] h-8 flex items-center rounded-full cursor-pointer hover:bg-primary/90 transition-colors">
-									<Plus className="w-4 h-4" />
-									{resources.length === 0 && (
+							)),
+						)}
+
+						{canManageResources && (
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<div className="gap-1.5 bg-primary text-secondary px-3 py-[8px] h-8 flex items-center rounded-full cursor-pointer hover:bg-primary/90 transition-colors text-xs font-semibold">
+										<Plus className="w-4 h-4" />
 										<p className="text-[12px]">
 											Add project resource
 										</p>
-									)}
-								</div>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent className="rounded-[20px] bg-accent max-w-[190px] text-primary px-[10px] py-2 border-0">
-								<div className="flex flex-col gap-2">
-									<div className="flex flex-col gap-1 items-center w-full">
-										<input
-											disabled={isAddingResource}
-											placeholder="Resource name"
-											value={resourceField.name}
-											onChange={(e) =>
-												setResourceField((prev) => ({
-													...prev,
-													name: e.target.value,
-												}))
-											}
-											className="flex-1 w-full py-[5px] text-[12px] rounded-md bg-primary text-secondary px-2 text-sm outline-none"
-										/>
-										<input
-											disabled={isAddingResource}
-											placeholder="Link"
-											value={resourceField.url}
-											onChange={(e) =>
-												setResourceField((prev) => ({
-													...prev,
-													url: e.target.value,
-												}))
-											}
-											className="flex-1 w-full py-[5px] text-[12px] rounded-md bg-primary text-secondary px-2 text-sm outline-none"
-										/>
-										<Button
-											onClick={handleAddResource}
-											disabled={
-												!resourceField.name.trim() ||
-												!resourceField.url.trim() ||
-												isAddingResource
-											}
-											className="w-full rounded-full text-[12px]"
-										>
-											{isAddingResource ?
-												<LoaderCircle className="w-4 h-4 animate-spin" />
-											:	"Add"}
-										</Button>
 									</div>
-								</div>
-							</DropdownMenuContent>
-						</DropdownMenu>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent className="rounded-[20px] bg-accent max-w-[190px] text-primary px-[10px] py-2 border-0">
+									<div className="flex flex-col gap-2">
+										<div className="flex flex-col gap-1 items-center w-full">
+											<input
+												disabled={isAddingResource}
+												placeholder="Resource name"
+												value={resourceField.name}
+												onChange={(e) =>
+													setResourceField((prev) => ({
+														...prev,
+														name: e.target.value,
+													}))
+												}
+												onKeyDown={(e) => {
+													if (e.key === "Enter")
+														handleAddResource();
+												}}
+												className="flex-1 w-full py-[5px] text-[12px] rounded-md bg-primary text-secondary px-2 text-sm outline-none"
+											/>
+											<input
+												disabled={isAddingResource}
+												placeholder="Link"
+												value={resourceField.url}
+												onChange={(e) =>
+													setResourceField((prev) => ({
+														...prev,
+														url: e.target.value,
+													}))
+												}
+												onKeyDown={(e) => {
+													if (e.key === "Enter")
+														handleAddResource();
+												}}
+												className="flex-1 w-full py-[5px] text-[12px] rounded-md bg-primary text-secondary px-2 text-sm outline-none"
+											/>
+											<Button
+												onClick={handleAddResource}
+												disabled={
+													!resourceField.name.trim() ||
+													!resourceField.url.trim() ||
+													isAddingResource
+												}
+												className="w-full text-xs font-semibold rounded-full bg-primary text-secondary hover:bg-primary/90"
+											>
+												{isAddingResource ?
+													<LoaderCircle className="w-3.5 h-3.5 animate-spin" />
+												:	"Add Resource"}
+											</Button>
+										</div>
+									</div>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						)}
 					</div>
 				</div>
 
@@ -1456,24 +1743,24 @@ export default function SingleProjectView({
 							</p>
 							<p className="text-primary text-[12px]">
 								{
-									(project.tasks || []).filter(
+									tasks.filter(
 										(t) => t.status === Status.COMPLETED,
 									).length
 								}{" "}
-								of {(project.tasks || []).length} tasks done
+								of {tasks.length} tasks done
 							</p>
 						</div>
 						<Progress
 							indicatorClassName="rounded-full"
 							className="h-[25px]"
 							value={
-								(project.tasks || []).length > 0 ?
+								tasks.length > 0 ?
 									Math.round(
-										((project.tasks || []).filter(
+										(tasks.filter(
 											(t) =>
 												t.status === Status.COMPLETED,
 										).length /
-											(project.tasks || []).length) *
+											tasks.length) *
 											100,
 									)
 								:	0
@@ -1484,11 +1771,54 @@ export default function SingleProjectView({
 					<div>
 						<div className="flex items-center justify-between">
 							<p className="font-bold text-primary">
-								Tasks ({(project.tasks || []).length})
+								Tasks ({tasks.length})
 							</p>
-							<Button className="rounded-full">
-								<Plus />
-							</Button>
+							{canCreateTasks && (
+								<Dialog
+									open={isCreateTaskOpen}
+									onOpenChange={setIsCreateTaskOpen}
+								>
+									<DialogTrigger asChild>
+										<Button className="rounded-full">
+											<Plus />
+											Add Task
+										</Button>
+									</DialogTrigger>
+									<DialogContent className="w-full sm:max-w-3xl lg:max-w-6xl rounded-[20px] border-0 bg-primary">
+										<DialogHeader>
+											<DialogTitle className="text-secondary flex items-center gap-3">
+												<Diamond />
+												New Task
+											</DialogTitle>
+											<CreateTask
+												projects={availableProjects}
+												members={members}
+												workspaceId={
+													workspaceId || project.workspaceId
+												}
+												currentMemberId={currentMemberId}
+												initialTotal={initialTotal}
+												defaultProjectId={project.id}
+												onSuccess={(newTask, newActivity) => {
+													if (newTask) {
+														setTasks((prev: any[]) => {
+															if (prev.some((t: any) => t.id === newTask.id)) return prev;
+															return [newTask, ...prev];
+														});
+													}
+													if (newActivity) {
+														setActivities((prev) => {
+															if (prev.some((a: any) => a.id === newActivity.id)) return prev;
+															return [newActivity as unknown as ProjectActivity, ...prev].slice(0, 20);
+														});
+													}
+													setIsCreateTaskOpen(false);
+												}}
+											/>
+										</DialogHeader>
+									</DialogContent>
+								</Dialog>
+							)}
 						</div>
 						<div className="mt-[10px]">
 							<div className="flex flex-col gap-3">
@@ -1501,9 +1831,7 @@ export default function SingleProjectView({
 									className="bg-primary rounded-[15px] border-0 text-secondary placeholder:text-secondary/70"
 								/>
 								{(() => {
-									const filteredTasks = (
-										project.tasks || []
-									).filter((t) =>
+									const filteredTasks = tasks.filter((t) =>
 										taskSearch.trim() ?
 											t.title
 												.toLowerCase()
@@ -1546,6 +1874,9 @@ export default function SingleProjectView({
 															Task
 														</TableHead>
 														<TableHead>
+															Created By
+														</TableHead>
+														<TableHead>
 															Due Date
 														</TableHead>
 														<TableHead>
@@ -1557,57 +1888,146 @@ export default function SingleProjectView({
 													</TableRow>
 												</TableHeader>
 												<TableBody>
-													{filteredTasks.map((t) => (
-														<TableRow key={t.id}>
-															<TableCell className="font-medium">
-																<Link
-																	href={`/tasks/${t.id}`}
-																	className="hover:underline hover:opacity-85 transition-opacity"
-																>
-																	{t.title}
-																</Link>
-															</TableCell>
-															<TableCell>
-																{t.endPeriod ?
-																	format(
-																		new Date(
-																			t.endPeriod,
-																		),
-																		"PPP",
-																	)
-																:	"No due date"}
-															</TableCell>
-															<TableCell>
-																<Badge
-																	className={`${renderPriority(t.priority)} text-primary`}
-																>
-																	{t.priority}
-																</Badge>
-															</TableCell>
-															<TableCell>
-																<Badge
-																	className={`${renderStatus(t.status)}`}
-																>
-																	<div className="flex items-center gap-1">
-																		{t.status ===
-																			Status.COMPLETED && (
-																			<CircleCheck className="w-3 h-3" />
-																		)}
-																		{t.status ===
-																			Status.CANCELLED && (
-																			<CircleX className="w-3 h-3" />
-																		)}
-																		<span>
-																			{t.status.replaceAll(
-																				"_",
-																				" ",
+													{filteredTasks.map((t) => {
+														const activeUserId = user?.id;
+														const rawCreatedBy = (t as any).createdBy;
+														const directUser = rawCreatedBy?.user;
+
+														let taskCreatorName = "";
+
+														// 1. Direct createdBy object with user relation
+														if (directUser) {
+															if (activeUserId && (directUser.id === activeUserId || rawCreatedBy?.userId === activeUserId)) {
+																taskCreatorName = "YOU";
+															} else if (directUser.fullName?.trim()) {
+																taskCreatorName = directUser.fullName.trim();
+															} else if (directUser.userName?.trim()) {
+																taskCreatorName = `@${directUser.userName.trim()}`;
+															} else if (directUser.email?.trim()) {
+																taskCreatorName = directUser.email.trim();
+															}
+														}
+
+														// 2. Direct createdBy without user object
+														if (!taskCreatorName && rawCreatedBy) {
+															if (activeUserId && (rawCreatedBy.userId === activeUserId || rawCreatedBy.id === activeUserId)) {
+																taskCreatorName = "YOU";
+															} else if (rawCreatedBy.fullName?.trim()) {
+																taskCreatorName = rawCreatedBy.fullName.trim();
+															} else if (rawCreatedBy.userName?.trim()) {
+																taskCreatorName = `@${rawCreatedBy.userName.trim()}`;
+															}
+														}
+
+														// 3. Look up createdById in workspace members
+														if (!taskCreatorName && t.createdById) {
+															if (activeUserId && (t.createdById === activeUserId || (currentMemberId && t.createdById === currentMemberId))) {
+																taskCreatorName = "YOU";
+															} else {
+																const foundMember = members?.find(
+																	(m: any) => m.id === t.createdById || m.userId === t.createdById,
+																);
+																if (foundMember) {
+																	if (activeUserId && foundMember.userId === activeUserId) {
+																		taskCreatorName = "YOU";
+																	} else {
+																		taskCreatorName =
+																			foundMember.user?.fullName?.trim() ||
+																			(foundMember.user?.userName?.trim() ? `@${foundMember.user.userName.trim()}` : "") ||
+																			foundMember.user?.email?.trim() ||
+																			"";
+																	}
+																}
+															}
+														}
+
+														// 4. Look up createdById in project members
+														if (!taskCreatorName && t.createdById && project?.projectMembers) {
+															const foundPm = project.projectMembers.find(
+																(pm: any) =>
+																	pm.memberId === t.createdById ||
+																	pm.member?.id === t.createdById ||
+																	pm.member?.userId === t.createdById,
+															);
+															if (foundPm?.member) {
+																if (activeUserId && foundPm.member.userId === activeUserId) {
+																	taskCreatorName = "YOU";
+																} else {
+																	taskCreatorName =
+																		foundPm.member.user?.fullName?.trim() ||
+																		(foundPm.member.user?.userName?.trim() ? `@${foundPm.member.user.userName.trim()}` : "") ||
+																		foundPm.member.user?.email?.trim() ||
+																		"";
+																}
+															}
+														}
+
+														// 5. Fallback if current user created it or default to Unassigned
+														if (!taskCreatorName) {
+															if (activeUserId && (t.createdById === currentMemberId || t.createdById === activeUserId)) {
+																taskCreatorName = "YOU";
+															} else {
+																taskCreatorName = "Unassigned";
+															}
+														}
+
+														return (
+															<TableRow key={t.id}>
+																<TableCell className="font-medium">
+																	<Link
+																		href={`/tasks/${t.id}`}
+																		className="hover:underline hover:opacity-85 transition-opacity"
+																	>
+																		{t.title}
+																	</Link>
+																</TableCell>
+																<TableCell>
+																	<span className="text-[12px] font-medium text-secondary">
+																		{taskCreatorName}
+																	</span>
+																</TableCell>
+																<TableCell>
+																	{t.endPeriod ?
+																		format(
+																			new Date(
+																				t.endPeriod,
+																			),
+																			"PPP",
+																		)
+																	:	"No due date"}
+																</TableCell>
+																<TableCell>
+																	<Badge
+																		className={`${renderPriority(t.priority)} text-primary`}
+																	>
+																		{t.priority}
+																	</Badge>
+																</TableCell>
+																<TableCell>
+																	<Badge
+																		className={`${renderStatus(t.status)}`}
+																	>
+																		<div className="flex items-center gap-1">
+																			{t.status ===
+																				Status.COMPLETED && (
+																				<CircleCheck className="w-3 h-3" />
 																			)}
-																		</span>
-																	</div>
-																</Badge>
-															</TableCell>
-														</TableRow>
-													))}
+																			{t.status ===
+																				Status.CANCELLED && (
+																				<CircleX className="w-3 h-3" />
+																			)}
+																			<span>
+																				{t.status.replaceAll(
+																					"_",
+																					" ",
+																				)}
+																			</span>
+																		</div>
+																	</Badge>
+																</TableCell>
+															</TableRow>
+														);
+													})}
 												</TableBody>
 											</Table>
 										</div>
@@ -1744,7 +2164,9 @@ export default function SingleProjectView({
 					{/* Comments Section */}
 					<div className="bg-primary py-[15px] sm:py-[20px] rounded-[20px] sm:rounded-[30px] px-3 sm:px-[20px]">
 						<p className="font-bold text-secondary">Comments</p>
-						<div className="flex flex-col gap-4 mt-3">							{comments && comments.length > 0 ?
+						<div className="flex flex-col gap-4 mt-3">
+							{" "}
+							{comments && comments.length > 0 ?
 								<div className="flex flex-col gap-4 max-h-[350px] overflow-y-auto custom-scrollbar pr-1">
 									{(() => {
 										const renderCommentItem = (
@@ -1782,8 +2204,10 @@ export default function SingleProjectView({
 															>
 																<AvatarFallback
 																	className={`w-full border border-primary bg-accent text-primary font-bold ${
-																		depth >
-																		0 ?
+																		(
+																			depth >
+																			0
+																		) ?
 																			"text-[10px]"
 																		:	"text-xs"
 																	}`}
@@ -1827,8 +2251,10 @@ export default function SingleProjectView({
 																	>
 																		<MoreHorizontal
 																			className={
-																				depth >
-																				0 ?
+																				(
+																					depth >
+																					0
+																				) ?
 																					"w-3.5 h-3.5"
 																				:	"w-4 h-4"
 																			}
@@ -1899,15 +2325,25 @@ export default function SingleProjectView({
 																onChange={(e) =>
 																	handleTextareaChange(
 																		`edit-${comment.id}`,
-																		e.target.value,
-																		e.target.selectionStart,
+																		e.target
+																			.value,
+																		e.target
+																			.selectionStart,
 																		setEditingMessage,
 																	)
 																}
 																onKeyDown={(
 																	e,
 																) => {
-																	if (handleMentionKeyDown(e, `edit-${comment.id}`, editingMessage, setEditingMessage)) return;
+																	if (
+																		handleMentionKeyDown(
+																			e,
+																			`edit-${comment.id}`,
+																			editingMessage,
+																			setEditingMessage,
+																		)
+																	)
+																		return;
 																	if (
 																		e.key ===
 																			"Enter" &&
@@ -1925,7 +2361,9 @@ export default function SingleProjectView({
 																		setEditingCommentId(
 																			null,
 																		);
-																		setActiveMention(null);
+																		setActiveMention(
+																			null,
+																		);
 																	}
 																}}
 																className="bg-accent text-primary text-[12px] rounded-[15px] resize-none h-[80px] border-0 focus-visible:ring-0 outline-0 ring-0 p-3"
@@ -1981,8 +2419,10 @@ export default function SingleProjectView({
 																type="button"
 																onClick={() => {
 																	setReplyingToCommentId(
-																		replyingToCommentId ===
-																			comment.id ?
+																		(
+																			replyingToCommentId ===
+																				comment.id
+																		) ?
 																			null
 																		:	comment.id,
 																	);
@@ -2032,15 +2472,25 @@ export default function SingleProjectView({
 																onChange={(e) =>
 																	handleTextareaChange(
 																		`reply-${comment.id}`,
-																		e.target.value,
-																		e.target.selectionStart,
+																		e.target
+																			.value,
+																		e.target
+																			.selectionStart,
 																		setReplyInput,
 																	)
 																}
 																onKeyDown={(
 																	e,
 																) => {
-																	if (handleMentionKeyDown(e, `reply-${comment.id}`, replyInput, setReplyInput)) return;
+																	if (
+																		handleMentionKeyDown(
+																			e,
+																			`reply-${comment.id}`,
+																			replyInput,
+																			setReplyInput,
+																		)
+																	)
+																		return;
 																	if (
 																		e.key ===
 																			"Enter" &&
@@ -2058,7 +2508,9 @@ export default function SingleProjectView({
 																		setReplyingToCommentId(
 																			null,
 																		);
-																		setActiveMention(null);
+																		setActiveMention(
+																			null,
+																		);
 																	}
 																}}
 																placeholder="Write a reply... (use @ to mention)"
@@ -2090,7 +2542,9 @@ export default function SingleProjectView({
 																	}
 																	className="h-7 text-xs rounded-full"
 																>
-																	{isPostingReply ?
+																	{(
+																		isPostingReply
+																	) ?
 																		<Loader2 className="w-3 h-3 animate-spin" />
 																	:	"Reply"}
 																</Button>
@@ -2137,7 +2591,6 @@ export default function SingleProjectView({
 									</p>
 								</div>
 							}
-
 							<div className="relative mt-1">
 								{renderMentionDropdown(
 									"main",
@@ -2156,7 +2609,15 @@ export default function SingleProjectView({
 										)
 									}
 									onKeyDown={(e) => {
-										if (handleMentionKeyDown(e, "main", commentInput, setCommentInput)) return;
+										if (
+											handleMentionKeyDown(
+												e,
+												"main",
+												commentInput,
+												setCommentInput,
+											)
+										)
+											return;
 										if (e.key === "Enter" && !e.shiftKey) {
 											e.preventDefault();
 											handleAddComment();
@@ -2183,7 +2644,7 @@ export default function SingleProjectView({
 			</div>
 
 			{/* Sidebar with Interactive Auto-Saving Controls */}
-			<div className="bg-accent px-3 sm:px-[20px] py-[15px] sm:py-[20px] lg:h-[calc(100vh-30px)] overflow-y-auto custom-scrollbar w-full lg:w-[25%] rounded-[20px] sm:rounded-[30px] lg:sticky lg:top-0">
+			<div className="bg-[#969696] px-3 sm:px-[20px] py-[15px] sm:py-[20px] lg:h-[calc(100vh-30px)] overflow-y-auto custom-scrollbar w-full lg:w-[25%] rounded-[20px] sm:rounded-[30px] lg:sticky lg:top-0">
 				<div className="flex flex-col h-full justify-between">
 					<div className="flex flex-col gap-7">
 						{/* Status Auto-Save */}
@@ -2198,32 +2659,59 @@ export default function SingleProjectView({
 								)}
 							</div>
 							<div className="mt-[10px]">
-								<RadioGroup
-									value={status}
-									onValueChange={(val) =>
-										handleUpdateStatus(val as Status)
-									}
-								>
-									{Object.values(Status).map((i, k) => {
-										return (
-											<div
-												key={k}
-												className="flex items-center gap-3"
-											>
-												<RadioGroupItem
-													value={i}
-													id={`status-${k}`}
-												/>
-												<Label
-													className="text-[12px] uppercase text-primary cursor-pointer"
-													htmlFor={`status-${k}`}
+								{canEditProject ?
+									<RadioGroup
+										value={status}
+										onValueChange={(val) =>
+											handleUpdateStatus(val as Status)
+										}
+									>
+										{Object.values(Status).map((i, k) => {
+											return (
+												<div
+													key={k}
+													className="flex items-center gap-3"
 												>
-													{i.replaceAll("_", " ")}
-												</Label>
-											</div>
-										);
-									})}
-								</RadioGroup>
+													<RadioGroupItem
+														value={i}
+														id={`status-${k}`}
+													/>
+													<Label
+														className="text-[12px] uppercase text-primary cursor-pointer"
+														htmlFor={`status-${k}`}
+													>
+														{i.replaceAll("_", " ")}
+													</Label>
+												</div>
+											);
+										})}
+									</RadioGroup>
+								:	<RadioGroup
+										value={status}
+										disabled={true}
+									>
+										{Object.values(Status).map((i, k) => {
+											return (
+												<div
+													key={k}
+													className="flex items-center gap-3 opacity-80"
+												>
+													<RadioGroupItem
+														value={i}
+														id={`status-${k}`}
+														disabled={true}
+													/>
+													<Label
+														className="text-[12px] uppercase text-primary cursor-default"
+														htmlFor={`status-${k}`}
+													>
+														{i.replaceAll("_", " ")}
+													</Label>
+												</div>
+											);
+										})}
+									</RadioGroup>
+								}
 							</div>
 						</div>
 
@@ -2239,79 +2727,71 @@ export default function SingleProjectView({
 								)}
 							</div>
 
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<div className="mt-[10px] w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] cursor-pointer hover:opacity-80 transition-opacity">
-										{projectLeadName}
-									</div>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent className="w-[220px] border-0 bg-accent p-2">
-									<div className="flex items-center gap-2 border-b border-primary/10 pb-2 mb-2">
-										<Search className="w-3.5 h-3.5 text-primary/40 shrink-0" />
-										<input
-											value={memberSearch}
-											onChange={(e) =>
-												setMemberSearch(e.target.value)
-											}
-											placeholder="Search members..."
-											className="flex-1 outline-none bg-transparent text-sm placeholder:text-primary/30"
-										/>
-									</div>
-									<div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1">
-										{displayedMembers
-											.filter((member) =>
-												selectedMembers.includes(
-													member.id,
-												),
-											)
-											.map((member) => (
-												<div
-													key={member.id}
-													onClick={() =>
-														handleSetProjectLead(
-															member.id,
-														)
-													}
-													className={`cursor-pointer flex items-center gap-3 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors ${
-														(
-															member.id ===
-															selectedLeadId
-														) ?
-															"bg-primary/10"
-														:	""
-													}`}
-												>
-													<Checkbox
-														checked={
-															member.id ===
-															selectedLeadId
+							{canManageMembers ?
+								<DropdownMenu>
+									<DropdownMenuTrigger asChild>
+										<div className="mt-[10px] w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] cursor-pointer hover:opacity-80 transition-opacity">
+											{projectLeadName}
+										</div>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent className="w-[220px] border-0 bg-accent p-2">
+										<div className="flex items-center gap-2 border-b border-primary/10 pb-2 mb-2">
+											<Search className="w-3.5 h-3.5 text-primary/40 shrink-0" />
+											<input
+												value={memberSearch}
+												onChange={(e) =>
+													setMemberSearch(e.target.value)
+												}
+												placeholder="Search members..."
+												className="flex-1 outline-none bg-transparent text-sm placeholder:text-primary/30"
+											/>
+										</div>
+										<div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1">
+											{displayedMembers
+												.filter((member) =>
+													selectedMembers.includes(
+														member.id,
+													),
+												)
+												.map((member) => (
+													<div
+														key={member.id}
+														onClick={() =>
+															handleSetProjectLead(
+																member.id,
+															)
 														}
-													/>
-													<div>
-														<p className="font-semibold text-[13px]">
-															{
-																member.user
-																	.fullName
-															}
-														</p>
-														<p className="text-[13px] text-primary/60">
-															@
-															{
-																member.user
-																	.userName
-															}
-														</p>
+														className="cursor-pointer flex items-center gap-3 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors"
+													>
+														<div>
+															<p className="font-semibold text-[13px]">
+																{
+																	member.user
+																		.fullName
+																}
+															</p>
+															<p className="text-[13px] text-primary/60">
+																@
+																{
+																	member.user
+																		.userName
+																}
+															</p>
+														</div>
 													</div>
-												</div>
-											))}
-										{selectedMembers.length === 0 && (
-											<p className="px-2 py-2 text-xs text-primary/50">
-												Select contributors first.
-											</p>
-										)}
-									</div>
-								</DropdownMenuContent>
-							</DropdownMenu>
+												))}
+											{selectedMembers.length === 0 && (
+												<p className="px-2 py-2 text-xs text-primary/50">
+													Select contributors first.
+												</p>
+											)}
+										</div>
+									</DropdownMenuContent>
+								</DropdownMenu>
+							:	<div className="mt-[10px] w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px]">
+									{projectLeadName}
+								</div>
+							}
 						</div>
 
 						{/* Contributors Selector */}
@@ -2339,56 +2819,65 @@ export default function SingleProjectView({
 									);
 								})}
 
-								<DropdownMenu>
-									<DropdownMenuTrigger asChild>
-										<button
-											type="button"
-											className="p-1.5 rounded-full bg-primary/10 hover:bg-primary/20 text-primary text-[10px]"
-										>
-											<Plus className="w-3 h-3" />
-										</button>
-									</DropdownMenuTrigger>
-									<DropdownMenuContent className="w-[220px] border-0 bg-accent p-2">
-										<div className="flex items-center gap-2 border-b border-primary/10 pb-2 mb-2">
-											<Search className="w-3.5 h-3.5 text-primary/40 shrink-0" />
-											<input
-												value={memberSearch}
-												onChange={(e) =>
-													setMemberSearch(
-														e.target.value,
-													)
-												}
-												placeholder="Search members..."
-												className="flex-1 outline-none bg-transparent text-sm placeholder:text-primary/30"
-											/>
-										</div>
-										<div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1">
-											{displayedMembers.map((i) => (
-												<div
-													key={i.id}
-													onClick={() =>
-														toggleMember(i.id)
+								{canManageMembers && (
+									<DropdownMenu>
+										<DropdownMenuTrigger asChild>
+											<button
+												type="button"
+												className="p-1.5 rounded-full bg-primary/10 hover:bg-primary/20 text-primary text-[10px]"
+											>
+												<Plus className="w-3 h-3" />
+											</button>
+										</DropdownMenuTrigger>
+										<DropdownMenuContent className="w-[220px] border-0 bg-accent p-2">
+											<div className="flex items-center gap-2 border-b border-primary/10 pb-2 mb-2">
+												<Search className="w-3.5 h-3.5 text-primary/40 shrink-0" />
+												<input
+													value={memberSearch}
+													onChange={(e) =>
+														setMemberSearch(
+															e.target.value,
+														)
 													}
-													className="cursor-pointer flex items-center gap-3 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors"
-												>
-													<Checkbox
-														checked={selectedMembers.includes(
-															i.id,
-														)}
-													/>
-													<div>
-														<p className="font-semibold text-[13px]">
-															{i.user.fullName}
-														</p>
-														<p className="text-[13px] text-primary/60">
-															@{i.user.userName}
-														</p>
+													placeholder="Search members..."
+													className="flex-1 outline-none bg-transparent text-sm placeholder:text-primary/30"
+												/>
+											</div>
+											<div className="max-h-[200px] overflow-y-auto custom-scrollbar flex flex-col gap-1">
+												{displayedMembers.map((i) => (
+													<div
+														key={i.id}
+														onClick={() =>
+															toggleMember(i.id)
+														}
+														className="cursor-pointer flex items-center gap-3 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors"
+													>
+														<Checkbox
+															checked={selectedMembers.includes(
+																i.id,
+															)}
+														/>
+														<div>
+															<p className="font-semibold text-[13px]">
+																{
+																	i.user
+																		.fullName
+																}
+															</p>
+															<p className="text-[13px] text-primary/60">
+																@
+																{
+																	i.user
+																		.userName
+																}
+															</p>
+														</div>
 													</div>
-												</div>
-											))}
-										</div>
-									</DropdownMenuContent>
-								</DropdownMenu>
+												))}
+											</div>
+										</DropdownMenuContent>
+									</DropdownMenu>
+								)}
 							</div>
 						</div>
 
@@ -2398,22 +2887,27 @@ export default function SingleProjectView({
 								<CalendarDays className="w-4 h-4" />
 								<p className="font-bold">Due Date</p>
 							</div>
-							<Popover>
-								<PopoverTrigger asChild>
-									<p className="text-[12px] mt-[10px] text-primary cursor-pointer hover:underline">
-										{format(dueDate, "PPP")}
-									</p>
-								</PopoverTrigger>
-								<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
-									<Calendar
-										mode="single"
-										selected={dueDate}
-										onSelect={handleUpdateDueDate}
-										disabled={{ before: startDate }}
-										className="bg-primary text-secondary"
-									/>
-								</PopoverContent>
-							</Popover>
+							{canEditProject ?
+								<Popover>
+									<PopoverTrigger asChild>
+										<p className="text-[12px] mt-[10px] text-primary cursor-pointer hover:underline">
+											{format(dueDate, "PPP")}
+										</p>
+									</PopoverTrigger>
+									<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
+										<Calendar
+											mode="single"
+											selected={dueDate}
+											onSelect={handleUpdateDueDate}
+											disabled={{ before: startDate }}
+											className="bg-primary text-secondary"
+										/>
+									</PopoverContent>
+								</Popover>
+							:	<p className="text-[12px] mt-[10px] text-primary">
+									{format(dueDate, "PPP")}
+								</p>
+							}
 						</div>
 
 						{/* Labels */}
@@ -2427,162 +2921,175 @@ export default function SingleProjectView({
 									<Loader2 className="w-3.5 h-3.5 animate-spin" />
 								)}
 							</div>
-							<div className="flex mt-[10px] flex-row flex-wrap gap-2 items-center">
-								{labels.map((i, k) => {
-									return (
-										<Badge
-											key={k}
-											className="w-fit px-[10px] py-[3px] rounded-[9px] bg-[#AD6B3D] text-secondary text-[10px] flex items-center gap-1"
-										>
-											<span>{i}</span>
+							<div className="flex mt-[10px] flex-wrap gap-1.5 items-center">
+								{labels.map((lbl) => (
+									<span
+										key={lbl}
+										className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-primary text-secondary"
+									>
+										#{lbl}
+										{canConfigureProject && (
 											<button
 												type="button"
-												onClick={() => removeLabel(i)}
-												className="hover:opacity-70"
+												onClick={() => removeLabel(lbl)}
+												className="hover:opacity-75 cursor-pointer ml-0.5"
 											>
 												<X className="w-3 h-3" />
 											</button>
-										</Badge>
-									);
-								})}
+										)}
+									</span>
+								))}
 
-								<Popover>
-									<PopoverTrigger asChild>
-										<button
-											type="button"
-											className="p-1.5 rounded-full bg-primary/10 hover:bg-primary/20 text-primary"
+								{canConfigureProject && (
+									<Popover>
+										<PopoverTrigger asChild>
+											<button
+												type="button"
+												className="p-1 rounded-full bg-primary/10 hover:bg-primary/20 text-primary text-[10px] cursor-pointer"
+												title="Add label"
+											>
+												<Plus className="w-3 h-3" />
+											</button>
+										</PopoverTrigger>
+										<PopoverContent
+											className="rounded-[15px] bg-accent text-primary border-0 p-2.5 w-[200px]"
+											align="start"
 										>
-											<Plus className="w-3 h-3" />
-										</button>
-									</PopoverTrigger>
-									<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-3">
-										<div className="flex flex-col gap-2">
-											<input
-												placeholder="#tag"
-												className="h-8 rounded-md text-[12px] bg-primary text-secondary px-2 outline-none"
-												value={labelInput}
-												onChange={(e) =>
-													setLabelInput(
-														e.target.value,
-													)
-												}
-												onKeyDown={(e) => {
-													if (
-														e.key === "Enter" ||
-														e.key === " "
-													) {
-														e.preventDefault();
-														addLabels(
-															extractLabels(
-																labelInput,
-															),
-														);
-														setLabelInput("");
+											<div className="flex flex-col gap-1.5">
+												<p className="text-[11px] font-semibold text-primary/70">
+													Type tag & press Enter
+												</p>
+												<Input
+													placeholder="e.g. backend, ui"
+													value={labelInput}
+													onChange={(e) =>
+														setLabelInput(
+															e.target.value,
+														)
 													}
-												}}
-											/>
-										</div>
-									</PopoverContent>
-								</Popover>
+													className="h-7 text-xs bg-primary text-secondary placeholder:text-secondary/50 rounded-lg border-0"
+													onKeyDown={(e) => {
+														if (
+															e.key === "Enter" ||
+															e.key === " "
+														) {
+															e.preventDefault();
+															addLabels(
+																extractLabels(
+																	labelInput,
+																),
+															);
+															setLabelInput("");
+														}
+													}}
+												/>
+											</div>
+										</PopoverContent>
+									</Popover>
+								)}
 							</div>
 						</div>
 					</div>
 
-					<div className="w-full mt-7 sm:mt-8 pt-2">
-						<Button
-							onClick={() => setIsDeleteDialogOpen(true)}
-							className="py-[25px] rounded-full bg-destructive hover:bg-destructive/90 w-full cursor-pointer"
-						>
-							<Trash2 />
-							Delete Project
-						</Button>
-					</div>
+					{canDeleteProject && (
+						<div className="w-full mt-7 sm:mt-8 pt-2">
+							<Button
+								onClick={() => setIsDeleteDialogOpen(true)}
+								className="py-[25px] rounded-full bg-destructive hover:bg-destructive/90 w-full cursor-pointer"
+							>
+								<Trash2 />
+								Delete Project
+							</Button>
+						</div>
+					)}
 				</div>
 			</div>
 
-			<Dialog
-				open={isDeleteDialogOpen}
-				onOpenChange={(open) => {
-					setIsDeleteDialogOpen(open);
-					if (!open) {
-						setDeleteConfirmInput("");
-						setHasCopiedName(false);
-					}
-				}}
-			>
-				<DialogContent className="rounded-[20px] border-0 bg-primary text-secondary sm:max-w-md p-6">
-					<DialogHeader>
-						<DialogTitle className="text-xl font-bold text-accent flex items-center gap-2">
-							<Trash2 className="w-5 h-5 text-accent shrink-0" />
-							Delete Project
-						</DialogTitle>
-						<DialogDescription className="text-[13px] text-secondary/80 mt-2 leading-relaxed">
-							This action cannot be undone. This will permanently
-							delete the project{" "}
-							<strong className="text-accent">
-								{title || project.title}
-							</strong>{" "}
-							and all associated tasks, comments, and resources.
-						</DialogDescription>
-					</DialogHeader>
+			{canDeleteProject && (
+				<Dialog
+					open={isDeleteDialogOpen}
+					onOpenChange={(open) => {
+						setIsDeleteDialogOpen(open);
+						if (!open) {
+							setDeleteConfirmInput("");
+							setHasCopiedName(false);
+						}
+					}}
+				>
+					<DialogContent className="rounded-[20px] border-0 bg-primary text-secondary sm:max-w-md p-6">
+						<DialogHeader>
+							<DialogTitle className="text-xl font-bold text-accent flex items-center gap-2">
+								<Trash2 className="w-5 h-5 text-accent shrink-0" />
+								Delete Project
+							</DialogTitle>
+							<DialogDescription className="text-[13px] text-secondary/80 mt-2 leading-relaxed">
+								This action cannot be undone. This will permanently
+								delete the project{" "}
+								<strong className="text-accent">
+									{title || project.title}
+								</strong>{" "}
+								and all associated tasks, comments, and resources.
+							</DialogDescription>
+						</DialogHeader>
 
-					<div className="flex flex-col gap-3 my-4">
-						<label className="text-xs font-semibold text-secondary/90 text-center">
-							Project name to verify:
-						</label>
-						<div className="flex items-center justify-center p-3 rounded-xl bg-secondary/10 border border-secondary/20">
-							<span className="font-mono text-sm font-medium text-accent truncate select-all text-center">
-								{title || project.title}
-							</span>
+						<div className="flex flex-col gap-3 my-4">
+							<label className="text-xs font-semibold text-secondary/90 text-center">
+								Project name to verify:
+							</label>
+							<div className="flex items-center justify-center p-3 rounded-xl bg-secondary/10 border border-secondary/20">
+								<span className="font-mono text-sm font-medium text-accent truncate select-all text-center">
+									{title || project.title}
+								</span>
+							</div>
+
+							<label className="text-xs font-semibold text-secondary/90 mt-1">
+								Type project name to confirm:
+							</label>
+							<Input
+								value={deleteConfirmInput}
+								onChange={(e) =>
+									setDeleteConfirmInput(e.target.value)
+								}
+								placeholder={`Type "${title || project.title}" to confirm`}
+								className="h-10 rounded-xl bg-primary border-secondary/30 text-secondary placeholder:text-secondary/40 focus-visible:ring-accent"
+							/>
 						</div>
 
-						<label className="text-xs font-semibold text-secondary/90 mt-1">
-							Type project name to confirm:
-						</label>
-						<Input
-							value={deleteConfirmInput}
-							onChange={(e) =>
-								setDeleteConfirmInput(e.target.value)
-							}
-							placeholder={`Type "${title || project.title}" to confirm`}
-							className="h-10 rounded-xl bg-primary border-secondary/30 text-secondary placeholder:text-secondary/40 focus-visible:ring-accent"
-						/>
-					</div>
-
-					<DialogFooter className="flex flex-col-reverse sm:flex-row gap-2">
-						<DialogClose asChild>
+						<DialogFooter className="flex flex-col-reverse sm:flex-row gap-2">
+							<DialogClose asChild>
+								<Button
+									type="button"
+									disabled={isDeletingProject}
+									className="w-full sm:w-auto rounded-full bg-accent hover:bg-accent/90 text-primary border-0 font-medium cursor-pointer"
+								>
+									Cancel
+								</Button>
+							</DialogClose>
 							<Button
 								type="button"
-								disabled={isDeletingProject}
-								className="w-full sm:w-auto rounded-full bg-accent hover:bg-accent/90 text-primary border-0 font-medium cursor-pointer"
+								onClick={handleDeleteProject}
+								disabled={
+									deleteConfirmInput.trim() !==
+										(title || project.title).trim() ||
+									isDeletingProject
+								}
+								className="w-full sm:w-auto rounded-full bg-destructive text-white hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
 							>
-								Cancel
+								{isDeletingProject ?
+									<>
+										<Loader2 className="w-4 h-4 animate-spin" />
+										Deleting...
+									</>
+								:	<>
+										<Trash2 className="w-4 h-4" />
+										Delete Project
+									</>
+								}
 							</Button>
-						</DialogClose>
-						<Button
-							type="button"
-							onClick={handleDeleteProject}
-							disabled={
-								deleteConfirmInput.trim() !==
-									(title || project.title).trim() ||
-								isDeletingProject
-							}
-							className="w-full sm:w-auto rounded-full bg-destructive text-white hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
-						>
-							{isDeletingProject ?
-								<>
-									<Loader2 className="w-4 h-4 animate-spin" />
-									Deleting...
-								</>
-							:	<>
-									<Trash2 className="w-4 h-4" />
-									Delete Project
-								</>
-							}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+						</DialogFooter>
+					</DialogContent>
+				</Dialog>
+			)}
 		</div>
 	);
 }

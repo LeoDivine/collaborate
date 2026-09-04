@@ -94,7 +94,7 @@ export default function ProtectedNavbar({
 
 	// console.log({ user });
 	return (
-		<div className=" md:w-[calc(100%-20px)]  flex justify-between items-center py-[10px] px-[10px] md:px-[30px] rounded-[20px] bg-primary">
+		<div className=" md:w-[calc(100%-20px)] text-secondary flex justify-between items-center py-[10px] px-[10px] md:px-[30px] rounded-[20px] bg-primary">
 			<div className="">
 				<div className=" items-center flex gap-3">
 					<Badge
