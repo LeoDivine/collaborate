@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { DeskMode, WorkspaceRoles } from "../../../../../generated/prisma/enums";
 import WorkspaceView from "./workspace-view";
+import { cn } from "@/lib/utils";
 
 export type WorkspaceMemberItem = {
 	id: string;
@@ -93,7 +94,14 @@ export default function WorkspaceList({
 						className="flex items-center justify-center gap-1.5 py-2 text-xs sm:text-sm"
 					>
 						<span>All</span>
-						<span className="px-1.5 py-0.2 text-[10px] font-semibold rounded-full bg-white/20 text-white">
+						<span
+							className={cn(
+								"px-1.5 py-0.2 text-[10px] font-semibold rounded-full transition-colors",
+								activeTab === "ALL"
+									? "bg-white/20 text-white"
+									: "bg-primary/15 text-primary",
+							)}
+						>
 							{totalCount}
 						</span>
 					</TabsTrigger>
@@ -103,7 +111,14 @@ export default function WorkspaceList({
 					>
 						<Users className="size-3.5" />
 						<span>Teams</span>
-						<span className="px-1.5 py-0.2 text-[10px] font-semibold rounded-full bg-white/20 text-white">
+						<span
+							className={cn(
+								"px-1.5 py-0.2 text-[10px] font-semibold rounded-full transition-colors",
+								activeTab === "WORKSPACE"
+									? "bg-white/20 text-white"
+									: "bg-primary/15 text-primary",
+							)}
+						>
 							{teamCount}
 						</span>
 					</TabsTrigger>
@@ -113,7 +128,14 @@ export default function WorkspaceList({
 					>
 						<User className="size-3.5" />
 						<span>Personal</span>
-						<span className="px-1.5 py-0.2 text-[10px] font-semibold rounded-full bg-white/20 text-white">
+						<span
+							className={cn(
+								"px-1.5 py-0.2 text-[10px] font-semibold rounded-full transition-colors",
+								activeTab === "INDIVIDUAL"
+									? "bg-white/20 text-white"
+									: "bg-primary/15 text-primary",
+							)}
+						>
 							{individualCount}
 						</span>
 					</TabsTrigger>

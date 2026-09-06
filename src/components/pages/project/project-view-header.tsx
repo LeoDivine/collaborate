@@ -30,10 +30,13 @@ export default function ProjectViewHeader({
 	onDialogChange,
 }: ProjectViewHeaderProps) {
 	return (
-		<div className=" flex justify-between items-center">
-			<p className=" text-[20px] font-bold text-primary">
-				Projects ({projectsTotal})
-			</p>
+		<div className="flex justify-between items-center">
+			<div className="flex items-center gap-2.5">
+				<Box className="w-5 h-5 text-primary" />
+				<p className="text-[20px] font-bold text-primary">
+					Projects ({projectsTotal})
+				</p>
+			</div>
 
 			<Dialog open={open} onOpenChange={onDialogChange}>
 				<DialogTrigger asChild>

@@ -1,9 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import {
+	formatPriority,
 	getInitials,
 	renderPriority,
 	renderPriorityLight,
@@ -23,14 +24,25 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import {
 	Box,
 	Calendar,
+	CheckCircle2,
+	Circle,
 	ExternalLink,
 	Flag,
 	Squircle,
 	UserCheck,
 } from "lucide-react";
 import TaskAssigneeOverview from "@/components/pages/tasks/task-assignee-overview";
+import { PRIORITY_LEVEL } from "@/lib/const";
+import { updateTaskDetails } from "@/lib/services/task.services";
 
 import { Status } from "../../../../generated/prisma/enums";
 
@@ -39,6 +51,7 @@ export interface TaskProjectProps {
 	cellDate?: Date;
 	isDialogView?: boolean;
 	showFullView?: boolean;
+	onTaskUpdate?: (task: Tasks) => void;
 }
 
 export default function TaskProject({
@@ -46,6 +59,7 @@ export default function TaskProject({
 	cellDate,
 	isDialogView = false,
 	showFullView = false,
+	onTaskUpdate,
 }: TaskProjectProps) {
 	const isFull = isDialogView || showFullView;
 
@@ -59,19 +73,43 @@ export default function TaskProject({
 	const members = task.taskMembers || [];
 	const milestones = task.milestones || [];
 
+	const priorityMeta = PRIORITY_LEVEL.find((p) => p.value === priority);
+	const PriorityIcon = priorityMeta?.icon;
+
+	const handleQuickToggleComplete = async (e: React.MouseEvent) => {
+		e.stopPropagation();
+		e.preventDefault();
+		const nextStatus = isCompleted ? Status.TODO : Status.COMPLETED;
+		try {
+			await updateTaskDetails({
+				taskId: task.id,
+				values: { status: nextStatus },
+			});
+			if (onTaskUpdate) {
+				onTaskUpdate({ ...task, status: nextStatus });
+			}
+		} catch (err) {
+			console.error("Failed to toggle task completion:", err);
+		}
+	};
+
 	return (
 		<div className="mt-1">
 			{!isFull && (
 				<div className="md:hidden inline">
 					<Dialog>
 						<DialogTrigger asChild>
-							<div
-								className={`w-[14px] rounded-full h-[14px] cursor-pointer ${renderPriority(priority)} ${isCompleted ? "opacity-60" : ""}`}
+							<button
+								type="button"
+								aria-label={`${isCompleted ? "Completed: " : ""}Task: ${title} (${priorityMeta?.title || formatPriority(priority)})`}
+								className={`w-[14px] rounded-full h-[14px] cursor-pointer inline-flex items-center justify-center ${renderPriority(priority)} ${isCompleted ? "opacity-60 ring-1 ring-secondary" : ""}`}
 								title={title}
-							/>
+							>
+								{isCompleted && <CheckCircle2 className="w-2.5 h-2.5 text-secondary" />}
+							</button>
 						</DialogTrigger>
 						<DialogContent className="max-w-md rounded-2xl p-6 bg-primary text-secondary border-primary">
-							<TaskDialogDetail task={task} />
+							<TaskDialogDetail task={task} onTaskUpdate={onTaskUpdate} />
 						</DialogContent>
 					</Dialog>
 				</div>
@@ -79,16 +117,44 @@ export default function TaskProject({
 			<div className={isFull ? "block" : "hidden md:inline"}>
 				<Dialog>
 					<DialogTrigger asChild>
-						<div className="flex cursor-pointer overflow-hidden rounded-md group hover:opacity-90 transition-opacity">
+						<div
+							role="button"
+							tabIndex={0}
+							aria-label={`${isCompleted ? "Completed: " : ""}Task: ${title} (${priorityMeta?.title || priority})`}
+							className={`flex cursor-pointer overflow-hidden rounded-md group hover:opacity-95 transition-all ${
+								isCompleted ? "opacity-65" : ""
+							}`}
+						>
 							<div
 								className={`w-1.5 shrink-0 ${renderPriority(priority)}`}
 							/>
 
 							<div
-								className={`flex-1 py-1 px-2 ${renderPriorityLight(priority)}`}
+								className={`flex-1 py-1 px-2 flex items-center gap-1.5 min-w-0 ${renderPriorityLight(priority)}`}
 							>
+								{/* Quick Complete Toggle Button */}
+								<button
+									type="button"
+									onClick={handleQuickToggleComplete}
+									className="shrink-0 p-0.5 rounded hover:bg-primary/20 text-primary transition-colors cursor-pointer"
+									title={isCompleted ? "Mark incomplete" : "Mark completed"}
+									aria-label={isCompleted ? "Mark incomplete" : "Mark completed"}
+								>
+									{isCompleted ? (
+										<CheckCircle2 className="w-3.5 h-3.5 text-green-600 fill-green-600/20" />
+									) : (
+										<Circle className="w-3.5 h-3.5 text-primary/50 group-hover:text-primary transition-colors" />
+									)}
+								</button>
+
+								{PriorityIcon && (
+									<PriorityIcon
+										className={`w-3 h-3 shrink-0 ${isDialogView ? "text-secondary/80" : "text-primary/70"}`}
+										aria-hidden="true"
+									/>
+								)}
 								<p
-									className={`text-[12px] font-medium ${isDialogView ? "text-secondary" : "text-primary"} ${isCompleted ? "line-through opacity-70" : ""} line-clamp-1`}
+									className={`text-[12px] font-medium truncate ${isDialogView ? "text-secondary" : "text-primary"} ${isCompleted ? "line-through opacity-75 italic" : ""}`}
 								>
 									{title}
 								</p>
@@ -97,7 +163,7 @@ export default function TaskProject({
 					</DialogTrigger>
 
 					<DialogContent className="max-w-md sm:max-w-lg rounded-2xl p-6 bg-primary text-secondary border-primary">
-						<TaskDialogDetail task={task} />
+						<TaskDialogDetail task={task} onTaskUpdate={onTaskUpdate} />
 					</DialogContent>
 				</Dialog>
 			</div>
@@ -105,16 +171,49 @@ export default function TaskProject({
 	);
 }
 
-function TaskDialogDetail({ task }: { task: Tasks }) {
+function TaskDialogDetail({
+	task,
+	onTaskUpdate,
+}: {
+	task: Tasks;
+	onTaskUpdate?: (task: Tasks) => void;
+}) {
+	const [expanded, setExpanded] = useState(false);
+	const [currentStatus, setCurrentStatus] = useState<Status>(task.status);
+	const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
 	const title = task.title || "Untitled Task";
 	const priority = task.priority;
-	const status = task.status;
-	const isCompleted = status === Status.COMPLETED;
+	const isCompleted = currentStatus === Status.COMPLETED;
 	const project = task.project;
 	const startPeriod = task.startPeriod ? new Date(task.startPeriod) : null;
 	const endPeriod = task.endPeriod ? new Date(task.endPeriod) : null;
 	const members = task.taskMembers || [];
 	const milestones = task.milestones || [];
+
+	const priorityMeta = PRIORITY_LEVEL.find((p) => p.value === priority);
+	const PriorityIcon = priorityMeta?.icon;
+
+	const handleStatusChange = async (newStatus: Status) => {
+		setCurrentStatus(newStatus);
+		setIsUpdatingStatus(true);
+		try {
+			await updateTaskDetails({
+				taskId: task.id,
+				values: { status: newStatus },
+			});
+			if (onTaskUpdate) {
+				onTaskUpdate({ ...task, status: newStatus });
+			}
+		} catch (err) {
+			console.error("Failed to update status", err);
+			setCurrentStatus(task.status);
+		} finally {
+			setIsUpdatingStatus(false);
+		}
+	};
+
+	const descText = stripHtml(task.description);
 
 	return (
 		<div className="space-y-4 text-secondary">
@@ -133,15 +232,29 @@ function TaskDialogDetail({ task }: { task: Tasks }) {
 							</Badge>
 						</Link>
 					)}
+					<div className="relative">
+						<Select
+							value={currentStatus}
+							onValueChange={(val) => handleStatusChange(val as Status)}
+							disabled={isUpdatingStatus}
+						>
+							<SelectTrigger className={`h-7 py-1 px-2.5 text-xs rounded-full text-secondary font-medium border-0 ${renderStatus(currentStatus)} cursor-pointer`}>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent className="border-primary bg-primary text-secondary">
+								<SelectItem value={Status.TODO}>To Do</SelectItem>
+								<SelectItem value={Status.IN_PROGRESS}>In Progress</SelectItem>
+								<SelectItem value={Status.ON_HOLD}>On Hold</SelectItem>
+								<SelectItem value={Status.COMPLETED}>Completed</SelectItem>
+								<SelectItem value={Status.CANCELLED}>Canceled</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
 					<Badge
-						className={`py-[5px] px-[10px] text-xs rounded-full text-secondary font-medium border-0 ${renderStatus(status)}`}
+						className={`py-[5px] px-[10px] text-xs rounded-full text-secondary font-medium border-0 flex items-center gap-1 ${renderPriority(priority)}`}
 					>
-						{status.replaceAll("_", " ")}
-					</Badge>
-					<Badge
-						className={`py-[5px] px-[10px] text-xs rounded-full text-secondary font-medium border-0 ${renderPriority(priority)}`}
-					>
-						{priority}
+						{PriorityIcon && <PriorityIcon className="w-3 h-3 text-secondary" />}
+						{priorityMeta?.title || formatPriority(priority)}
 					</Badge>
 				</div>
 				<DialogTitle
@@ -149,10 +262,23 @@ function TaskDialogDetail({ task }: { task: Tasks }) {
 				>
 					{title}
 				</DialogTitle>
-				{stripHtml(task.description) && (
-					<DialogDescription className="text-sm text-secondary/80 line-clamp-3">
-						{stripHtml(task.description)}
-					</DialogDescription>
+				{descText && (
+					<div>
+						<DialogDescription
+							className={`text-sm text-secondary/80 ${expanded ? "" : "line-clamp-3"}`}
+						>
+							{descText}
+						</DialogDescription>
+						{descText.length > 120 && (
+							<button
+								type="button"
+								className="text-xs text-secondary/70 underline mt-1 hover:text-secondary cursor-pointer"
+								onClick={() => setExpanded((prev) => !prev)}
+							>
+								{expanded ? "Show less" : "Show more"}
+							</button>
+						)}
+					</div>
 				)}
 			</DialogHeader>
 

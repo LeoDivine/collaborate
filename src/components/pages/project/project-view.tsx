@@ -16,6 +16,7 @@ export default function ProjectView({
 	projectsTotal = 0,
 	currentUserId,
 	currentMemberId,
+	pageSize = 20,
 }: {
 	isCreating: string;
 	members: MembersUsers[];
@@ -25,6 +26,7 @@ export default function ProjectView({
 	projectsTotal: number;
 	currentUserId?: string;
 	currentMemberId?: string;
+	pageSize?: number;
 }) {
 	const searchParams = useSearchParams();
 	const creating = searchParams.get("creating") || isCreating;
@@ -180,6 +182,7 @@ export default function ProjectView({
 				workspaceId={workspaceId}
 				currentUserId={currentUserId}
 				currentMemberId={currentMemberId}
+				pageSize={pageSize}
 			/>
 		</div>
 	);

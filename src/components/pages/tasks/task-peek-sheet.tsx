@@ -6,14 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-	Dialog,
-	DialogClose,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@/components/ui/dialog";
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -40,7 +41,7 @@ import {
 	updateTaskMembers,
 } from "@/lib/services/task.services";
 import type { MembersUsers, Tasks } from "@/lib/types";
-import { getInitials, renderPriority, renderStatus } from "@/lib/utils";
+import { formatPriority, formatStatus, getInitials, renderPriority, renderStatus } from "@/lib/utils";
 import { format, isPast, isToday, isTomorrow } from "date-fns";
 import {
 	AlertCircle,
@@ -50,11 +51,13 @@ import {
 	Check,
 	CheckCircle2,
 	ChevronDown,
+	Diamond,
 	ExternalLink,
 	Flag,
 	Loader2,
 	Plus,
 	SlidersHorizontal,
+	Squircle,
 	Trash2,
 	UserCheck,
 	UserPlus,
@@ -78,7 +81,7 @@ const STATUS_OPTIONS = [
 	{ label: "In Progress", value: Status.IN_PROGRESS },
 	{ label: "On Hold", value: Status.ON_HOLD },
 	{ label: "Completed", value: Status.COMPLETED },
-	{ label: "Cancelled", value: Status.CANCELLED },
+	{ label: "Canceled", value: Status.CANCELLED },
 ];
 
 interface TaskPeekSheetProps {
@@ -166,7 +169,21 @@ export default function TaskPeekSheet({
 	const handleStatusChange = async (newStatus: Status) => {
 		if (newStatus === task.status) return;
 		setIsUpdatingStatus(true);
-		onTaskUpdated?.({ id: task.id, status: newStatus });
+		let nextMilestones = task.milestones;
+		if (newStatus === Status.COMPLETED) {
+			nextMilestones = (task.milestones || []).map((m) => ({
+				...m,
+				status: MileStoneStatus.DONE,
+				...(currentMember?.id ? { completedById: currentMember.id } : {}),
+			}));
+		} else if (newStatus === Status.IN_PROGRESS || newStatus === Status.TODO) {
+			nextMilestones = (task.milestones || []).map((m) => ({
+				...m,
+				status: MileStoneStatus.NOT_STARTED,
+				completedById: null,
+			}));
+		}
+		onTaskUpdated?.({ id: task.id, status: newStatus, milestones: nextMilestones });
 
 		try {
 			const res = await updateTaskDetails({
@@ -175,9 +192,12 @@ export default function TaskPeekSheet({
 			});
 			if (res && !res.success) {
 				toast.error(res.message || "Failed to update status");
-				onTaskUpdated?.({ id: task.id, status: task.status });
+				onTaskUpdated?.({ id: task.id, status: task.status, milestones: task.milestones });
 			} else {
-				toast.success(`Status updated to ${newStatus.replace("_", " ")}`);
+				if (res?.task && (res.task as any).milestones) {
+					onTaskUpdated?.({ id: task.id, status: newStatus, milestones: (res.task as any).milestones });
+				}
+				toast.success(`Status updated to ${formatStatus(newStatus)}`);
 			}
 		} catch {
 			toast.error("An error occurred while updating status");
@@ -201,7 +221,7 @@ export default function TaskPeekSheet({
 				toast.error(res.message || "Failed to update priority");
 				onTaskUpdated?.({ id: task.id, priority: task.priority });
 			} else {
-				toast.success(`Priority set to ${newPriority}`);
+				toast.success(`Priority set to ${formatPriority(newPriority)}`);
 			}
 		} catch {
 			toast.error("An error occurred while updating priority");
@@ -364,6 +384,13 @@ export default function TaskPeekSheet({
 					{/* Top Action Bar */}
 					<div className="flex items-center justify-between px-6 py-4 border-b border-secondary/10 bg-primary sticky top-0 z-10 backdrop-blur-md">
 						<div className="flex items-center gap-2">
+							<Badge
+								variant="outline"
+								className="bg-secondary/10 text-secondary border-secondary/20 flex items-center gap-1.5 py-0.5 px-2.5 text-xs font-semibold"
+							>
+								<Diamond className="w-3.5 h-3.5 text-accent" />
+								<span>Task</span>
+							</Badge>
 							{task.project && (
 								<Link
 									href={`/projects/${task.projectId}`}
@@ -434,7 +461,7 @@ export default function TaskPeekSheet({
 						{/* Quick Properties Grid */}
 						<div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-[16px] bg-secondary/5 border border-secondary/10">
 							{/* Status */}
-							<div className="flex flex-col gap-1">
+							<div className="flex flex-col gap-1 min-w-0">
 								<span className="text-[11px] font-semibold text-secondary/60 uppercase tracking-wider">
 									Status
 								</span>
@@ -445,17 +472,17 @@ export default function TaskPeekSheet({
 												disabled={isUpdatingStatus}
 												className={`${renderStatus(
 													task.status,
-												)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity`}
+												)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity whitespace-nowrap shrink-0`}
 											>
 												{isUpdatingStatus ? (
-													<Loader2 className="w-3 h-3 animate-spin" />
+													<Loader2 className="w-3 h-3 animate-spin shrink-0" />
 												) : (
-													<CheckCircle2 className="w-3 h-3" />
+													<CheckCircle2 className="w-3 h-3 shrink-0" />
 												)}
-												<span>
-													{task.status.replace("_", " ")}
+												<span className="whitespace-nowrap">
+													{formatStatus(task.status)}
 												</span>
-												<ChevronDown className="w-3 h-3 opacity-70" />
+												<ChevronDown className="w-3 h-3 opacity-70 shrink-0" />
 											</button>
 										</DropdownMenuTrigger>
 										<DropdownMenuContent className="bg-primary border border-secondary/20 text-secondary min-w-[140px] rounded-[12px]">
@@ -465,18 +492,18 @@ export default function TaskPeekSheet({
 													onClick={() =>
 														handleStatusChange(opt.value)
 													}
-													className="cursor-pointer hover:bg-secondary/10 flex items-center justify-between text-xs py-2"
+													className="cursor-pointer hover:bg-secondary/10 flex items-center justify-between text-xs py-2 whitespace-nowrap"
 												>
-													<span className="flex items-center gap-2">
+													<span className="flex items-center gap-2 whitespace-nowrap">
 														<span
-															className={`w-2 h-2 rounded-full ${renderStatus(
+															className={`w-2 h-2 rounded-full shrink-0 ${renderStatus(
 																opt.value,
 															)}`}
 														/>
 														{opt.label}
 													</span>
 													{task.status === opt.value && (
-														<Check className="w-3.5 h-3.5 text-accent" />
+														<Check className="w-3.5 h-3.5 text-accent shrink-0" />
 													)}
 												</DropdownMenuItem>
 											))}
@@ -486,16 +513,16 @@ export default function TaskPeekSheet({
 									<div
 										className={`${renderStatus(
 											task.status,
-										)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5`}
+										)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0`}
 									>
-										<CheckCircle2 className="w-3 h-3" />
-										<span>{task.status.replace("_", " ")}</span>
+										<CheckCircle2 className="w-3 h-3 shrink-0" />
+										<span className="whitespace-nowrap">{formatStatus(task.status)}</span>
 									</div>
 								)}
 							</div>
 
 							{/* Priority */}
-							<div className="flex flex-col gap-1">
+							<div className="flex flex-col gap-1 min-w-0">
 								<span className="text-[11px] font-semibold text-secondary/60 uppercase tracking-wider">
 									Priority
 								</span>
@@ -506,15 +533,15 @@ export default function TaskPeekSheet({
 												disabled={isUpdatingPriority}
 												className={`${renderPriority(
 													task.priority,
-												)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold text-primary flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity`}
+												)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold text-primary flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity whitespace-nowrap shrink-0`}
 											>
 												{isUpdatingPriority ? (
-													<Loader2 className="w-3 h-3 animate-spin" />
+													<Loader2 className="w-3 h-3 animate-spin shrink-0" />
 												) : (
-													<Flag className="w-3 h-3" />
+													<Flag className="w-3 h-3 shrink-0" />
 												)}
-												<span>{task.priority}</span>
-												<ChevronDown className="w-3 h-3 opacity-70" />
+												<span className="whitespace-nowrap">{formatPriority(task.priority)}</span>
+												<ChevronDown className="w-3 h-3 opacity-70 shrink-0" />
 											</button>
 										</DropdownMenuTrigger>
 										<DropdownMenuContent className="bg-primary border border-secondary/20 text-secondary min-w-[140px] rounded-[12px]">
@@ -524,11 +551,11 @@ export default function TaskPeekSheet({
 													onClick={() =>
 														handlePriorityChange(opt.value)
 													}
-													className="cursor-pointer hover:bg-secondary/10 flex items-center justify-between text-xs py-2"
+													className="cursor-pointer hover:bg-secondary/10 flex items-center justify-between text-xs py-2 whitespace-nowrap"
 												>
-													<span className="flex items-center gap-2">
+													<span className="flex items-center gap-2 whitespace-nowrap">
 														<span
-															className={`w-2 h-2 rounded-full ${renderPriority(
+															className={`w-2 h-2 rounded-full shrink-0 ${renderPriority(
 																opt.value,
 															)}`}
 														/>
@@ -536,7 +563,7 @@ export default function TaskPeekSheet({
 													</span>
 													{task.priority ===
 														opt.value && (
-														<Check className="w-3.5 h-3.5 text-accent" />
+														<Check className="w-3.5 h-3.5 text-accent shrink-0" />
 													)}
 												</DropdownMenuItem>
 											))}
@@ -546,10 +573,10 @@ export default function TaskPeekSheet({
 									<div
 										className={`${renderPriority(
 											task.priority,
-										)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold text-primary flex items-center gap-1.5`}
+										)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold text-primary flex items-center gap-1.5 whitespace-nowrap shrink-0`}
 									>
-										<Flag className="w-3 h-3" />
-										<span>{task.priority}</span>
+										<Flag className="w-3 h-3 shrink-0" />
+										<span className="whitespace-nowrap">{formatPriority(task.priority)}</span>
 									</div>
 								)}
 							</div>
@@ -772,7 +799,7 @@ export default function TaskPeekSheet({
 						<div className="flex flex-col gap-3">
 							<div className="flex items-center justify-between">
 								<h4 className="text-xs font-bold uppercase tracking-wider text-secondary/70 flex items-center gap-1.5">
-									<CheckCircle2 className="w-3.5 h-3.5" />
+									<Squircle className="w-3.5 h-3.5 text-accent" />
 									Milestones ({completedMilestones}/
 									{totalMilestones})
 								</h4>
@@ -850,49 +877,50 @@ export default function TaskPeekSheet({
 				</SheetContent>
 			</Sheet>
 
-			{/* Delete Confirmation Dialog */}
-			<Dialog
+			{/* Delete Confirmation Alert Dialog */}
+			<AlertDialog
 				open={deleteDialogOpen}
 				onOpenChange={setDeleteDialogOpen}
 			>
-				<DialogContent className="bg-primary text-secondary border border-secondary/20 rounded-[20px] max-w-md">
-					<DialogHeader>
-						<DialogTitle className="text-destructive flex items-center gap-2">
+				<AlertDialogContent className="bg-primary text-secondary border border-secondary/20 rounded-[20px] max-w-md">
+					<AlertDialogHeader>
+						<AlertDialogTitle className="text-destructive flex items-center gap-2">
 							<Trash2 className="w-5 h-5" />
 							Delete Task
-						</DialogTitle>
-						<DialogDescription className="text-secondary/70 text-sm">
+						</AlertDialogTitle>
+						<AlertDialogDescription className="text-secondary/70 text-sm">
 							Are you sure you want to delete{" "}
 							<span className="font-semibold text-secondary">
 								"{task.title}"
 							</span>
 							? This action cannot be undone and will remove all
 							associated milestones, comments, and resources.
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter className="gap-2 sm:gap-0 mt-4">
-						<DialogClose asChild>
-							<Button
-								variant="ghost"
-								className="rounded-full text-secondary hover:bg-secondary/10"
-							>
-								Cancel
-							</Button>
-						</DialogClose>
-						<Button
-							variant="destructive"
-							onClick={handleDeleteTask}
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter className="gap-3 sm:gap-3 mt-4">
+						<AlertDialogCancel
 							disabled={isDeleting}
-							className="rounded-full gap-2"
+							className="rounded-full border-secondary/20 text-secondary hover:bg-secondary/10"
+						>
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							onClick={async (e) => {
+								e.preventDefault();
+								await handleDeleteTask();
+							}}
+							disabled={isDeleting}
+							className="rounded-full bg-destructive text-white hover:bg-destructive/90 gap-2"
 						>
 							{isDeleting && (
 								<Loader2 className="w-4 h-4 animate-spin" />
 							)}
 							Delete Task
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</>
 	);
 }

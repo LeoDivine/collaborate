@@ -17,11 +17,23 @@ import type { TaskMembers } from "@/lib/types";
 
 export default function TaskAssigneeOverview({
 	taskMembers,
+	isSelected = false,
 }: {
 	taskMembers: TaskMembers[];
+	isSelected?: boolean;
 }) {
 	if (!taskMembers || taskMembers.length === 0) {
-		return <p className="text-xs text-muted-foreground">Unassigned</p>;
+		return (
+			<p
+				className={`text-xs ${
+					isSelected
+						? "text-primary/60 dark:text-zinc-400"
+						: "text-secondary/60"
+				}`}
+			>
+				Unassigned
+			</p>
+		);
 	}
 
 	const visibleMembers = taskMembers.slice(0, 3);
@@ -29,7 +41,13 @@ export default function TaskAssigneeOverview({
 
 	return (
 		<div>
-			<AvatarGroup className="*:data-[slot=avatar]:ring-transparent">
+			<AvatarGroup
+				className={`flex -space-x-2 ${
+					isSelected
+						? "*:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:ring-secondary"
+						: "*:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:ring-primary"
+				}`}
+			>
 				{visibleMembers.map((taskMember) => {
 					const member = taskMember.member;
 					const user = member?.user;
@@ -43,8 +61,14 @@ export default function TaskAssigneeOverview({
 							closeDelay={100}
 						>
 							<HoverCardTrigger asChild>
-								<Avatar>
-									<AvatarFallback className="w-full border border-primary bg-secondary text-primary font-bold">
+								<Avatar className="size-8">
+									<AvatarFallback
+										className={`w-full font-bold text-xs shadow-xs transition-colors ${
+											isSelected
+												? "border border-primary bg-primary text-secondary"
+												: "border border-secondary bg-secondary text-primary"
+										}`}
+									>
 										{getInitials(displayName)}
 									</AvatarFallback>
 								</Avatar>
@@ -79,7 +103,13 @@ export default function TaskAssigneeOverview({
 				{remainingCount > 0 && (
 					<HoverCard openDelay={10} closeDelay={100}>
 						<HoverCardTrigger asChild>
-							<AvatarGroupCount className="ring-0 bg-accent text-primary">
+							<AvatarGroupCount
+								className={`size-8 rounded-full font-bold text-xs ring-2 shadow-xs transition-colors flex items-center justify-center ${
+									isSelected
+										? "ring-secondary bg-primary text-secondary border border-primary"
+										: "ring-primary bg-secondary text-primary border border-secondary"
+								}`}
+							>
 								+{remainingCount}
 							</AvatarGroupCount>
 						</HoverCardTrigger>

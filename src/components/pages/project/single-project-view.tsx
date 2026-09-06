@@ -19,7 +19,7 @@ import {
 	ProjectComment,
 	Projects,
 } from "@/lib/types";
-import { getInitials, renderPriority, renderStatus } from "@/lib/utils";
+import { cn, formatLabel, formatPriority, formatStatus, getInitials, renderPriority, renderStatus, STATUS_OPTIONS } from "@/lib/utils";
 import { format, formatDistanceToNowStrict } from "date-fns";
 
 function formatRelativeTime(date: Date | string): string {
@@ -46,9 +46,11 @@ function formatRelativeTime(date: Date | string): string {
 }
 import {
 	Activity,
+	Box,
 	CalendarDays,
 	ChartNoAxesColumn,
 	Check,
+	ChevronDown,
 	CircleCheck,
 	CircleX,
 	Copy,
@@ -75,13 +77,16 @@ import {
 	Trash2,
 	Users,
 	UserStar,
+	Workflow,
 	X,
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+	MileStoneStatus,
 	PriorityLevel,
 	ProjectAccess,
 	Status,
@@ -101,6 +106,16 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import CreateTask from "@/components/forms/create-task";
 import {
 	DropdownMenu,
@@ -192,7 +207,7 @@ export default function SingleProjectView({
 	const [dueDate, setDueDate] = useState<Date>(new Date(project.endPeriod));
 	const [isSavingDueDate, setIsSavingDueDate] = useState(false);
 
-	const [labels, setLabels] = useState<string[]>(project.labels || []);
+	const [labels, setLabels] = useState<string[]>((project.labels || []).map(formatLabel));
 	const [labelInput, setLabelInput] = useState("");
 	const [isSavingLabels, setIsSavingLabels] = useState(false);
 	const [tasks, setTasks] = useState(project.tasks || []);
@@ -558,14 +573,43 @@ export default function SingleProjectView({
 				return [activity as unknown as ProjectActivity, ...prev].slice(0, 20);
 			});
 		},
-		onProjectUpdated: ({ updates, project: updatedProj }) => {
+		onProjectUpdated: (data: any) => {
+			const updates = data?.updates;
 			if (updates?.title !== undefined) setTitle(updates.title as string);
 			if (updates?.description !== undefined) setDescription(updates.description as string);
-			if (updates?.status !== undefined) setStatus(updates.status as Status);
+			if (updates?.status !== undefined) {
+				const nextStatus = updates.status as Status;
+				setStatus(nextStatus);
+				if (data?.tasks) {
+					setTasks(data.tasks);
+				} else if (nextStatus === Status.COMPLETED) {
+					setTasks((prev) =>
+						prev.map((t) => ({
+							...t,
+							status: Status.COMPLETED,
+							milestones: (t.milestones || []).map((m: any) => ({
+								...m,
+								status: MileStoneStatus.DONE,
+							})),
+						})),
+					);
+				} else if (nextStatus === Status.TODO || nextStatus === Status.IN_PROGRESS) {
+					setTasks((prev) =>
+						prev.map((t) => ({
+							...t,
+							status: Status.IN_PROGRESS,
+							milestones: (t.milestones || []).map((m: any) => ({
+								...m,
+								status: MileStoneStatus.IN_PROGRESS,
+							})),
+						})),
+					);
+				}
+			}
 			if (updates?.priority !== undefined) setPriority(updates.priority as PriorityLevel);
 			if (updates?.startDate !== undefined) setStartDate(new Date(updates.startDate as string | Date));
 			if (updates?.dueDate !== undefined) setDueDate(new Date(updates.dueDate as string | Date));
-			if (updates?.labels !== undefined) setLabels(updates.labels as string[]);
+			if (updates?.labels !== undefined) setLabels((updates.labels as string[]).map(formatLabel));
 		},
 		onCommentCreated: ({ comment }) => {
 			setComments((prev) => {
@@ -704,7 +748,7 @@ export default function SingleProjectView({
 		setPriority(project.priority);
 		setStartDate(new Date(project.startPeriod));
 		setDueDate(new Date(project.endPeriod));
-		setLabels(project.labels || []);
+		setLabels((project.labels || []).map(formatLabel));
 		setResources(project.resources || []);
 		setComments(project.comments || []);
 		setTasks((prev) => {
@@ -809,8 +853,35 @@ export default function SingleProjectView({
 	// Auto-save status function
 	const handleUpdateStatus = async (newStatus: Status) => {
 		if (newStatus === status) return;
+		const prevStatus = status;
+		const prevTasks = tasks;
 		setStatus(newStatus);
 		setIsSavingStatus(true);
+
+		if (newStatus === Status.COMPLETED) {
+			setTasks((prev) =>
+				prev.map((t) => ({
+					...t,
+					status: Status.COMPLETED,
+					milestones: (t.milestones || []).map((m: any) => ({
+						...m,
+						status: MileStoneStatus.DONE,
+					})),
+				})),
+			);
+		} else if (newStatus === Status.TODO || newStatus === Status.IN_PROGRESS) {
+			setTasks((prev) =>
+				prev.map((t) => ({
+					...t,
+					status: Status.IN_PROGRESS,
+					milestones: (t.milestones || []).map((m: any) => ({
+						...m,
+						status: MileStoneStatus.IN_PROGRESS,
+					})),
+				})),
+			);
+		}
+
 		try {
 			const res = await updateProjectDetails({
 				projectId: project.id,
@@ -818,7 +889,7 @@ export default function SingleProjectView({
 			});
 			if (res.success) {
 				toast.success(
-					`Status set to ${newStatus.replaceAll("_", " ")}`,
+					`Status set to ${formatStatus(newStatus)}`,
 				);
 				if (res.activity) {
 					setActivities((prev) =>
@@ -828,14 +899,19 @@ export default function SingleProjectView({
 						].slice(0, 20),
 					);
 				}
+				if ((res as any).tasks) {
+					setTasks((res as any).tasks);
+				}
 				router.refresh();
 			} else {
 				toast.error(res.message || "Failed to update status");
-				setStatus(project.status);
+				setStatus(prevStatus);
+				setTasks(prevTasks);
 			}
 		} catch (e) {
 			toast.error("Error updating status");
-			setStatus(project.status);
+			setStatus(prevStatus);
+			setTasks(prevTasks);
 		} finally {
 			setIsSavingStatus(false);
 		}
@@ -852,7 +928,7 @@ export default function SingleProjectView({
 				values: { priority: newPriority },
 			});
 			if (res.success) {
-				toast.success("Priority updated");
+				toast.success(`Priority set to ${formatPriority(newPriority)}`);
 				if (res.activity) {
 					setActivities((prev) =>
 						[
@@ -962,28 +1038,38 @@ export default function SingleProjectView({
 				router.refresh();
 			} else {
 				toast.error(res.message || "Failed to update labels");
-				setLabels(project.labels || []);
+				setLabels((project.labels || []).map(formatLabel));
 			}
 		} catch (e) {
 			toast.error("Error updating labels");
-			setLabels(project.labels || []);
+			setLabels((project.labels || []).map(formatLabel));
 		} finally {
 			setIsSavingLabels(false);
 		}
 	};
 
-	const extractLabels = (value: string) => value.match(/#[\w-]+/g) ?? [];
+	const extractLabels = (value: string) => {
+		const hashTags = value.match(/#+[\w-]+/g);
+		if (hashTags && hashTags.length > 0) {
+			return hashTags;
+		}
+		return value
+			.split(/[\s,]+/)
+			.map((v) => v.trim())
+			.filter((v) => v.length > 0);
+	};
 	const addLabels = (valuesToAdd: string[]) => {
 		const normalized = valuesToAdd
-			.map((v) => v.trim())
-			.filter((v) => v.startsWith("#") && v.length > 1);
+			.map((v) => formatLabel(v))
+			.filter((v) => v.length > 1);
 		if (normalized.length === 0) return;
-		const nextSet = Array.from(new Set([...labels, ...normalized]));
+		const nextSet = Array.from(new Set([...labels.map(formatLabel), ...normalized]));
 		handleSaveLabels(nextSet);
 	};
 
 	const removeLabel = (labelToRemove: string) => {
-		const updated = labels.filter((l) => l !== labelToRemove);
+		const target = formatLabel(labelToRemove);
+		const updated = labels.filter((l) => formatLabel(l) !== target && l !== labelToRemove);
 		handleSaveLabels(updated);
 	};
 
@@ -1253,7 +1339,10 @@ export default function SingleProjectView({
 			});
 			if (res.success && res.comment) {
 				toast.success("Reply posted");
-				setComments((prev) => [...prev, res.comment as ProjectComment]);
+				setComments((prev) => {
+					if (prev.some((c) => c.id === res.comment.id)) return prev;
+					return [res.comment as ProjectComment, ...prev];
+				});
 				setReplyInput("");
 				setReplyingToCommentId(null);
 				router.refresh();
@@ -1317,8 +1406,8 @@ export default function SingleProjectView({
 	const isLongDescription = plainTextDesc.length > 220;
 
 	return (
-		<div className="flex flex-col lg:flex-row gap-3 w-full">
-			<div className="w-full lg:w-[75%] grow">
+		<div className="flex flex-col lg:flex-row gap-4 w-full items-start">
+			<div className="w-full lg:w-[75%] grow flex flex-col gap-4">
 				<div className="flex flex-wrap gap-3 justify-between items-center">
 					<div className="gap-2 sm:gap-3 items-center flex min-w-0 flex-1">
 						<Link
@@ -1395,7 +1484,7 @@ export default function SingleProjectView({
 					)}
 				</div>
 
-				<div className="mt-3">
+				<div>
 					{isEditingDescription ?
 						<div className="flex flex-col gap-2 bg-accent/30 p-3 rounded-[20px] text-primary">
 							<WysiwygEditor
@@ -1431,7 +1520,7 @@ export default function SingleProjectView({
 								</Button>
 							</div>
 						</div>
-					:	<div className="mt-[10px] text-primary text-[14px]">
+					:	<div className="text-primary text-[14px]">
 							<div
 								className={`wysiwyg-content text-primary transition-all duration-300 ${
 									!readMore && isLongDescription ?
@@ -1455,7 +1544,7 @@ export default function SingleProjectView({
 					}
 				</div>
 
-				<div className="bg-[#969696] w-full mt-[10px] py-[10px] px-3 sm:px-[20px] rounded-[20px] sm:rounded-[30px]">
+				<div className="bg-[#969696] w-full py-2.5 px-3 sm:px-4 rounded-2xl">
 					<div className="flex flex-wrap items-center gap-2 sm:gap-3">
 						{/* Priority Selector */}
 						{canEditProject ?
@@ -1467,7 +1556,7 @@ export default function SingleProjectView({
 										{isSavingPriority ?
 											<Loader2 className="w-3.5 h-3.5 animate-spin" />
 										:	<Flag className="w-4 h-4" />}
-										<span>{priority}</span>
+										<span>{formatPriority(priority)}</span>
 									</div>
 								</DropdownMenuTrigger>
 								<DropdownMenuContent className="w-[160px] flex flex-col gap-1 border-0 bg-accent p-1">
@@ -1500,7 +1589,7 @@ export default function SingleProjectView({
 								className={`text-[12px] text-primary w-fit rounded-[10px] px-2 py-1 ${renderPriority(priority)} flex items-center gap-1.5`}
 							>
 								<Flag className="w-4 h-4" />
-								<span>{priority}</span>
+								<span>{formatPriority(priority)}</span>
 							</div>
 						}
 
@@ -1557,14 +1646,17 @@ export default function SingleProjectView({
 						</div>
 
 						<Badge className="py-[5px] px-[10px]">
-							<Squircle className="w-3.5 h-3.5 mr-1" />
+							<Diamond className="w-3.5 h-3.5 mr-1" />
 							<p>
-								{
-									tasks.filter(
-										(t) => t.status === Status.COMPLETED,
-									).length
-								}{" "}
-								out of {tasks.length} tasks done
+								{status === Status.COMPLETED
+									? `${tasks.length} out of ${tasks.length} tasks done`
+									: `${
+											tasks.filter(
+												(t) =>
+													t.status ===
+													Status.COMPLETED,
+											).length
+									  } out of ${tasks.length} tasks done`}
 							</p>
 						</Badge>
 						<Badge className="py-[5px] px-[10px]">
@@ -1735,38 +1827,107 @@ export default function SingleProjectView({
 					</div>
 				</div>
 
-				<div className="mt-[20px] flex flex-col gap-4">
-					<div>
-						<div className="flex items-center justify-between">
-							<p className="text-xl text-primary font-bold">
+				<div className="bg-[#969696] rounded-2xl p-3.5 sm:px-4">
+					<div className="flex items-center justify-between mb-2">
+						<div className="flex items-center gap-2">
+							<Box className="w-4 h-4 text-primary" />
+							<p className="text-xs sm:text-sm font-bold text-primary">
 								Project Progress
 							</p>
-							<p className="text-primary text-[12px]">
-								{
-									tasks.filter(
-										(t) => t.status === Status.COMPLETED,
-									).length
-								}{" "}
-								of {tasks.length} tasks done
-							</p>
 						</div>
-						<Progress
-							indicatorClassName="rounded-full"
-							className="h-[25px]"
-							value={
-								tasks.length > 0 ?
-									Math.round(
+						<p className="text-xs text-primary/70 font-medium">
+							{status === Status.COMPLETED
+								? `${tasks.length} of ${tasks.length} tasks done (100%)`
+								: `${
+										tasks.filter(
+											(t) =>
+												t.status ===
+												Status.COMPLETED,
+										).length
+								  } of ${tasks.length} tasks done (${
+										tasks.length > 0
+											? Math.round(
+													(tasks.filter(
+														(t) =>
+															t.status ===
+															Status.COMPLETED,
+													).length /
+														tasks.length) *
+														100,
+											  )
+											: 0
+								  }%)`}
+						</p>
+					</div>
+					<div
+						role="progressbar"
+						aria-valuenow={
+							status === Status.COMPLETED
+								? 100
+								: tasks.length > 0
+								? Math.round(
 										(tasks.filter(
 											(t) =>
 												t.status === Status.COMPLETED,
 										).length /
 											tasks.length) *
 											100,
-									)
-								:	0
-							}
+								  )
+								: 0
+						}
+						aria-valuemin={0}
+						aria-valuemax={100}
+						className="w-full h-[18px] sm:h-5 bg-black/20 dark:bg-black/30 rounded-full overflow-hidden"
+					>
+						<div
+							className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
+							style={{
+								width: `${
+									status === Status.COMPLETED
+										? 100
+										: tasks.length > 0
+										? Math.round(
+												(tasks.filter(
+													(t) =>
+														t.status ===
+														Status.COMPLETED,
+												).length /
+													tasks.length) *
+													100,
+										  )
+										: 0
+								}%`,
+							}}
 						/>
 					</div>
+				</div>
+
+				<Tabs defaultValue="tasks" className="w-full">
+					<TabsList className="bg-primary/10 dark:bg-accent/40 p-1 rounded-full mb-3 flex-wrap h-auto">
+						<TabsTrigger
+							value="tasks"
+							className="text-xs rounded-full px-4 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5"
+						>
+							<Diamond className="w-3.5 h-3.5" />
+							Tasks ({tasks.length})
+						</TabsTrigger>
+						<TabsTrigger
+							value="activity"
+							className="text-xs rounded-full px-4 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5"
+						>
+							<Workflow className="w-3.5 h-3.5" />
+							Activity ({activities.length})
+						</TabsTrigger>
+						<TabsTrigger
+							value="comments"
+							className="text-xs rounded-full px-4 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5"
+						>
+							<MessageSquare className="w-3.5 h-3.5" />
+							Comments ({comments.length})
+						</TabsTrigger>
+					</TabsList>
+
+					<TabsContent value="tasks" className="mt-0 focus-visible:outline-none">
 
 					<div>
 						<div className="flex items-center justify-between">
@@ -1847,7 +2008,7 @@ export default function SingleProjectView({
 												<div className="bg-accent text-primary py-[10px] px-[10px] rounded-full">
 													{taskSearch.trim() ?
 														<Search className="w-4 h-4" />
-													:	<Squircle className="w-4 h-4" />
+													:	<Diamond className="w-4 h-4" />
 													}
 												</div>
 												<p className="text-xs font-semibold text-secondary mt-[10px]">
@@ -2000,7 +2161,7 @@ export default function SingleProjectView({
 																	<Badge
 																		className={`${renderPriority(t.priority)} text-primary`}
 																	>
-																		{t.priority}
+																		{formatPriority(t.priority)}
 																	</Badge>
 																</TableCell>
 																<TableCell>
@@ -2017,10 +2178,7 @@ export default function SingleProjectView({
 																				<CircleX className="w-3 h-3" />
 																			)}
 																			<span>
-																				{t.status.replaceAll(
-																					"_",
-																					" ",
-																				)}
+																				{formatStatus(t.status)}
 																			</span>
 																		</div>
 																	</Badge>
@@ -2036,12 +2194,14 @@ export default function SingleProjectView({
 							</div>
 						</div>
 					</div>
+				</TabsContent>
 
 					{/* Activity Section */}
-					<div>
-						<p className="font-bold text-primary mb-2.5">
-							Activity
-						</p>
+					<TabsContent value="activity" className="mt-0 focus-visible:outline-none">
+						<div className="bg-accent/30 dark:bg-accent/15 border border-primary/10 rounded-2xl p-4 sm:p-5">
+							<p className="font-bold text-primary mb-3 text-sm sm:text-base">
+								Activity
+							</p>
 						<div>
 							{activities && activities.length > 0 ?
 								<div className="flex flex-col gap-2">
@@ -2159,11 +2319,13 @@ export default function SingleProjectView({
 								</p>
 							}
 						</div>
-					</div>
+						</div>
+					</TabsContent>
 
 					{/* Comments Section */}
-					<div className="bg-primary py-[15px] sm:py-[20px] rounded-[20px] sm:rounded-[30px] px-3 sm:px-[20px]">
-						<p className="font-bold text-secondary">Comments</p>
+					<TabsContent value="comments" className="mt-0 focus-visible:outline-none">
+						<div className="bg-primary py-4 sm:py-5 rounded-2xl px-3 sm:px-5">
+							<p className="font-bold text-secondary">Comments</p>
 						<div className="flex flex-col gap-4 mt-3">
 							{" "}
 							{comments && comments.length > 0 ?
@@ -2178,11 +2340,21 @@ export default function SingleProjectView({
 													user?.id ||
 												comment.member?.user?.id ===
 													user?.id;
-											const replies = comments.filter(
-												(c) =>
-													c.replyCommentId ===
-													comment.id,
-											);
+											const replies = comments
+												.filter(
+													(c) =>
+														c.replyCommentId ===
+														comment.id,
+												)
+												.sort(
+													(a, b) =>
+														new Date(
+															b.createdAt,
+														).getTime() -
+														new Date(
+															a.createdAt,
+														).getTime(),
+												);
 
 											return (
 												<div
@@ -2570,6 +2742,15 @@ export default function SingleProjectView({
 
 										return comments
 											.filter((c) => !c.replyCommentId)
+											.sort(
+												(a, b) =>
+													new Date(
+														b.createdAt,
+													).getTime() -
+													new Date(
+														a.createdAt,
+													).getTime(),
+											)
 											.map((rootComment) =>
 												renderCommentItem(
 													rootComment,
@@ -2640,14 +2821,15 @@ export default function SingleProjectView({
 							</div>
 						</div>
 					</div>
-				</div>
-			</div>
+				</TabsContent>
+			</Tabs>
+		</div>
 
 			{/* Sidebar with Interactive Auto-Saving Controls */}
-			<div className="bg-[#969696] px-3 sm:px-[20px] py-[15px] sm:py-[20px] lg:h-[calc(100vh-30px)] overflow-y-auto custom-scrollbar w-full lg:w-[25%] rounded-[20px] sm:rounded-[30px] lg:sticky lg:top-0">
+			<div className="bg-[#969696] px-3 sm:px-[20px] py-[15px] sm:py-[20px] lg:h-[calc(100vh-30px)] overflow-y-auto custom-scrollbar w-full lg:w-[25%] rounded-[20px] sm:rounded-[30px] lg:sticky lg:top-0 lg:self-start">
 				<div className="flex flex-col h-full justify-between">
-					<div className="flex flex-col gap-7">
-						{/* Status Auto-Save */}
+					<div className="flex flex-col gap-5">
+						{/* Status Radio Selector */}
 						<div>
 							<div className="flex text-primary gap-3 items-center justify-between">
 								<div className="flex gap-2 items-center">
@@ -2658,60 +2840,44 @@ export default function SingleProjectView({
 									<Loader2 className="w-3.5 h-3.5 animate-spin" />
 								)}
 							</div>
-							<div className="mt-[10px]">
-								{canEditProject ?
-									<RadioGroup
-										value={status}
-										onValueChange={(val) =>
-											handleUpdateStatus(val as Status)
-										}
-									>
-										{Object.values(Status).map((i, k) => {
-											return (
-												<div
-													key={k}
-													className="flex items-center gap-3"
-												>
-													<RadioGroupItem
-														value={i}
-														id={`status-${k}`}
-													/>
-													<Label
-														className="text-[12px] uppercase text-primary cursor-pointer"
-														htmlFor={`status-${k}`}
-													>
-														{i.replaceAll("_", " ")}
-													</Label>
-												</div>
-											);
-										})}
-									</RadioGroup>
-								:	<RadioGroup
-										value={status}
-										disabled={true}
-									>
-										{Object.values(Status).map((i, k) => {
-											return (
-												<div
-													key={k}
-													className="flex items-center gap-3 opacity-80"
-												>
-													<RadioGroupItem
-														value={i}
-														id={`status-${k}`}
-														disabled={true}
-													/>
-													<Label
-														className="text-[12px] uppercase text-primary cursor-default"
-														htmlFor={`status-${k}`}
-													>
-														{i.replaceAll("_", " ")}
-													</Label>
-												</div>
-											);
-										})}
-									</RadioGroup>
-								}
+							<div className="mt-3 flex flex-col gap-3.5">
+								{STATUS_OPTIONS.map((item) => {
+									const isSelected = item.value === status;
+									return (
+										<button
+											key={item.value}
+											type="button"
+											disabled={!canEditProject || isSavingStatus}
+											onClick={() => {
+												if (canEditProject && !isSavingStatus) {
+													handleUpdateStatus(item.value);
+												}
+											}}
+											title={
+												!canEditProject
+													? "You do not have permission to edit this project's status"
+													: undefined
+											}
+											className={cn(
+												"flex items-center gap-3.5 text-left transition-all text-primary focus-visible:outline-none w-fit",
+												canEditProject && !isSavingStatus
+													? "cursor-pointer hover:opacity-80"
+													: isSavingStatus
+														? "cursor-wait opacity-70"
+														: "cursor-not-allowed opacity-60 select-none",
+											)}
+										>
+											<div className="size-6 rounded-full bg-[#c5bebe] flex items-center justify-center shrink-0 transition-all">
+												{isSelected && (
+													<div className="size-3.5 rounded-full bg-primary" />
+												)}
+											</div>
+											<span className="text-sm font-medium text-primary">
+												{item.label}
+											</span>
+										</button>
+									);
+								})}
 							</div>
 						</div>
 
@@ -2925,14 +3091,14 @@ export default function SingleProjectView({
 								{labels.map((lbl) => (
 									<span
 										key={lbl}
-										className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-primary text-secondary"
+										className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#AD6B3D] text-white shadow-xs"
 									>
-										#{lbl}
+										{formatLabel(lbl)}
 										{canConfigureProject && (
 											<button
 												type="button"
 												onClick={() => removeLabel(lbl)}
-												className="hover:opacity-75 cursor-pointer ml-0.5"
+												className="hover:opacity-75 cursor-pointer ml-0.5 text-white/80 hover:text-white"
 											>
 												<X className="w-3 h-3" />
 											</button>
@@ -2992,12 +3158,13 @@ export default function SingleProjectView({
 					</div>
 
 					{canDeleteProject && (
-						<div className="w-full mt-7 sm:mt-8 pt-2">
+						<div className="w-full mt-6 pt-3 border-t border-primary/10">
 							<Button
+								variant="destructive"
 								onClick={() => setIsDeleteDialogOpen(true)}
-								className="py-[25px] rounded-full bg-destructive hover:bg-destructive/90 w-full cursor-pointer"
+								className="h-11 rounded-full bg-destructive hover:bg-destructive/90 dark:bg-destructive dark:hover:bg-destructive/90 text-white text-sm font-semibold w-full cursor-pointer transition-all flex items-center justify-center gap-2.5 shadow-sm border-0"
 							>
-								<Trash2 />
+								<Trash2 className="w-4 h-4 text-white shrink-0" />
 								Delete Project
 							</Button>
 						</div>
@@ -3006,7 +3173,7 @@ export default function SingleProjectView({
 			</div>
 
 			{canDeleteProject && (
-				<Dialog
+				<AlertDialog
 					open={isDeleteDialogOpen}
 					onOpenChange={(open) => {
 						setIsDeleteDialogOpen(open);
@@ -3016,21 +3183,21 @@ export default function SingleProjectView({
 						}
 					}}
 				>
-					<DialogContent className="rounded-[20px] border-0 bg-primary text-secondary sm:max-w-md p-6">
-						<DialogHeader>
-							<DialogTitle className="text-xl font-bold text-accent flex items-center gap-2">
-								<Trash2 className="w-5 h-5 text-accent shrink-0" />
+					<AlertDialogContent className="rounded-[20px] border border-secondary/20 bg-primary text-secondary sm:max-w-md p-6">
+						<AlertDialogHeader>
+							<AlertDialogTitle className="text-xl font-bold text-destructive flex items-center gap-2">
+								<Trash2 className="w-5 h-5 text-destructive shrink-0" />
 								Delete Project
-							</DialogTitle>
-							<DialogDescription className="text-[13px] text-secondary/80 mt-2 leading-relaxed">
+							</AlertDialogTitle>
+							<AlertDialogDescription className="text-[13px] text-secondary/80 mt-2 leading-relaxed">
 								This action cannot be undone. This will permanently
 								delete the project{" "}
-								<strong className="text-accent">
+								<strong className="text-secondary font-semibold">
 									{title || project.title}
 								</strong>{" "}
 								and all associated tasks, comments, and resources.
-							</DialogDescription>
-						</DialogHeader>
+							</AlertDialogDescription>
+						</AlertDialogHeader>
 
 						<div className="flex flex-col gap-3 my-4">
 							<label className="text-xs font-semibold text-secondary/90 text-center">
@@ -3055,19 +3222,19 @@ export default function SingleProjectView({
 							/>
 						</div>
 
-						<DialogFooter className="flex flex-col-reverse sm:flex-row gap-2">
-							<DialogClose asChild>
-								<Button
-									type="button"
-									disabled={isDeletingProject}
-									className="w-full sm:w-auto rounded-full bg-accent hover:bg-accent/90 text-primary border-0 font-medium cursor-pointer"
-								>
-									Cancel
-								</Button>
-							</DialogClose>
-							<Button
-								type="button"
-								onClick={handleDeleteProject}
+						<AlertDialogFooter className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-3 mt-4">
+							<AlertDialogCancel
+								disabled={isDeletingProject}
+								className="w-full sm:w-auto rounded-full bg-accent hover:bg-accent/90 text-primary border-0 font-medium cursor-pointer"
+							>
+								Cancel
+							</AlertDialogCancel>
+							<AlertDialogAction
+								variant="destructive"
+								onClick={async (e) => {
+									e.preventDefault();
+									await handleDeleteProject();
+								}}
 								disabled={
 									deleteConfirmInput.trim() !==
 										(title || project.title).trim() ||
@@ -3085,10 +3252,10 @@ export default function SingleProjectView({
 										Delete Project
 									</>
 								}
-							</Button>
-						</DialogFooter>
-					</DialogContent>
-				</Dialog>
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
 			)}
 		</div>
 	);

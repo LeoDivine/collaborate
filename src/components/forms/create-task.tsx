@@ -13,7 +13,10 @@ import {
 import { PRIORITY_LEVEL } from "@/lib/const";
 import { createTask } from "@/lib/services/task.services";
 import type { MembersUsers, Projects } from "@/lib/types";
+import { ProjectCombobox } from "@/components/shared/project-combobox";
+import { getRecentProjectIds, saveRecentProjectId } from "@/lib/storage/recent-projects";
 import {
+	CalendarDays,
 	CalendarRange,
 	Check,
 	CircleSlash,
@@ -25,6 +28,7 @@ import {
 	LucideIcon,
 	Plus,
 	Search,
+	Squircle,
 	Users,
 	X,
 	Zap,
@@ -32,13 +36,14 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PriorityLevel, Status } from "../../../generated/prisma/enums";
+import { formatLabel } from "@/lib/utils";
 import { Button } from "../ui/button";
 import { Calendar } from "../ui/calendar";
 import { Checkbox } from "../ui/checkbox";
 import { DialogClose } from "../ui/dialog";
 import { Separator } from "../ui/separator";
 import { Textarea } from "../ui/textarea";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "../ui/badge";
 
 const PAGE_SIZE = 10;
@@ -50,6 +55,7 @@ export default function CreateTask({
 	currentMemberId,
 	initialTotal = 0,
 	defaultProjectId,
+	defaultStartDate,
 	onSuccess,
 }: {
 	projects: Projects[];
@@ -58,14 +64,52 @@ export default function CreateTask({
 	currentMemberId: string;
 	initialTotal?: number;
 	defaultProjectId?: string;
+	defaultStartDate?: Date;
 	onSuccess?: (createdTask?: any, createdActivity?: any) => void;
 }) {
+	const searchParams = useSearchParams();
+
+	const parsedStartDateFromParams = useMemo(() => {
+		if (defaultStartDate) return defaultStartDate;
+		const param = searchParams?.get("startDate");
+		if (!param) return undefined;
+		const ymdMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(param);
+		if (ymdMatch) {
+			const year = parseInt(ymdMatch[1], 10);
+			const month = parseInt(ymdMatch[2], 10) - 1;
+			const day = parseInt(ymdMatch[3], 10);
+			const d = new Date(year, month, day);
+			if (!isNaN(d.getTime())) return d;
+		}
+		const parsed = new Date(param);
+		return isNaN(parsed.getTime()) ? undefined : parsed;
+	}, [defaultStartDate, searchParams]);
+
+	const effectiveStartDate = defaultStartDate || parsedStartDateFromParams;
+	const projectIdFromParam = searchParams?.get("projectId") || defaultProjectId;
+	const initialProjectId = useMemo(() => {
+		if (projectIdFromParam) return projectIdFromParam;
+		const recents = getRecentProjectIds(workspaceId);
+		if (recents.length > 0) {
+			const validRecent = projects.find((p) => p.id === recents[0]);
+			if (validRecent) return validRecent.id;
+		}
+		return projects[0]?.id || "";
+	}, [projectIdFromParam, projects, workspaceId]);
+
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
-	const [selectedProjectId, setSelectedProjectId] = useState<string>(
-		defaultProjectId || projects[0]?.id || "",
-	);
-	const [startDate, setStartDate] = useState<Date | undefined>();
+	const [selectedProjectId, setSelectedProjectId] = useState<string>(initialProjectId);
+	const [startDate, setStartDate] = useState<Date | undefined>(effectiveStartDate);
+
+	const calendarDateRef = useRef<Date | undefined>(effectiveStartDate);
+	const lastCheckedProjectIdRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		if (effectiveStartDate) {
+			calendarDateRef.current = effectiveStartDate;
+		}
+	}, [effectiveStartDate]);
 	const [dueDate, setDueDate] = useState<Date | undefined>();
 	const [priority, setPriority] = useState<{
 		icon: LucideIcon;
@@ -93,6 +137,19 @@ export default function CreateTask({
 		name?: string;
 		url?: string;
 	}>({ name: "", url: "" });
+
+	const [milestones, setMilestones] = useState<
+		{
+			title: string;
+			description?: string;
+			dueDate?: Date;
+		}[]
+	>([]);
+	const [milestoneField, setMilestoneField] = useState<{
+		title: string;
+		description?: string;
+		dueDate?: Date;
+	}>({ title: "", description: "", dueDate: undefined });
 
 	// Selected project & project members
 	const selectedProject = useMemo(() => {
@@ -132,6 +189,75 @@ export default function CreateTask({
 		setTaskMembers((prev) => prev.filter((id) => validMemberIds.has(id)));
 	}, [selectedProjectId, selectedProject]);
 
+	// Project boundary dates
+	const projectStartDate = useMemo(() => {
+		if (!selectedProject?.startPeriod) return undefined;
+		const d = new Date(selectedProject.startPeriod);
+		d.setHours(0, 0, 0, 0);
+		return d;
+	}, [selectedProject]);
+
+	const projectEndDate = useMemo(() => {
+		if (!selectedProject?.endPeriod) return undefined;
+		const d = new Date(selectedProject.endPeriod);
+		d.setHours(23, 59, 59, 999);
+		return d;
+	}, [selectedProject]);
+
+	const formatStartDate = (date: Date) =>
+		date.toLocaleDateString(undefined, {
+			month: "short",
+			day: "2-digit",
+			year: "numeric",
+		});
+
+	// Reset dates and milestones if they fall outside newly selected project, and notify user
+	useEffect(() => {
+		if (selectedProject) {
+			const pStart = selectedProject.startPeriod ? new Date(selectedProject.startPeriod) : undefined;
+			const pEnd = selectedProject.endPeriod ? new Date(selectedProject.endPeriod) : undefined;
+			if (pStart) pStart.setHours(0, 0, 0, 0);
+			if (pEnd) pEnd.setHours(23, 59, 59, 999);
+
+			const calendarDate = calendarDateRef.current;
+			const dateToCheck = startDate || calendarDate;
+
+			if (dateToCheck) {
+				const target = new Date(dateToCheck);
+				target.setHours(12, 0, 0, 0);
+				const isOutside = (pStart && target < pStart) || (pEnd && target > pEnd);
+
+				if (isOutside) {
+					setStartDate(undefined);
+					setDueDate(undefined);
+					setMilestones([]);
+
+					if (lastCheckedProjectIdRef.current !== selectedProject.id) {
+						lastCheckedProjectIdRef.current = selectedProject.id;
+						toast.warning(
+							`The selected date (${formatStartDate(dateToCheck)}) is outside the scope duration of "${selectedProject.title}". You can change the project or select a date within its duration.`,
+							{ duration: 6000 }
+						);
+					}
+				} else {
+					if (calendarDate && !startDate) {
+						setStartDate(calendarDate);
+					}
+					lastCheckedProjectIdRef.current = selectedProject.id;
+				}
+			}
+
+			if (dueDate) {
+				const dTarget = new Date(dueDate);
+				dTarget.setHours(12, 0, 0, 0);
+				if ((pStart && dTarget < pStart) || (pEnd && dTarget > pEnd)) {
+					setDueDate(undefined);
+					setMilestones([]);
+				}
+			}
+		}
+	}, [selectedProjectId, selectedProject]);
+
 	const setFetching = (val: boolean) => {
 		isFetchingRef.current = val;
 		setIsFetchingMembers(val);
@@ -139,25 +265,23 @@ export default function CreateTask({
 
 	const extractLabels = (value: string) => {
 		if (!value.trim()) return [];
-		const hashTags = value.match(/#[\w-]+/g);
+		const hashTags = value.match(/#+[\w-]+/g);
 		if (hashTags && hashTags.length > 0) {
 			return hashTags;
 		}
 		return value
 			.split(/[\s,]+/)
 			.map((v) => v.trim())
-			.filter((v) => v.length > 0)
-			.map((v) => (v.startsWith("#") ? v : `#${v}`));
+			.filter((v) => v.length > 0);
 	};
 
 	const addLabels = (values: string[]) => {
 		const normalized = values
-			.map((value) => value.trim())
-			.filter((value) => value.length > 1)
-			.map((value) => (value.startsWith("#") ? value : `#${value}`));
+			.map((value) => formatLabel(value))
+			.filter((value) => value.length > 1);
 		if (normalized.length === 0) return;
 		setLabels((prev) => {
-			const next = new Set(prev);
+			const next = new Set(prev.map(formatLabel));
 			for (const label of normalized) {
 				next.add(label);
 			}
@@ -186,11 +310,42 @@ export default function CreateTask({
 	};
 
 	const removeLabel = (label: string) => {
-		setLabels((prev) => prev.filter((item) => item !== label));
+		const target = formatLabel(label);
+		setLabels((prev) => prev.filter((item) => formatLabel(item) !== target && item !== label));
 	};
 
 	const removeResource = (name: string) => {
 		setResources((prev) => prev.filter((item) => item.name !== name));
+	};
+
+	const addMilestoneItem = () => {
+		if (!milestoneField.title.trim()) {
+			toast.error("Milestone title is required");
+			return;
+		}
+		if (milestoneField.dueDate) {
+			if (startDate && milestoneField.dueDate < startDate) {
+				toast.error("Milestone date cannot be before task start date");
+				return;
+			}
+			if (dueDate && milestoneField.dueDate > dueDate) {
+				toast.error("Milestone date cannot be after task due date");
+				return;
+			}
+		}
+		setMilestones((prev) => [
+			...prev,
+			{
+				title: milestoneField.title.trim(),
+				description: milestoneField.description?.trim() || undefined,
+				dueDate: milestoneField.dueDate || dueDate || (startDate ? new Date(startDate) : undefined),
+			},
+		]);
+		setMilestoneField({ title: "", description: "", dueDate: undefined });
+	};
+
+	const removeMilestoneItem = (index: number) => {
+		setMilestones((prev) => prev.filter((_, idx) => idx !== index));
 	};
 
 	const toggleMember = (id: string) => {
@@ -199,15 +354,53 @@ export default function CreateTask({
 		);
 	};
 
-	const formatStartDate = (date: Date) =>
-		date.toLocaleDateString(undefined, {
-			month: "short",
-			day: "2-digit",
-			year: "numeric",
-		});
+	const startDateDisabled = useMemo(() => {
+		const matchers: any[] = [];
+		if (projectStartDate) {
+			matchers.push({ before: projectStartDate });
+		} else if (startDate && startDate < today) {
+			matchers.push({ before: startDate });
+		} else {
+			matchers.push({ before: today });
+		}
+		const maxAllowed = dueDate && projectEndDate
+			? (dueDate < projectEndDate ? dueDate : projectEndDate)
+			: (dueDate || projectEndDate);
+		if (maxAllowed) {
+			matchers.push({ after: maxAllowed });
+		}
+		return matchers;
+	}, [projectStartDate, projectEndDate, dueDate, today, startDate]);
 
-	const minDueDate = startDate ? new Date(startDate) : today;
-	minDueDate.setHours(0, 0, 0, 0);
+	const minDueDate = useMemo(() => {
+		if (startDate) {
+			const d = new Date(startDate);
+			d.setHours(0, 0, 0, 0);
+			return d;
+		}
+		if (projectStartDate) {
+			return projectStartDate;
+		}
+		return today;
+	}, [startDate, projectStartDate, today]);
+
+	const dueDateDisabled = useMemo(() => {
+		const matchers: any[] = [];
+		matchers.push({ before: minDueDate });
+		if (projectEndDate) {
+			matchers.push({ after: projectEndDate });
+		}
+		return matchers;
+	}, [minDueDate, projectEndDate]);
+
+	const milestoneDateDisabled = useMemo(() => {
+		const matchers: any[] = [];
+		const minM = startDate || projectStartDate || today;
+		const maxM = dueDate || projectEndDate;
+		if (minM) matchers.push({ before: minM });
+		if (maxM) matchers.push({ after: maxM });
+		return matchers;
+	}, [startDate, dueDate, projectStartDate, projectEndDate, today]);
 
 	const triggerOpacity = (selected: boolean) =>
 		selected ? "opacity-100" : "opacity-60 md:opacity-100";
@@ -229,14 +422,47 @@ export default function CreateTask({
 			return;
 		}
 
+		if (selectedProject) {
+			const pStart = selectedProject.startPeriod ? new Date(selectedProject.startPeriod) : undefined;
+			const pEnd = selectedProject.endPeriod ? new Date(selectedProject.endPeriod) : undefined;
+			if (pStart) pStart.setHours(0, 0, 0, 0);
+			if (pEnd) pEnd.setHours(23, 59, 59, 999);
+
+			if (pStart && startDate < pStart) {
+				toast.error("Task start date cannot be before the project's start date");
+				return;
+			}
+			if (pEnd && startDate > pEnd) {
+				toast.error("Task start date cannot be after the project's end date");
+				return;
+			}
+			if (pEnd && dueDate > pEnd) {
+				toast.error("Task due date cannot be after the project's end date");
+				return;
+			}
+		}
+
+		if (dueDate < startDate) {
+			toast.error("Task due date cannot be before start date");
+			return;
+		}
+
+		for (const m of milestones) {
+			if (m.dueDate) {
+				if (m.dueDate < startDate || m.dueDate > dueDate) {
+					toast.error(`Milestone "${m.title}" date must be within the task date range`);
+					return;
+				}
+			}
+		}
+
 		let finalLabels = [...labels];
 		if (labelInput.trim()) {
 			const pending = extractLabels(labelInput);
 			const normalized = pending
-				.map((value) => value.trim())
-				.filter((value) => value.length > 1)
-				.map((value) => (value.startsWith("#") ? value : `#${value}`));
-			const set = new Set([...finalLabels, ...normalized]);
+				.map((value) => formatLabel(value))
+				.filter((value) => value.length > 1);
+			const set = new Set([...finalLabels.map(formatLabel), ...normalized]);
 			finalLabels = Array.from(set);
 		}
 
@@ -268,11 +494,13 @@ export default function CreateTask({
 				memberIds: taskMembers,
 				labels: finalLabels,
 				resources: finalResources,
+				milestones,
 			});
 
 			if (!taskRes.success) {
 				toast.error(taskRes.message || "Failed to create task");
 			} else {
+				saveRecentProjectId(workspaceId, selectedProjectId);
 				toast.success("Task created successfully!");
 				if (onSuccess) onSuccess(taskRes.task, taskRes.activity);
 				router.refresh();
@@ -283,10 +511,6 @@ export default function CreateTask({
 			setIsSubmitting(false);
 		}
 	};
-
-	const selectedProjectTitle =
-		projects.find((p) => p.id === selectedProjectId)?.title ||
-		"Select Project";
 
 	return (
 		<div
@@ -318,43 +542,15 @@ export default function CreateTask({
 				{/* Right Sidebar Options: Project, Priority, Members, Dates, Labels, Resources */}
 				<div className="px-[10px] flex flex-row flex-wrap justify-center md:justify-start md:flex-col gap-2.5 py-[10px] w-full md:w-[20%] rounded-[20px]">
 					{/* Project Selector */}
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button
-								disabled={isSubmitting}
-								className={`bg-accent text-[13px] hover:bg-accent text-primary rounded-full ${triggerOpacity(!!selectedProjectId)}`}
-							>
-								<Box className="w-4 h-4 shrink-0" />
-								<span className="md:inline hidden truncate max-w-[120px]">
-									{selectedProjectTitle}
-								</span>
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent className="w-[200px] flex flex-col gap-1 border-0 bg-accent p-2 max-h-[220px] overflow-y-auto custom-scrollbar">
-							<p className="text-[10px] font-bold text-primary/60 px-2 py-1 uppercase">
-								Select Project
-							</p>
-							{projects.map((p) => {
-								const isSelected = p.id === selectedProjectId;
-								return (
-									<div
-										key={p.id}
-										onClick={() =>
-											setSelectedProjectId(p.id)
-										}
-										className={`${isSelected ? "bg-primary text-accent font-semibold" : "bg-accent text-primary"} py-[6px] cursor-pointer transition-all rounded-[12px] px-[10px] hover:bg-primary hover:text-accent items-center justify-between flex text-xs`}
-									>
-										<span className="truncate">
-											{p.title}
-										</span>
-										{isSelected && (
-											<Check className="w-3 h-3 shrink-0" />
-										)}
-									</div>
-								);
-							})}
-						</DropdownMenuContent>
-					</DropdownMenu>
+					<ProjectCombobox
+						projects={projects}
+						selectedProjectId={selectedProjectId}
+						onSelectProject={(id) => setSelectedProjectId(id)}
+						workspaceId={workspaceId}
+						disabled={isSubmitting}
+						variant="pill"
+						triggerClassName={triggerOpacity(!!selectedProjectId)}
+					/>
 
 					{/* Priority Level Selector */}
 					<DropdownMenu>
@@ -501,12 +697,21 @@ export default function CreateTask({
 								</p>
 							</Button>
 						</PopoverTrigger>
-						<PopoverContent className="rounded-[20px] bg-accent text-primary border-0">
+						<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-3">
+							{projectStartDate && projectEndDate && (
+								<div className="text-[11px] font-medium text-primary/70 text-center pb-2 mb-1 border-b border-primary/10">
+									Project: {formatStartDate(projectStartDate)} – {formatStartDate(projectEndDate)}
+								</div>
+							)}
 							<Calendar
 								mode="single"
 								selected={startDate}
-								onSelect={setStartDate}
-								disabled={{ before: today }}
+								onSelect={(d) => {
+									setStartDate(d);
+									calendarDateRef.current = d;
+								}}
+								defaultMonth={startDate || projectStartDate || today}
+								disabled={startDateDisabled}
 								className="bg-primary text-secondary"
 								classNames={{
 									root: "w-full",
@@ -535,12 +740,18 @@ export default function CreateTask({
 								</p>
 							</Button>
 						</PopoverTrigger>
-						<PopoverContent className="rounded-[20px] bg-accent text-primary border-0">
+						<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-3">
+							{projectStartDate && projectEndDate && (
+								<div className="text-[11px] font-medium text-primary/70 text-center pb-2 mb-1 border-b border-primary/10">
+									Project: {formatStartDate(projectStartDate)} – {formatStartDate(projectEndDate)}
+								</div>
+							)}
 							<Calendar
 								mode="single"
 								selected={dueDate}
 								onSelect={setDueDate}
-								disabled={{ before: minDueDate }}
+								defaultMonth={dueDate || startDate || projectStartDate || today}
+								disabled={dueDateDisabled}
 								className="bg-primary text-secondary"
 								classNames={{
 									root: "w-full",
@@ -604,12 +815,12 @@ export default function CreateTask({
 									{labels.map((label) => (
 										<span
 											key={label}
-											className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-xs text-secondary"
+											className="inline-flex items-center gap-1 rounded-full bg-[#AD6B3D] px-2.5 py-0.5 text-xs text-white shadow-xs"
 										>
-											{label}
+											{formatLabel(label)}
 											<button
 												type="button"
-												className="text-secondary/70 hover:text-secondary"
+												className="text-white/80 hover:text-white"
 												disabled={isSubmitting}
 												onClick={() =>
 													removeLabel(label)
@@ -702,6 +913,131 @@ export default function CreateTask({
 												onClick={() =>
 													removeResource(r.name)
 												}
+											/>
+										</div>
+									))}
+								</div>
+							)}
+						</PopoverContent>
+					</Popover>
+
+					{/* Milestones Picker */}
+					<Popover>
+						<PopoverTrigger asChild>
+							<Button
+								disabled={isSubmitting}
+								className={`text-[13px] bg-accent hover:bg-accent text-primary rounded-full ${triggerOpacity(milestones.length > 0)}`}
+							>
+								<Squircle className="w-4 h-4 shrink-0" />
+								<p className="md:inline hidden">
+									{milestones.length > 0 ?
+										`${milestones.length} Milestone${milestones.length === 1 ? "" : "s"}`
+									:	"Milestones"}
+								</p>
+							</Button>
+						</PopoverTrigger>
+						<PopoverContent className="w-[280px] flex flex-col gap-2.5 rounded-[20px] bg-accent border-0 p-3">
+							<p className="text-[11px] font-bold text-primary/60 uppercase">
+								Add Milestone
+							</p>
+							<input
+								disabled={isSubmitting}
+								placeholder="Milestone title..."
+								value={milestoneField.title}
+								onChange={(e) =>
+									setMilestoneField((prev) => ({
+										...prev,
+										title: e.target.value,
+									}))
+								}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										e.preventDefault();
+										addMilestoneItem();
+									}
+								}}
+								className="outline-none bg-primary/10 rounded-[8px] p-2 text-xs text-primary placeholder:text-primary/40"
+							/>
+							<input
+								disabled={isSubmitting}
+								placeholder="Description (optional)..."
+								value={milestoneField.description || ""}
+								onChange={(e) =>
+									setMilestoneField((prev) => ({
+										...prev,
+										description: e.target.value,
+									}))
+								}
+								className="outline-none bg-primary/10 rounded-[8px] p-2 text-xs text-primary placeholder:text-primary/40"
+							/>
+							<Popover>
+								<PopoverTrigger asChild>
+									<Button
+										type="button"
+										variant="outline"
+										className="w-full justify-start text-left font-normal bg-primary/10 text-primary border-0 rounded-[8px] h-8 px-2 text-xs hover:bg-primary/20"
+									>
+										<CalendarDays className="mr-1.5 h-3.5 w-3.5 text-primary/60" />
+										{milestoneField.dueDate ?
+											formatStartDate(milestoneField.dueDate)
+										:	<span className="text-primary/50 truncate">
+												{startDate && dueDate ?
+													`Date (${formatStartDate(startDate)} - ${formatStartDate(dueDate)})`
+												:	"Date (within task range)"}
+											</span>
+										}
+									</Button>
+								</PopoverTrigger>
+								<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2 z-[99999]">
+									{startDate && dueDate && (
+										<div className="text-[11px] font-medium text-primary/70 text-center pb-2 mb-1 border-b border-primary/10">
+											Task: {formatStartDate(startDate)} – {formatStartDate(dueDate)}
+										</div>
+									)}
+									<Calendar
+										mode="single"
+										selected={milestoneField.dueDate}
+										onSelect={(d) =>
+											setMilestoneField((prev) => ({
+												...prev,
+												dueDate: d,
+											}))
+										}
+										defaultMonth={milestoneField.dueDate || startDate || projectStartDate || today}
+										disabled={milestoneDateDisabled}
+										initialFocus
+										className="bg-primary text-secondary"
+									/>
+								</PopoverContent>
+							</Popover>
+							<Button
+								type="button"
+								onClick={addMilestoneItem}
+								className="bg-primary text-secondary hover:bg-primary/90 text-xs rounded-full py-1 mt-0.5"
+							>
+								Add Milestone
+							</Button>
+
+							{milestones.length > 0 && (
+								<div className="flex flex-col gap-1.5 mt-1 max-h-[120px] overflow-y-auto custom-scrollbar border-t border-primary/10 pt-2">
+									{milestones.map((m, idx) => (
+										<div
+											key={idx}
+											className="flex items-center justify-between text-xs text-primary bg-primary/5 p-1.5 rounded-[8px] gap-2"
+										>
+											<div className="flex flex-col min-w-0 flex-1">
+												<span className="truncate font-semibold text-xs">
+													{m.title}
+												</span>
+												{m.dueDate && (
+													<span className="text-[10px] text-primary/60">
+														{formatStartDate(m.dueDate)}
+													</span>
+												)}
+											</div>
+											<X
+												className="w-3.5 h-3.5 cursor-pointer text-primary/60 hover:text-primary shrink-0"
+												onClick={() => removeMilestoneItem(idx)}
 											/>
 										</div>
 									))}

@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OwnerDashboardData } from "@/lib/services/dashboard.services";
-import { getInitials, renderPriority, renderStatus, stripHtml } from "@/lib/utils";
-import { Info, MoveRight, Plus } from "lucide-react";
+import { formatPriority, formatStatus, getInitials, renderPriority, renderStatus, stripHtml } from "@/lib/utils";
+import { Box, CalendarDays, Diamond, Group, Info, MoveRight, Plus, Users, Workflow } from "lucide-react";
 import { User } from "next-auth";
 import Link from "next/link";
 import React from "react";
@@ -68,6 +68,7 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 						<InfoCards
 							title="Completed Projects"
 							value={completedProjects}
+							icon={Box}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
 									<Info className="w-3 h-3" />
@@ -80,6 +81,7 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 						<InfoCards
 							title="Pending Tasks"
 							value={pendingTasks}
+							icon={Diamond}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
 									<Info className="w-3 h-3" />
@@ -92,6 +94,7 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 						<InfoCards
 							title="Total Members"
 							value={totalMembers}
+							icon={Users}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
 									<Info className="w-3 h-3" />
@@ -104,6 +107,7 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 						<InfoCards
 							title="Total Teams"
 							value={totalTeams}
+							icon={Group}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
 									<Info className="w-3 h-3" />
@@ -129,9 +133,12 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 					<div className="mt-[20px]">
 						<Tabs defaultValue="all" className="w-full">
 							<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-								<p className="text-[20px] font-bold text-primary">
-									Projects Overview
-								</p>
+								<div className="flex items-center gap-2">
+									<Box className="w-5 h-5 text-primary" />
+									<p className="text-[20px] font-bold text-primary">
+										Projects Overview
+									</p>
+								</div>
 								<div className="flex items-center gap-3">
 									<TabsList>
 										<TabsTrigger value="all">
@@ -201,7 +208,10 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 						{/* Most Active Project */}
 						<div className="rounded-[20px] px-[20px] py-[20px] bg-[#969696] flex flex-col justify-between md:col-span-1">
 							<div>
-								<p className="text-primary font-medium">Most Active Project</p>
+								<div className="flex items-center gap-2">
+									<Box className="w-4 h-4 text-primary" />
+									<p className="text-primary font-medium">Most Active Project</p>
+								</div>
 								{mostActiveProject ? (
 									<>
 										<div className="font-extrabold text-primary text-3xl flex items-center justify-center py-[24px] my-[10px] rounded-[20px] bg-primary/10 border border-primary/15">
@@ -237,9 +247,12 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 						<div className="rounded-[20px] px-[20px] py-[20px] bg-[#969696] md:col-span-2 flex flex-col justify-between">
 							<div>
 								<div className="flex justify-between items-center">
-									<p className="text-primary font-semibold text-[16px]">
-										Tasks Assigned to Me ({myTasks.length})
-									</p>
+									<div className="flex items-center gap-2">
+										<Diamond className="w-4 h-4 text-primary" />
+										<p className="text-primary font-semibold text-[16px]">
+											Tasks Assigned to Me ({myTasks.length})
+										</p>
+									</div>
 									<Link
 										href="/tasks"
 										className="text-[12px] text-primary font-medium hover:underline flex items-center gap-1 shrink-0"
@@ -280,10 +293,10 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 														</div>
 														<div className="flex items-center gap-1.5 shrink-0">
 															<Badge className={`text-[10px] text-white ${renderPriority(t.priority as any)}`}>
-																{t.priority}
+																{formatPriority(t.priority)}
 															</Badge>
 															<Badge className={`text-[10px] ${renderStatus(t.status as any)}`}>
-																{t.status.replace("_", " ")}
+																{formatStatus(t.status)}
 															</Badge>
 														</div>
 													</div>
@@ -310,9 +323,12 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 
 					{/* Upcoming Deadlines */}
 					<div className="mt-[15px] rounded-[20px] px-[20px] py-[20px] bg-[#969696]">
-						<p className="text-primary font-semibold text-[16px]">
-							Upcoming Deadlines
-						</p>
+						<div className="flex items-center gap-2">
+							<CalendarDays className="w-4 h-4 text-primary" />
+							<p className="text-primary font-semibold text-[16px]">
+								Upcoming Deadlines
+							</p>
+						</div>
 						<div>
 							{upcomingDeadlines.length > 0 ? (
 								upcomingDeadlines.map((task) => (
@@ -331,9 +347,12 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 
 					{/* Recent Activities */}
 					<div className="mt-[15px] rounded-[20px] px-[20px] py-[20px] bg-[#969696]">
-						<p className="text-primary font-semibold text-[16px]">
-							Activities
-						</p>
+						<div className="flex items-center gap-2">
+							<Workflow className="w-4 h-4 text-primary" />
+							<p className="text-primary font-semibold text-[16px]">
+								Activities
+							</p>
+						</div>
 						<div>
 							{recentActivities.length > 0 ? (
 								recentActivities.map((act) => (

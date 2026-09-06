@@ -6,6 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
 	Dialog,
 	DialogClose,
 	DialogContent,
@@ -61,7 +71,7 @@ import {
 import { computeTaskAccess } from "@/lib/permissions/task-permissions";
 import { useTaskRealtime } from "@/hooks/use-pusher";
 import type { MembersUsers, Tasks } from "@/lib/types";
-import { getInitials, renderPriority, renderStatus } from "@/lib/utils";
+import { cn, formatLabel, formatPriority, formatStatus, getInitials, renderPriority, renderStatus, STATUS_OPTIONS } from "@/lib/utils";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import {
 	Box,
@@ -69,6 +79,7 @@ import {
 	ChartNoAxesColumn,
 	Check,
 	CheckSquare,
+	ChevronDown,
 	CircleCheck,
 	CircleX,
 	CornerDownRight,
@@ -89,11 +100,14 @@ import {
 	Plus,
 	Search,
 	Squircle,
+	Tags,
 	Trash2,
 	Users,
 	UserStar,
+	Workflow,
 	X,
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -193,6 +207,14 @@ export default function SingleTaskView({
 		}
 	});
 	const [isSavingDueDate, setIsSavingDueDate] = useState(false);
+
+	const [labels, setLabels] = useState<string[]>(
+		(((task as any).Labels || (task as any).labels || []) as string[]).map(
+			formatLabel,
+		),
+	);
+	const [labelInput, setLabelInput] = useState("");
+	const [isSavingLabels, setIsSavingLabels] = useState(false);
 
 	const [readMore, setReadMore] = useState(false);
 
@@ -299,17 +321,39 @@ export default function SingleTaskView({
 				});
 			}
 		},
-		onTaskUpdated: ({ updates }) => {
+		onTaskUpdated: ({ updates, task: updatedTaskData }: any) => {
 			if (updates?.title !== undefined) setTitle(updates.title as string);
 			if (updates?.description !== undefined) setDescription(updates.description as string);
 			if (updates?.status !== undefined) setStatus(updates.status as Status);
 			if (updates?.priority !== undefined) setPriority(updates.priority as PriorityLevel);
 			if (updates?.startPeriod !== undefined) setStartDate(new Date(updates.startPeriod as string | Date));
 			if (updates?.endPeriod !== undefined) setDueDate(new Date(updates.endPeriod as string | Date));
-			setTask((prev) => ({
-				...prev,
-				...(updates || {}),
-			}));
+			if (updates?.Labels !== undefined) setLabels(((updates.Labels as string[]) || []).map(formatLabel));
+			if (updates?.labels !== undefined) setLabels(((updates.labels as string[]) || []).map(formatLabel));
+			setTask((prev) => {
+				let nextMilestones = prev.milestones;
+				if (updatedTaskData?.milestones) {
+					nextMilestones = updatedTaskData.milestones;
+				} else if (updates?.status === Status.COMPLETED) {
+					nextMilestones = (prev.milestones || []).map((m) => ({
+						...m,
+						status: MileStoneStatus.DONE,
+					}));
+				} else if (updates?.status === Status.IN_PROGRESS || updates?.status === Status.TODO) {
+					nextMilestones = (prev.milestones || []).map((m) => ({
+						...m,
+						status: MileStoneStatus.NOT_STARTED,
+						completedById: null,
+					}));
+				}
+
+				return {
+					...prev,
+					...(updates || {}),
+					...(updatedTaskData || {}),
+					milestones: nextMilestones,
+				};
+			});
 		},
 		onCommentCreated: ({ comment }) => {
 			setComments((prev: any[]) => {
@@ -821,18 +865,38 @@ export default function SingleTaskView({
 					return [res.activity as any, ...prev];
 				});
 			}
-			setTask((prev) => ({
-				...prev,
-				status: nextStatus,
-				activities:
-					res.activity ?
-						((prev.activities || []).some((a) => a.id === (res.activity as any).id) ?
-							(prev.activities || [])
-						:	[res.activity as any, ...(prev.activities || [])])
-					:	prev.activities,
-			}));
+			setTask((prev) => {
+				let nextMilestones = prev.milestones;
+				if (res.task && (res.task as any).milestones) {
+					nextMilestones = (res.task as any).milestones;
+				} else if (nextStatus === Status.COMPLETED) {
+					nextMilestones = (prev.milestones || []).map((m) => ({
+						...m,
+						status: MileStoneStatus.DONE,
+						...(currentMember?.id ? { completedById: currentMember.id } : {}),
+					}));
+				} else if (nextStatus === Status.IN_PROGRESS || nextStatus === Status.TODO) {
+					nextMilestones = (prev.milestones || []).map((m) => ({
+						...m,
+						status: MileStoneStatus.NOT_STARTED,
+						completedById: null,
+					}));
+				}
+
+				return {
+					...prev,
+					status: nextStatus,
+					milestones: nextMilestones,
+					activities:
+						res.activity ?
+							((prev.activities || []).some((a) => a.id === (res.activity as any).id) ?
+								(prev.activities || [])
+							:	[res.activity as any, ...(prev.activities || [])])
+						:	prev.activities,
+				};
+			});
 			toast.success(
-				`Status updated to ${nextStatus.replaceAll("_", " ")}`,
+				`Status updated to ${formatStatus(nextStatus)}`,
 			);
 			if (res.projectAutoCompleted) {
 				toast.success(
@@ -876,7 +940,7 @@ export default function SingleTaskView({
 						:	[res.activity as any, ...(prev.activities || [])])
 					:	prev.activities,
 			}));
-			toast.success(`Priority updated to ${nextPriority}`);
+			toast.success(`Priority updated to ${formatPriority(nextPriority)}`);
 		} else {
 			toast.error(res.message || "Failed to update priority");
 		}
@@ -885,6 +949,31 @@ export default function SingleTaskView({
 	// Update Start Date
 	const handleUpdateStartDate = async (date: Date | undefined) => {
 		if (!date) return;
+		const projStart = task.project?.startPeriod ? new Date(task.project.startPeriod) : undefined;
+		const projEnd = task.project?.endPeriod ? new Date(task.project.endPeriod) : undefined;
+		if (projStart) projStart.setHours(0, 0, 0, 0);
+		if (projEnd) projEnd.setHours(23, 59, 59, 999);
+
+		if (projStart && date < projStart) {
+			toast.error("Task start date cannot be before project start date");
+			return;
+		}
+		if (projEnd && date > projEnd) {
+			toast.error("Task start date cannot be after project end date");
+			return;
+		}
+		if (dueDate && date > dueDate) {
+			toast.error("Task start date cannot be after due date");
+			return;
+		}
+		const hasEarlierMilestone = (task.milestones || []).some(
+			(m) => m.dueDate && new Date(m.dueDate) < date,
+		);
+		if (hasEarlierMilestone) {
+			toast.error("Cannot set start date after an existing milestone date");
+			return;
+		}
+
 		setIsSavingStartDate(true);
 		const res = await updateTaskDetails({
 			taskId: task.id,
@@ -919,6 +1008,25 @@ export default function SingleTaskView({
 	// Update Due Date
 	const handleUpdateDueDate = async (date: Date | undefined) => {
 		if (!date) return;
+		const projEnd = task.project?.endPeriod ? new Date(task.project.endPeriod) : undefined;
+		if (projEnd) projEnd.setHours(23, 59, 59, 999);
+
+		if (startDate && date < startDate) {
+			toast.error("Task due date cannot be before start date");
+			return;
+		}
+		if (projEnd && date > projEnd) {
+			toast.error("Task due date cannot be after project end date");
+			return;
+		}
+		const hasLaterMilestone = (task.milestones || []).some(
+			(m) => m.dueDate && new Date(m.dueDate) > date,
+		);
+		if (hasLaterMilestone) {
+			toast.error("Cannot set due date before an existing milestone date");
+			return;
+		}
+
 		setIsSavingDueDate(true);
 		const res = await updateTaskDetails({
 			taskId: task.id,
@@ -950,12 +1058,92 @@ export default function SingleTaskView({
 		}
 	};
 
+	// Auto-save labels helper
+	const handleSaveLabels = async (newLabels: string[]) => {
+		setLabels(newLabels);
+		setIsSavingLabels(true);
+		try {
+			const res = await updateTaskDetails({
+				taskId: task.id,
+				values: { Labels: newLabels },
+				memberId: currentMember?.id,
+			});
+			if (res.success) {
+				toast.success("Labels updated");
+				if (res.activity) {
+					setActivities((prev) => {
+						if (prev.some((a) => a.id === (res.activity as any).id)) return prev;
+						return [res.activity as any, ...prev];
+					});
+				}
+				setTask((prev) => ({
+					...prev,
+					Labels: newLabels,
+					activities:
+						res.activity ?
+							((prev.activities || []).some((a) => a.id === (res.activity as any).id) ?
+								(prev.activities || [])
+							:	[res.activity as any, ...(prev.activities || [])])
+						:	prev.activities,
+				}));
+				router.refresh();
+			} else {
+				toast.error(res.message || "Failed to update labels");
+				setLabels((((task as any).Labels || (task as any).labels || []) as string[]).map(formatLabel));
+			}
+		} catch (e) {
+			toast.error("Error updating labels");
+			setLabels((((task as any).Labels || (task as any).labels || []) as string[]).map(formatLabel));
+		} finally {
+			setIsSavingLabels(false);
+		}
+	};
+
+	const extractLabels = (value: string) => {
+		const hashTags = value.match(/#+[\w-]+/g);
+		if (hashTags && hashTags.length > 0) {
+			return hashTags;
+		}
+		return value
+			.split(/[\s,]+/)
+			.map((v) => v.trim())
+			.filter((v) => v.length > 0);
+	};
+
+	const addLabels = (valuesToAdd: string[]) => {
+		const normalized = valuesToAdd
+			.map((v) => formatLabel(v))
+			.filter((v) => v.length > 1);
+		if (normalized.length === 0) return;
+		const nextSet = Array.from(new Set([...labels.map(formatLabel), ...normalized]));
+		handleSaveLabels(nextSet);
+	};
+
+	const removeLabel = (labelToRemove: string) => {
+		const target = formatLabel(labelToRemove);
+		const updated = labels.filter((l) => formatLabel(l) !== target && l !== labelToRemove);
+		handleSaveLabels(updated);
+	};
+
 	// Save Milestone
 	const handleAddMilestone = async () => {
 		if (!milestoneTitle.trim()) {
 			toast.error("Milestone title is required");
 			return;
 		}
+
+		const taskStart = startDate ? new Date(startDate) : new Date(task.startPeriod);
+		taskStart.setHours(0, 0, 0, 0);
+		const taskEnd = dueDate ? new Date(dueDate) : new Date(task.endPeriod);
+		taskEnd.setHours(23, 59, 59, 999);
+
+		if (milestoneDueDate) {
+			if (milestoneDueDate < taskStart || milestoneDueDate > taskEnd) {
+				toast.error("Milestone date must be within the task date range");
+				return;
+			}
+		}
+
 		setIsAddingMilestone(true);
 		const res = await addMilestone({
 			taskId: task.id,
@@ -1402,7 +1590,10 @@ export default function SingleTaskView({
 			});
 			if (res.success && "comment" in res && res.comment) {
 				toast.success("Reply posted");
-				setComments((prev) => [...prev, res.comment as any]);
+				setComments((prev) => {
+					if (prev.some((c: any) => c.id === (res.comment as any).id)) return prev;
+					return [res.comment as any, ...prev];
+				});
 				setReplyInput("");
 				setReplyingToCommentId(null);
 			} else {
@@ -1464,9 +1655,9 @@ export default function SingleTaskView({
 	});
 
 	return (
-		<div className="flex flex-col lg:flex-row gap-3 w-full">
+		<div className="flex flex-col lg:flex-row gap-4 w-full items-start">
 			{/* Main Left Content Area */}
-			<div className="w-full lg:w-[75%] grow">
+			<div className="w-full lg:w-[75%] grow flex flex-col gap-4">
 				{/* Top Bar: Back Button, Title, Edit Description */}
 				<div className="flex flex-wrap gap-3 justify-between items-center">
 					<div className="gap-2 sm:gap-3 items-center flex min-w-0 flex-1">
@@ -1534,7 +1725,7 @@ export default function SingleTaskView({
 				</div>
 
 				{/* Task Description Card */}
-				<div className="mt-3">
+				<div>
 					{isEditingDescription ?
 						<div className="flex flex-col gap-2 bg-accent/30 p-3 rounded-[20px] text-primary">
 							<Textarea
@@ -1565,7 +1756,7 @@ export default function SingleTaskView({
 								</Button>
 							</div>
 						</div>
-					:	<div className="mt-[10px] text-primary text-[14px]">
+					:	<div className="text-primary text-[14px]">
 							<div
 								className={`text-primary transition-all duration-300 whitespace-pre-wrap ${
 									!readMore && isLongDescription ?
@@ -1589,7 +1780,7 @@ export default function SingleTaskView({
 				</div>
 
 				{/* Properties Pill Bar */}
-				<div className="bg-[#969696] w-full mt-[10px] py-[10px] px-3 sm:px-[20px] rounded-[20px] sm:rounded-[30px]">
+				<div className="bg-[#969696] w-full py-2.5 px-3 sm:px-4 rounded-2xl">
 					<div className="flex flex-wrap items-center gap-2 sm:gap-3">
 						{/* Interactive Priority Selector */}
 						{canEditTask ? (
@@ -1601,7 +1792,7 @@ export default function SingleTaskView({
 										{isSavingPriority ?
 											<Loader2 className="w-3.5 h-3.5 animate-spin" />
 										:	<Flag className="w-4 h-4" />}
-										<span>{priority}</span>
+										<span>{formatPriority(priority)}</span>
 									</div>
 								</DropdownMenuTrigger>
 								<DropdownMenuContent className="w-[160px] flex flex-col gap-1 border-0 bg-accent p-1">
@@ -1635,7 +1826,7 @@ export default function SingleTaskView({
 								className={`text-[12px] text-primary w-fit rounded-[10px] px-2 py-1 ${renderPriority(priority)} flex items-center gap-1.5`}
 							>
 								<Flag className="w-4 h-4" />
-								<span>{priority}</span>
+								<span>{formatPriority(priority)}</span>
 							</div>
 						)}
 
@@ -1655,6 +1846,10 @@ export default function SingleTaskView({
 												mode="single"
 												selected={startDate}
 												onSelect={handleUpdateStartDate}
+												disabled={{
+													before: task.project?.startPeriod ? new Date(task.project.startPeriod) : undefined,
+													after: dueDate || (task.project?.endPeriod ? new Date(task.project.endPeriod) : undefined),
+												}}
 												className="bg-primary text-secondary"
 											/>
 										</PopoverContent>
@@ -1679,7 +1874,10 @@ export default function SingleTaskView({
 												mode="single"
 												selected={dueDate}
 												onSelect={handleUpdateDueDate}
-												disabled={{ before: startDate }}
+												disabled={{
+													before: startDate || (task.project?.startPeriod ? new Date(task.project.startPeriod) : undefined),
+													after: task.project?.endPeriod ? new Date(task.project.endPeriod) : undefined,
+												}}
 												className="bg-primary text-secondary"
 											/>
 										</PopoverContent>
@@ -1891,23 +2089,58 @@ export default function SingleTaskView({
 				</div>
 
 				{/* Progress & Milestones Section */}
-				<div className="mt-[20px] flex flex-col gap-4">
-					<div>
-						<div className="flex items-center justify-between">
-							<p className="text-xl text-primary font-bold">
+				<div className="bg-[#969696] rounded-2xl p-3.5 sm:px-4">
+					<div className="flex items-center justify-between mb-2">
+						<div className="flex items-center gap-2">
+							<Squircle className="w-4 h-4 text-primary" />
+							<p className="text-xs sm:text-sm font-bold text-primary">
 								Milestones Progress
 							</p>
-							<p className="text-primary text-[12px]">
-								{completedMilestones} of {totalMilestones}{" "}
-								milestones done
-							</p>
 						</div>
-						<Progress
-							indicatorClassName="rounded-full"
-							className="h-[25px]"
-							value={milestonePercent}
+						<p className="text-xs text-primary/70 font-medium">
+							{completedMilestones} of {totalMilestones} milestones done ({milestonePercent}%)
+						</p>
+					</div>
+					<div
+						role="progressbar"
+						aria-valuenow={milestonePercent}
+						aria-valuemin={0}
+						aria-valuemax={100}
+						className="w-full h-[18px] sm:h-5 bg-black/20 dark:bg-black/30 rounded-full overflow-hidden"
+					>
+						<div
+							className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
+							style={{ width: `${milestonePercent}%` }}
 						/>
 					</div>
+				</div>
+
+				<Tabs defaultValue="milestones" className="w-full">
+					<TabsList className="bg-primary/10 dark:bg-accent/40 p-1 rounded-full mb-3 flex-wrap h-auto">
+						<TabsTrigger
+							value="milestones"
+							className="text-xs rounded-full px-4 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5"
+						>
+							<Squircle className="w-3.5 h-3.5" />
+							Milestones ({totalMilestones})
+						</TabsTrigger>
+						<TabsTrigger
+							value="activity"
+							className="text-xs rounded-full px-4 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5"
+						>
+							<Workflow className="w-3.5 h-3.5" />
+							Activity ({activities.length})
+						</TabsTrigger>
+						<TabsTrigger
+							value="comments"
+							className="text-xs rounded-full px-4 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5"
+						>
+							<MessageSquare className="w-3.5 h-3.5" />
+							Comments ({comments.length})
+						</TabsTrigger>
+					</TabsList>
+
+					<TabsContent value="milestones" className="mt-0 focus-visible:outline-none">
 
 					{/* Milestones List & Table */}
 					<div>
@@ -2025,8 +2258,8 @@ export default function SingleTaskView({
 															}
 														>
 															{isDone ?
-																"COMPLETED"
-															:	"TO DO"}
+																"Completed"
+															:	"To Do"}
 														</Badge>
 													</TableCell>
 													{canEditTask && (
@@ -2053,10 +2286,12 @@ export default function SingleTaskView({
 							}
 						</div>
 					</div>
+				</TabsContent>
 
-					{/* Activity Feed Section */}
-					<div className="mt-4">
-						<p className="font-bold text-primary mb-2.5">
+				{/* Activity Feed Section */}
+				<TabsContent value="activity" className="mt-0 focus-visible:outline-none">
+					<div className="bg-accent/30 dark:bg-accent/15 border border-primary/10 rounded-2xl p-4 sm:p-5">
+						<p className="font-bold text-primary mb-3 text-sm sm:text-base">
 							Activity
 						</p>
 						<div>
@@ -2145,10 +2380,12 @@ export default function SingleTaskView({
 								</p>
 							}
 						</div>
-					</div>
+						</div>
+				</TabsContent>
 
-					{/* Comments Section */}
-					<div className="bg-primary py-[15px] sm:py-[20px] rounded-[20px] sm:rounded-[30px] px-3 sm:px-[20px] mt-4">
+				{/* Comments Section */}
+				<TabsContent value="comments" className="mt-0 focus-visible:outline-none">
+					<div className="bg-primary py-4 sm:py-5 rounded-2xl px-3 sm:px-5">
 						<p className="font-bold text-secondary">Comments</p>
 						<div className="flex flex-col gap-4 mt-3">
 							{comments && comments.length > 0 ?
@@ -2164,11 +2401,21 @@ export default function SingleTaskView({
 														user?.id) ||
 												comment.member?.user?.id ===
 													(currentUserId || user?.id);
-											const replies = comments.filter(
-												(c) =>
-													c.replyCommentId ===
-													comment.id,
-											);
+											const replies = comments
+												.filter(
+													(c) =>
+														c.replyCommentId ===
+														comment.id,
+												)
+												.sort(
+													(a, b) =>
+														new Date(
+															b.createdAt,
+														).getTime() -
+														new Date(
+															a.createdAt,
+														).getTime(),
+												);
 
 											const authorName =
 												comment.member?.user
@@ -2561,6 +2808,15 @@ export default function SingleTaskView({
 
 										return comments
 											.filter((c) => !c.replyCommentId)
+											.sort(
+												(a, b) =>
+													new Date(
+														b.createdAt,
+													).getTime() -
+													new Date(
+														a.createdAt,
+													).getTime(),
+											)
 											.map((rootComment) =>
 												renderCommentItem(
 													rootComment,
@@ -2650,55 +2906,65 @@ export default function SingleTaskView({
 							)}
 						</div>
 					</div>
-				</div>
-			</div>
+				</TabsContent>
+			</Tabs>
+		</div>
 
-			{/* Right Sidebar with Interactive Auto-Saving Controls */}
-			<div className="bg-[#969696] px-3 sm:px-[20px] py-[15px] sm:py-[20px] lg:h-[calc(100vh-30px)] overflow-y-auto custom-scrollbar w-full lg:w-[25%] rounded-[20px] sm:rounded-[30px] lg:sticky lg:top-0">
-				<div className="flex flex-col h-full justify-between gap-6">
-					<div className="flex flex-col gap-7">
-						{/* Status Auto-Save */}
-						<div>
-							<div className="flex text-primary gap-3 items-center justify-between">
-								<div className="flex gap-2 items-center">
-									<ChartNoAxesColumn className="w-4 h-4" />
-									<p className="font-bold">Status</p>
-								</div>
-								{isSavingStatus && (
-									<Loader2 className="w-3.5 h-3.5 animate-spin" />
-								)}
+		{/* Right Sidebar with Interactive Auto-Saving Controls */}
+		<div className="bg-[#969696] px-3 sm:px-[20px] py-[15px] sm:py-[20px] lg:h-[calc(100vh-30px)] overflow-y-auto custom-scrollbar w-full lg:w-[25%] rounded-[20px] sm:rounded-[30px] lg:sticky lg:top-0 lg:self-start">
+			<div className="flex flex-col h-full justify-between gap-6">
+				<div className="flex flex-col gap-5">
+					{/* Status Radio Selector */}
+					<div>
+						<div className="flex text-primary gap-3 items-center justify-between">
+							<div className="flex gap-2 items-center">
+								<ChartNoAxesColumn className="w-4 h-4" />
+								<p className="font-bold">Status</p>
 							</div>
-							<div className="mt-[10px]">
-								<RadioGroup
-									disabled={!canEditTask}
-									value={status}
-									onValueChange={(val) => {
-										if (canEditTask) {
-											handleUpdateStatus(val as Status);
-										}
-									}}
-								>
-									{Object.values(Status).map((i, k) => (
-										<div
-											key={k}
-											className="flex items-center gap-3"
-										>
-											<RadioGroupItem
-												disabled={!canEditTask}
-												value={i}
-												id={`status-${k}`}
-											/>
-											<Label
-												className={`text-[12px] uppercase text-primary ${canEditTask ? "cursor-pointer" : "cursor-default"}`}
-												htmlFor={`status-${k}`}
-											>
-												{i.replaceAll("_", " ")}
-											</Label>
-										</div>
-									))}
-								</RadioGroup>
-							</div>
+							{isSavingStatus && (
+								<Loader2 className="w-3.5 h-3.5 animate-spin" />
+							)}
 						</div>
+						<div className="mt-3 flex flex-col gap-3.5">
+							{STATUS_OPTIONS.map((item) => {
+								const isSelected = item.value === status;
+								return (
+									<button
+										key={item.value}
+										type="button"
+										disabled={!canEditTask || isSavingStatus}
+										onClick={() => {
+											if (canEditTask && !isSavingStatus) {
+												handleUpdateStatus(item.value);
+											}
+										}}
+										title={
+											!canEditTask
+												? "You do not have permission to edit this task's status"
+												: undefined
+										}
+										className={cn(
+											"flex items-center gap-3.5 text-left transition-all text-primary focus-visible:outline-none w-fit",
+											canEditTask && !isSavingStatus
+												? "cursor-pointer hover:opacity-80"
+												: isSavingStatus
+													? "cursor-wait opacity-70"
+													: "cursor-not-allowed opacity-60 select-none",
+										)}
+									>
+										<div className="size-6 rounded-full bg-[#c5bebe] flex items-center justify-center shrink-0 transition-all">
+											{isSelected && (
+												<div className="size-3.5 rounded-full bg-primary" />
+											)}
+										</div>
+										<span className="text-sm font-medium text-primary">
+											{item.label}
+										</span>
+									</button>
+								);
+							})}
+						</div>
+					</div>
 
 						{/* Task Creator */}
 						<div>
@@ -2825,7 +3091,10 @@ export default function SingleTaskView({
 											mode="single"
 											selected={dueDate}
 											onSelect={handleUpdateDueDate}
-											disabled={{ before: startDate }}
+											disabled={{
+												before: startDate || (task.project?.startPeriod ? new Date(task.project.startPeriod) : undefined),
+												after: task.project?.endPeriod ? new Date(task.project.endPeriod) : undefined,
+											}}
 											className="bg-primary text-secondary"
 										/>
 									</PopoverContent>
@@ -2836,16 +3105,97 @@ export default function SingleTaskView({
 								</p>
 							)}
 						</div>
+
+						{/* Labels */}
+						<div>
+							<div className="flex text-primary gap-3 items-center justify-between">
+								<div className="flex gap-2 items-center">
+									<Tags className="w-4 h-4" />
+									<p className="font-bold">Labels</p>
+								</div>
+								{isSavingLabels && (
+									<Loader2 className="w-3.5 h-3.5 animate-spin" />
+								)}
+							</div>
+							<div className="flex mt-[10px] flex-wrap gap-1.5 items-center">
+								{labels.map((lbl) => (
+									<span
+										key={lbl}
+										className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#AD6B3D] text-white shadow-xs"
+									>
+										{formatLabel(lbl)}
+										{canEditTask && (
+											<button
+												type="button"
+												onClick={() => removeLabel(lbl)}
+												className="hover:opacity-75 cursor-pointer ml-0.5 text-white/80 hover:text-white"
+											>
+												<X className="w-3 h-3" />
+											</button>
+										)}
+									</span>
+								))}
+
+								{canEditTask && (
+									<Popover>
+										<PopoverTrigger asChild>
+											<button
+												type="button"
+												className="p-1 rounded-full bg-primary/10 hover:bg-primary/20 text-primary text-[10px] cursor-pointer"
+												title="Add label"
+											>
+												<Plus className="w-3 h-3" />
+											</button>
+										</PopoverTrigger>
+										<PopoverContent
+											className="rounded-[15px] bg-accent text-primary border-0 p-2.5 w-[200px]"
+											align="start"
+										>
+											<div className="flex flex-col gap-1.5">
+												<p className="text-[11px] font-semibold text-primary/70">
+													Type tag & press Enter
+												</p>
+												<Input
+													placeholder="e.g. backend, ui"
+													value={labelInput}
+													onChange={(e) =>
+														setLabelInput(
+															e.target.value,
+														)
+													}
+													className="h-7 text-xs bg-primary text-secondary placeholder:text-secondary/50 rounded-lg border-0"
+													onKeyDown={(e) => {
+														if (
+															e.key === "Enter" ||
+															e.key === " "
+														) {
+															e.preventDefault();
+															addLabels(
+																extractLabels(
+																	labelInput,
+																),
+															);
+															setLabelInput("");
+														}
+													}}
+												/>
+											</div>
+										</PopoverContent>
+									</Popover>
+								)}
+							</div>
+						</div>
 					</div>
 
 					{/* Delete Task Action */}
 					{canDeleteTask && (
-						<div className="w-full mt-7 sm:mt-8 pt-2">
+						<div className="w-full mt-6 pt-3 border-t border-primary/10">
 							<Button
+								variant="destructive"
 								onClick={() => setIsDeleteDialogOpen(true)}
-								className="py-[25px] rounded-full bg-destructive hover:bg-destructive/90 w-full cursor-pointer"
+								className="h-11 rounded-full bg-destructive hover:bg-destructive/90 dark:bg-destructive dark:hover:bg-destructive/90 text-white text-sm font-semibold w-full cursor-pointer transition-all flex items-center justify-center gap-2.5 shadow-sm border-0"
 							>
-								<Trash2 />
+								<Trash2 className="w-4 h-4 text-white shrink-0" />
 								Delete Task
 							</Button>
 						</div>
@@ -2906,7 +3256,7 @@ export default function SingleTaskView({
 
 						<div className="flex flex-col gap-1.5">
 							<Label className="text-xs font-semibold text-secondary/90">
-								Due Date (Optional)
+								Start Date / Due Date (Optional)
 							</Label>
 							<Popover>
 								<PopoverTrigger asChild>
@@ -2918,17 +3268,26 @@ export default function SingleTaskView({
 										{milestoneDueDate ?
 											format(milestoneDueDate, "PPP")
 										:	<span className="text-primary/60">
-												Select due date (defaults to
-												task end date)
+												Select date (within task period)
 											</span>
 										}
 									</Button>
 								</PopoverTrigger>
 								<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2 z-[99999]">
+									{(startDate || task.startPeriod) && (dueDate || task.endPeriod) && (
+										<div className="text-[11px] font-medium text-primary/70 text-center pb-2 mb-1 border-b border-primary/10">
+											Task: {safeFormatDate(startDate || new Date(task.startPeriod), "PPP")} – {safeFormatDate(dueDate || new Date(task.endPeriod), "PPP")}
+										</div>
+									)}
 									<Calendar
 										mode="single"
 										selected={milestoneDueDate}
 										onSelect={setMilestoneDueDate}
+										defaultMonth={milestoneDueDate || startDate || new Date(task.startPeriod)}
+										disabled={{
+											before: startDate ? new Date(startDate) : new Date(task.startPeriod),
+											after: dueDate ? new Date(dueDate) : new Date(task.endPeriod),
+										}}
 										initialFocus
 										className="bg-primary text-secondary"
 									/>
@@ -2976,40 +3335,40 @@ export default function SingleTaskView({
 			</Dialog>
 
 			{/* Delete Task Confirmation Dialog */}
-			<Dialog
+			<AlertDialog
 				open={isDeleteDialogOpen}
 				onOpenChange={setIsDeleteDialogOpen}
 			>
-				<DialogContent className="rounded-[20px] border-0 bg-primary text-secondary sm:max-w-md p-6">
-					<DialogHeader>
-						<DialogTitle className="text-xl font-bold text-accent flex items-center gap-2">
-							<Trash2 className="w-5 h-5 text-accent shrink-0" />
+				<AlertDialogContent className="rounded-[20px] border border-secondary/20 bg-primary text-secondary sm:max-w-md p-6">
+					<AlertDialogHeader>
+						<AlertDialogTitle className="text-xl font-bold text-destructive flex items-center gap-2">
+							<Trash2 className="w-5 h-5 text-destructive shrink-0" />
 							Delete Task
-						</DialogTitle>
-						<DialogDescription className="text-[13px] text-secondary/80 mt-2 leading-relaxed">
+						</AlertDialogTitle>
+						<AlertDialogDescription className="text-[13px] text-secondary/80 mt-2 leading-relaxed">
 							This action cannot be undone. This will permanently
 							delete the task{" "}
-							<strong className="text-accent">
-								{title || task.title}
+							<strong className="text-secondary font-semibold">
+								"{title || task.title}"
 							</strong>{" "}
 							and all associated milestones, comments, and
 							resources.
-						</DialogDescription>
-					</DialogHeader>
+						</AlertDialogDescription>
+					</AlertDialogHeader>
 
-					<DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 mt-4">
-						<DialogClose asChild>
-							<Button
-								type="button"
-								disabled={isDeletingTask}
-								className="w-full sm:w-auto rounded-full bg-accent hover:bg-accent/90 text-primary border-0 font-medium cursor-pointer"
-							>
-								Cancel
-							</Button>
-						</DialogClose>
-						<Button
-							type="button"
-							onClick={handleDeleteTask}
+					<AlertDialogFooter className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-3 mt-4">
+						<AlertDialogCancel
+							disabled={isDeletingTask}
+							className="w-full sm:w-auto rounded-full bg-accent hover:bg-accent/90 text-primary border-0 font-medium cursor-pointer"
+						>
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							onClick={async (e) => {
+								e.preventDefault();
+								await handleDeleteTask();
+							}}
 							disabled={isDeletingTask}
 							className="w-full sm:w-auto rounded-full bg-destructive text-white hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
 						>
@@ -3023,10 +3382,10 @@ export default function SingleTaskView({
 									Delete Task
 								</>
 							}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }

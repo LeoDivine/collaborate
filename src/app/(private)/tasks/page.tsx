@@ -14,9 +14,15 @@ export default function Tasks(props: { searchParams: SearchParams }) {
 async function TasksContent(props: { searchParams: SearchParams }) {
 	const searchParams = await props.searchParams;
 	const createParam = searchParams.creating;
+	const startDateParam = searchParams.startDate;
+	const projectParam = searchParams.projectId;
 
 	const currentState =
 		Array.isArray(createParam) ? createParam[0] : createParam || "false";
+	const initialStartDate =
+		Array.isArray(startDateParam) ? startDateParam[0] : startDateParam;
+	const initialProjectId =
+		Array.isArray(projectParam) ? projectParam[0] : projectParam;
 
 	const session = await auth();
 	const workspaceId = session?.user?.currentWorkspaceId;
@@ -35,11 +41,14 @@ async function TasksContent(props: { searchParams: SearchParams }) {
 	const allTasks: TaskType[] = tasksResponse.tasks || [];
 
 	const currentMember = allMembers.find((m) => m.userId === userId);
+	const pageSize = 20;
 
 	return (
 		<div>
 			<TaskView
 				isCreating={currentState}
+				initialStartDate={initialStartDate}
+				defaultProjectId={initialProjectId}
 				members={allMembers}
 				projects={allProjects}
 				tasks={allTasks}
@@ -48,6 +57,7 @@ async function TasksContent(props: { searchParams: SearchParams }) {
 				currentMemberId={currentMember?.id || ""}
 				tasksTotal={tasksResponse.total || allTasks.length}
 				initialTotal={membersResponse.total || allMembers.length}
+				pageSize={pageSize}
 			/>
 		</div>
 	);

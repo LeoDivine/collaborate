@@ -1,12 +1,13 @@
 "use server";
 
 import { auth } from "../../../auth";
-import { ActivityType, PriorityLevel, ProjectAccess, ProjectVisibility, Status, WorkspaceRoles } from "../../../generated/prisma/enums";
+import { ActivityType, MileStoneStatus, PriorityLevel, ProjectAccess, ProjectVisibility, Status, WorkspaceRoles } from "../../../generated/prisma/enums";
 import { db } from "../db";
 import type { ProjectMembers, Projects } from "../types";
 import { triggerPusherEvent } from "@/lib/pusher/server";
 import { PUSHER_CHANNELS, PUSHER_EVENTS } from "@/lib/pusher/events";
 import { computeProjectAccess, ProjectAccessResult } from "@/lib/permissions/project-permissions";
+import { formatLabel, formatPriority, formatStatus } from "@/lib/utils";
 
 export const createProject = async ({
 	values,
@@ -74,7 +75,7 @@ export const createProject = async ({
 					workspaceId: workspaceId!,
 					createdById: member.id,
 					priority: values.priority,
-					labels: values.labels,
+					labels: (values.labels || []).map(formatLabel).filter(Boolean),
 					visibility: values.visibility || ("PUBLIC" as ProjectVisibility),
 				},
 			});
@@ -897,18 +898,56 @@ export const updateProjectDetails = async ({
 					...(values.status !== undefined && { status: values.status }),
 					...(values.startDate !== undefined && { startPeriod: values.startDate }),
 					...(values.dueDate !== undefined && { endPeriod: values.dueDate }),
-					...(values.labels !== undefined && { labels: values.labels }),
+					...(values.labels !== undefined && { labels: values.labels.map(formatLabel).filter(Boolean) }),
 				},
 			});
 
 			const changes: string[] = [];
 			if (values.title !== undefined) changes.push(`updated title of this project to "${values.title.trim()}"`);
-			if (values.status !== undefined) changes.push(`changed status of this project to ${values.status}`);
-			if (values.priority !== undefined) changes.push(`changed priority of this project to ${values.priority}`);
+			if (values.status !== undefined) changes.push(`changed status of this project to ${formatStatus(values.status)}`);
+			if (values.priority !== undefined) changes.push(`changed priority of this project to ${formatPriority(values.priority)}`);
 			if (values.description !== undefined) changes.push("updated description of this project");
 			if (values.startDate !== undefined) changes.push("updated start date of this project");
 			if (values.dueDate !== undefined) changes.push("updated due date of this project");
 			if (values.labels !== undefined) changes.push("updated labels of this project");
+
+			if (values.status === Status.COMPLETED) {
+				await tx.task.updateMany({
+					where: { projectId },
+					data: { status: Status.COMPLETED },
+				});
+
+				await tx.mileStone.updateMany({
+					where: {
+						task: {
+							projectId,
+						},
+					},
+					data: {
+						status: MileStoneStatus.DONE,
+						...(member?.id && { completedById: member.id }),
+					},
+				});
+				changes.push("marked all associated tasks and milestones as completed");
+			} else if (values.status === Status.TODO || values.status === Status.IN_PROGRESS) {
+				await tx.task.updateMany({
+					where: { projectId },
+					data: { status: Status.IN_PROGRESS },
+				});
+
+				await tx.mileStone.updateMany({
+					where: {
+						task: {
+							projectId,
+						},
+					},
+					data: {
+						status: MileStoneStatus.IN_PROGRESS,
+						completedById: null,
+					},
+				});
+				changes.push("set all associated tasks and milestones to in progress");
+			}
 
 			const activityDescription = changes.length > 0 ? changes.join(", ") : "updated this project";
 
@@ -933,6 +972,24 @@ export const updateProjectDetails = async ({
 			return { updatedProject, activity };
 		});
 
+		let updatedTasks = undefined;
+		if (
+			values.status === Status.COMPLETED ||
+			values.status === Status.TODO ||
+			values.status === Status.IN_PROGRESS
+		) {
+			updatedTasks = await db.task.findMany({
+				where: { projectId },
+				include: {
+					milestones: true,
+					taskMembers: { include: { member: { include: { user: true } } } },
+					createdBy: { include: { user: true } },
+					resources: true,
+				},
+				orderBy: { createdAt: "desc" },
+			});
+		}
+
 		if (result.activity) {
 			await triggerPusherEvent(
 				[PUSHER_CHANNELS.getProjectChannel(projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
@@ -944,13 +1001,14 @@ export const updateProjectDetails = async ({
 		await triggerPusherEvent(
 			[PUSHER_CHANNELS.getProjectChannel(projectId), PUSHER_CHANNELS.getWorkspaceChannel(workspaceId)],
 			PUSHER_EVENTS.PROJECT_UPDATED,
-			{ projectId, updates: values, project: result.updatedProject }
+			{ projectId, updates: values, project: result.updatedProject, tasks: updatedTasks }
 		);
 
 		return {
 			success: true,
 			message: "Project updated successfully",
 			project: result.updatedProject,
+			tasks: updatedTasks,
 			activity: result.activity,
 		};
 	} catch (e) {

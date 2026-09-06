@@ -2,13 +2,15 @@
 
 import type { MembersUsers, Projects, Tasks } from "@/lib/types";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import TaskTable from "./task-table";
 import TaskViewHeader from "./task-view-header";
 import { useWorkspaceRealtime } from "@/hooks/use-pusher";
 
 export default function TaskView({
 	isCreating,
+	initialStartDate,
+	defaultProjectId,
 	members = [],
 	projects = [],
 	tasks = [],
@@ -17,8 +19,11 @@ export default function TaskView({
 	currentMemberId,
 	tasksTotal = 0,
 	initialTotal = 0,
+	pageSize = 20,
 }: {
 	isCreating: string;
+	initialStartDate?: string;
+	defaultProjectId?: string;
 	members: MembersUsers[];
 	projects: Projects[];
 	tasks: Tasks[];
@@ -27,9 +32,26 @@ export default function TaskView({
 	currentMemberId: string;
 	tasksTotal: number;
 	initialTotal?: number;
+	pageSize?: number;
 }) {
 	const searchParams = useSearchParams();
 	const creating = searchParams.get("creating") || isCreating;
+	const startDateParam = searchParams.get("startDate") || initialStartDate;
+	const projectParam = searchParams.get("projectId") || defaultProjectId;
+
+	const defaultStartDate = useMemo(() => {
+		if (!startDateParam) return undefined;
+		const ymdMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(startDateParam);
+		if (ymdMatch) {
+			const year = parseInt(ymdMatch[1], 10);
+			const month = parseInt(ymdMatch[2], 10) - 1;
+			const day = parseInt(ymdMatch[3], 10);
+			const d = new Date(year, month, day);
+			if (!isNaN(d.getTime())) return d;
+		}
+		const parsed = new Date(startDateParam);
+		return isNaN(parsed.getTime()) ? undefined : parsed;
+	}, [startDateParam]);
 
 	const [open, setOpen] = useState(creating === "true");
 	const [taskList, setTaskList] = useState<Tasks[]>(tasks || []);
@@ -108,6 +130,8 @@ export default function TaskView({
 		if (!nextOpen) {
 			const params = new URLSearchParams(searchParams.toString());
 			params.delete("creating");
+			params.delete("startDate");
+			params.delete("projectId");
 			const nextQuery = params.toString();
 
 			router.push(nextQuery ? `${pathname}?${nextQuery}` : pathname);
@@ -124,6 +148,8 @@ export default function TaskView({
 				workspaceId={workspaceId}
 				currentMemberId={currentMemberId}
 				initialTotal={initialTotal}
+				defaultStartDate={defaultStartDate}
+				defaultProjectId={projectParam}
 				onOpenDialog={handleOpenDialog}
 				onDialogChange={handleDialogChange}
 			/>
@@ -135,6 +161,7 @@ export default function TaskView({
 				currentUserId={currentUserId}
 				currentMemberId={currentMemberId}
 				totalItems={total}
+				pageSize={pageSize}
 			/>
 		</div>
 	);

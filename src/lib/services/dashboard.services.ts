@@ -96,7 +96,7 @@ const STATUS_LABELS: Record<string, string> = {
 	IN_PROGRESS: "In Progress",
 	ON_HOLD: "On Hold",
 	COMPLETED: "Completed",
-	CANCELLED: "Cancelled",
+	CANCELLED: "Canceled",
 };
 
 const PRIORITY_LABELS: Record<string, string> = {

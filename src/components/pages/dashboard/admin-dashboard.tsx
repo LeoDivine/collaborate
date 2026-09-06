@@ -9,16 +9,22 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminDashboardData } from "@/lib/services/dashboard.services";
-import { getInitials, renderPriority, renderStatus, stripHtml } from "@/lib/utils";
+import { formatPriority, formatStatus, getInitials, renderPriority, renderStatus, stripHtml } from "@/lib/utils";
 import {
 	AlertCircle,
+	Blocks,
+	Box,
+	CalendarDays,
+	Diamond,
 	FolderKanban,
+	Group,
 	Info,
 	ListTodo,
 	MoveRight,
 	Plus,
 	UserCheck,
 	Users,
+	Workflow,
 } from "lucide-react";
 import { User } from "next-auth";
 import Link from "next/link";
@@ -128,7 +134,8 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 						</div>
 					</div>
 					<Button asChild size="sm" className="rounded-full shrink-0">
-						<Link href="/requests">
+						<Link href="/requests" className="flex items-center gap-1.5">
+							<Blocks className="w-3.5 h-3.5" />
 							Review Requests ({pendingRequests})
 						</Link>
 					</Button>
@@ -142,6 +149,7 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 						<InfoCards
 							title="Active Projects"
 							value={activeProjects}
+							icon={Box}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
 									<FolderKanban className="w-3 h-3" />
@@ -154,6 +162,7 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 						<InfoCards
 							title="Pending Tasks"
 							value={pendingTasks}
+							icon={Diamond}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
 									<Info className="w-3 h-3" />
@@ -166,6 +175,7 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 						<InfoCards
 							title="Active Members"
 							value={totalMembers}
+							icon={Users}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
 									<Users className="w-3 h-3" />
@@ -176,9 +186,10 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 						<InfoCards
 							title="Total Teams"
 							value={totalTeams}
+							icon={Group}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
-									<Users className="w-3 h-3" />
+									<Group className="w-3 h-3" />
 									<p className="text-[13px]">Functional teams</p>
 								</div>
 							}
@@ -186,6 +197,7 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 						<InfoCards
 							title="Pending Requests"
 							value={pendingRequests}
+							icon={Blocks}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
 									<AlertCircle className="w-3 h-3" />
@@ -396,15 +408,12 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 															<Badge
 																className={`text-[10px] text-white ${renderPriority(t.priority as any)}`}
 															>
-																{t.priority}
+																{formatPriority(t.priority)}
 															</Badge>
 															<Badge
 																className={`text-[10px] ${renderStatus(t.status as any)}`}
 															>
-																{t.status.replace(
-																	"_",
-																	" ",
-																)}
+																{formatStatus(t.status)}
 															</Badge>
 														</div>
 													</div>
@@ -469,15 +478,12 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 																<Badge
 																	className={`text-[10px] text-white ${renderPriority(t.priority as any)}`}
 																>
-																	{t.priority}
+																	{formatPriority(t.priority)}
 																</Badge>
 																<Badge
 																	className={`text-[10px] ${renderStatus(t.status as any)}`}
 																>
-																	{t.status.replace(
-																		"_",
-																		" ",
-																	)}
+																	{formatStatus(t.status)}
 																</Badge>
 															</div>
 														</div>
@@ -509,9 +515,12 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 
 					{/* Upcoming Deadlines */}
 					<div className="mt-[15px] rounded-[20px] px-[20px] py-[20px] bg-[#969696]">
-						<p className="text-primary font-semibold text-[16px]">
-							Upcoming Deadlines
-						</p>
+						<div className="flex items-center gap-2">
+							<CalendarDays className="w-4 h-4 text-primary" />
+							<p className="text-primary font-semibold text-[16px]">
+								Upcoming Deadlines
+							</p>
+						</div>
 						<div>
 							{upcomingDeadlines.length > 0 ?
 								upcomingDeadlines.map((task) => (
@@ -529,9 +538,12 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 
 					{/* Recent Activities */}
 					<div className="mt-[15px] rounded-[20px] px-[20px] py-[20px] bg-[#969696]">
-						<p className="text-primary font-semibold text-[16px]">
-							Activities
-						</p>
+						<div className="flex items-center gap-2">
+							<Workflow className="w-4 h-4 text-primary" />
+							<p className="text-primary font-semibold text-[16px]">
+								Activities
+							</p>
+						</div>
 						<div>
 							{recentActivities.length > 0 ?
 								recentActivities.map((act) => (

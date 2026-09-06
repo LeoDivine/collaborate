@@ -40,6 +40,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PriorityLevel, ProjectVisibility } from "../../../generated/prisma/enums";
+import { formatLabel } from "@/lib/utils";
 import { Button } from "../ui/button";
 import { Calendar } from "../ui/calendar";
 import { Checkbox } from "../ui/checkbox";
@@ -118,11 +119,11 @@ export default function CreateProject({
 
 	const addLabels = (values: string[]) => {
 		const normalized = values
-			.map((value) => value.trim())
-			.filter((value) => value.startsWith("#") && value.length > 1);
+			.map((value) => formatLabel(value))
+			.filter((value) => value.length > 1);
 		if (normalized.length === 0) return;
 		setLabels((prev) => {
-			const next = new Set(prev);
+			const next = new Set(prev.map(formatLabel));
 			for (const label of normalized) {
 				next.add(label);
 			}
@@ -151,7 +152,8 @@ export default function CreateProject({
 	};
 
 	const removeLabel = (label: string) => {
-		setLabels((prev) => prev.filter((item) => item !== label));
+		const target = formatLabel(label);
+		setLabels((prev) => prev.filter((item) => formatLabel(item) !== target && item !== label));
 	};
 
 	const removeResource = (name: string) => {
@@ -252,7 +254,16 @@ export default function CreateProject({
 	const minDueDate = startDate ? new Date(startDate) : today;
 	minDueDate.setHours(0, 0, 0, 0);
 
-	const extractLabels = (value: string) => value.match(/#[\w-]+/g) ?? [];
+	const extractLabels = (value: string) => {
+		const hashTags = value.match(/#+[\w-]+/g);
+		if (hashTags && hashTags.length > 0) {
+			return hashTags;
+		}
+		return value
+			.split(/[\s,]+/)
+			.map((v) => v.trim())
+			.filter((v) => v.length > 0);
+	};
 	const triggerOpacity = (selected: boolean) =>
 		selected ? "opacity-100" : "opacity-60 md:opacity-100";
 	const router = useRouter();
@@ -715,12 +726,12 @@ export default function CreateProject({
 									{labels.map((label) => (
 										<span
 											key={label}
-											className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-xs text-secondary"
+											className="inline-flex items-center gap-1 rounded-full bg-[#AD6B3D] px-2.5 py-0.5 text-xs text-white shadow-xs"
 										>
-											{label}
+											{formatLabel(label)}
 											<button
 												type="button"
-												className="text-secondary/70 hover:text-secondary"
+												className="text-white/80 hover:text-white"
 												disabled={isSubmitting}
 												onClick={() =>
 													removeLabel(label)

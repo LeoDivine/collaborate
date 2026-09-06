@@ -16,11 +16,23 @@ import type { ProjectMembers } from "@/lib/types";
 
 export default function AssigneeOverview({
 	projectMembers,
+	isSelected = false,
 }: {
 	projectMembers: ProjectMembers[];
+	isSelected?: boolean;
 }) {
 	if (!projectMembers || projectMembers.length === 0) {
-		return <p className=" text-sm text-muted-foreground">No assignees</p>;
+		return (
+			<p
+				className={`text-sm ${
+					isSelected
+						? "text-primary/60 dark:text-zinc-400"
+						: "text-secondary/60"
+				}`}
+			>
+				No assignees
+			</p>
+		);
 	}
 
 	const orderedMembers = [...projectMembers].sort((a, b) => {
@@ -35,7 +47,13 @@ export default function AssigneeOverview({
 
 	return (
 		<div>
-			<AvatarGroup className=" *:data-[slot=avatar]:ring-transparent">
+			<AvatarGroup
+				className={`flex -space-x-2 ${
+					isSelected
+						? "*:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:ring-secondary"
+						: "*:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:ring-primary"
+				}`}
+			>
 				{visibleMembers.map((projectMember) => {
 					const member = projectMember.member;
 					const user = member.user;
@@ -48,8 +66,14 @@ export default function AssigneeOverview({
 							closeDelay={100}
 						>
 							<HoverCardTrigger asChild>
-								<Avatar>
-									<AvatarFallback className=" w-full border border-primary bg-secondary text-primary font-bold">
+								<Avatar className="size-8">
+									<AvatarFallback
+										className={`w-full font-bold text-xs shadow-xs transition-colors ${
+											isSelected
+												? "border border-primary bg-primary text-secondary"
+												: "border border-secondary bg-secondary text-primary"
+										}`}
+									>
 										{getInitials(displayName)}
 									</AvatarFallback>
 								</Avatar>
@@ -87,7 +111,13 @@ export default function AssigneeOverview({
 				{remainingCount > 0 && (
 					<HoverCard openDelay={10} closeDelay={100}>
 						<HoverCardTrigger asChild>
-							<AvatarGroupCount className=" ring-0 bg-accent text-primary">
+							<AvatarGroupCount
+								className={`size-8 rounded-full font-bold text-xs ring-2 shadow-xs transition-colors flex items-center justify-center ${
+									isSelected
+										? "ring-secondary bg-primary text-secondary border border-primary"
+										: "ring-primary bg-secondary text-primary border border-secondary"
+								}`}
+							>
 								+{remainingCount}
 							</AvatarGroupCount>
 						</HoverCardTrigger>

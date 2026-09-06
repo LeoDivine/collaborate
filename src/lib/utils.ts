@@ -153,6 +153,72 @@ export const renderStatus = (status: Status) => {
 	}
 };
 
+export const formatStatus = (status?: Status | string | null): string => {
+	switch (status) {
+		case Status.TODO:
+			return "To Do";
+		case Status.IN_PROGRESS:
+			return "In Progress";
+		case Status.ON_HOLD:
+			return "On Hold";
+		case Status.COMPLETED:
+			return "Completed";
+		case Status.CANCELLED:
+			return "Canceled";
+		default:
+			return String(status || "").replaceAll("_", " ");
+	}
+};
+
+export const STATUS_LABELS: Record<Status, string> = {
+	[Status.TODO]: "To Do",
+	[Status.IN_PROGRESS]: "In Progress",
+	[Status.ON_HOLD]: "On Hold",
+	[Status.COMPLETED]: "Completed",
+	[Status.CANCELLED]: "Canceled",
+};
+
+export const STATUS_OPTIONS = [
+	{ label: "To Do", value: Status.TODO },
+	{ label: "In Progress", value: Status.IN_PROGRESS },
+	{ label: "On Hold", value: Status.ON_HOLD },
+	{ label: "Completed", value: Status.COMPLETED },
+	{ label: "Canceled", value: Status.CANCELLED },
+];
+
+export const formatPriority = (priority?: PriorityLevel | string | null): string => {
+	switch (priority) {
+		case PriorityLevel.URGENT:
+			return "Urgent";
+		case PriorityLevel.HIGH:
+			return "High";
+		case PriorityLevel.MEDIUM:
+			return "Medium";
+		case PriorityLevel.LOW:
+			return "Low";
+		case PriorityLevel.NO_PRIORITY:
+			return "No Priority";
+		default:
+			return String(priority || "").replaceAll("_", " ");
+	}
+};
+
+export const PRIORITY_LABELS: Record<PriorityLevel, string> = {
+	[PriorityLevel.URGENT]: "Urgent",
+	[PriorityLevel.HIGH]: "High",
+	[PriorityLevel.MEDIUM]: "Medium",
+	[PriorityLevel.LOW]: "Low",
+	[PriorityLevel.NO_PRIORITY]: "No Priority",
+};
+
+export const PRIORITY_OPTIONS = [
+	{ label: "Urgent", value: PriorityLevel.URGENT },
+	{ label: "High", value: PriorityLevel.HIGH },
+	{ label: "Medium", value: PriorityLevel.MEDIUM },
+	{ label: "Low", value: PriorityLevel.LOW },
+	{ label: "No Priority", value: PriorityLevel.NO_PRIORITY },
+];
+
 export function stripHtml(html?: string | null): string {
 	if (!html) return "";
 	return html
@@ -165,5 +231,11 @@ export function stripHtml(html?: string | null): string {
 		.replace(/&#39;/gi, "'")
 		.replace(/\s+/g, " ")
 		.trim();
+}
+
+export function formatLabel(label?: string | null): string {
+	if (!label) return "";
+	const cleaned = label.trim().replace(/^#+/, "");
+	return cleaned ? `#${cleaned}` : "";
 }
 

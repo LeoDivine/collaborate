@@ -5,15 +5,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
-	Dialog,
-	DialogClose,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@/components/ui/dialog";
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -39,7 +41,7 @@ import {
 	updateProjectMembers,
 } from "@/lib/services/project.services";
 import type { MembersUsers, Projects } from "@/lib/types";
-import { getInitials, renderPriority, renderStatus } from "@/lib/utils";
+import { formatPriority, formatStatus, getInitials, renderPriority, renderStatus } from "@/lib/utils";
 import { format, isPast, isToday } from "date-fns";
 import {
 	AlertCircle,
@@ -49,6 +51,7 @@ import {
 	Check,
 	CheckCircle2,
 	ChevronDown,
+	Diamond,
 	ExternalLink,
 	Flag,
 	Loader2,
@@ -77,7 +80,7 @@ const STATUS_OPTIONS = [
 	{ label: "In Progress", value: Status.IN_PROGRESS },
 	{ label: "On Hold", value: Status.ON_HOLD },
 	{ label: "Completed", value: Status.COMPLETED },
-	{ label: "Cancelled", value: Status.CANCELLED },
+	{ label: "Canceled", value: Status.CANCELLED },
 ];
 
 const formatDescription = (desc: string) => {
@@ -117,6 +120,7 @@ export default function ProjectPeekSheet({
 	const [isUpdatingMembers, setIsUpdatingMembers] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+	const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
 
 	const currentMember = workspaceMembers.find(
 		(m) => m.userId === currentUserId,
@@ -148,7 +152,9 @@ export default function ProjectPeekSheet({
 
 	const totalTasks = project.tasks?.length || 0;
 	let projectProgress = 0;
-	if (totalTasks > 0) {
+	if (project.status === Status.COMPLETED) {
+		projectProgress = 100;
+	} else if (totalTasks > 0) {
 		const totalTaskProgressSum = project.tasks.reduce((acc, t) => {
 			const totalMilestones = t.milestones?.length || 0;
 			if (totalMilestones > 0) {
@@ -162,16 +168,42 @@ export default function ProjectPeekSheet({
 		}, 0);
 		projectProgress = Math.round(totalTaskProgressSum / totalTasks);
 	} else {
-		projectProgress = project.status === Status.COMPLETED ? 100 : 0;
+		projectProgress = 0;
 	}
 
 	const completedTasksCount =
-		project.tasks?.filter((t) => t.status === Status.COMPLETED).length || 0;
+		project.status === Status.COMPLETED
+			? totalTasks
+			: project.tasks?.filter((t) => t.status === Status.COMPLETED).length || 0;
 
 	const handleStatusChange = async (newStatus: Status) => {
 		if (newStatus === project.status) return;
 		setIsUpdatingStatus(true);
-		onProjectUpdated?.({ id: project.id, status: newStatus });
+		let updatedTasks = project.tasks;
+		if (newStatus === Status.COMPLETED && project.tasks) {
+			updatedTasks = project.tasks.map((t) => ({
+				...t,
+				status: Status.COMPLETED,
+				milestones: (t.milestones || []).map((m: any) => ({
+					...m,
+					status: "DONE",
+				})),
+			}));
+		} else if ((newStatus === Status.TODO || newStatus === Status.IN_PROGRESS) && project.tasks) {
+			updatedTasks = project.tasks.map((t) => ({
+				...t,
+				status: Status.IN_PROGRESS,
+				milestones: (t.milestones || []).map((m: any) => ({
+					...m,
+					status: "IN_PROGRESS",
+				})),
+			}));
+		}
+		onProjectUpdated?.({
+			id: project.id,
+			status: newStatus,
+			...(updatedTasks && { tasks: updatedTasks }),
+		});
 
 		try {
 			const res = await updateProjectDetails({
@@ -180,13 +212,16 @@ export default function ProjectPeekSheet({
 			});
 			if (res && !res.success) {
 				toast.error(res.message || "Failed to update status");
-				onProjectUpdated?.({ id: project.id, status: project.status });
+				onProjectUpdated?.({ id: project.id, status: project.status, tasks: project.tasks });
 			} else {
-				toast.success(`Status updated to ${newStatus.replace("_", " ")}`);
+				toast.success(`Status updated to ${formatStatus(newStatus)}`);
+				if ((res as any)?.tasks) {
+					onProjectUpdated?.({ id: project.id, status: newStatus, tasks: (res as any).tasks });
+				}
 			}
 		} catch {
 			toast.error("An error occurred while updating status");
-			onProjectUpdated?.({ id: project.id, status: project.status });
+			onProjectUpdated?.({ id: project.id, status: project.status, tasks: project.tasks });
 		} finally {
 			setIsUpdatingStatus(false);
 		}
@@ -206,7 +241,7 @@ export default function ProjectPeekSheet({
 				toast.error(res.message || "Failed to update priority");
 				onProjectUpdated?.({ id: project.id, priority: project.priority });
 			} else {
-				toast.success(`Priority set to ${newPriority}`);
+				toast.success(`Priority set to ${formatPriority(newPriority)}`);
 			}
 		} catch {
 			toast.error("An error occurred while updating priority");
@@ -300,6 +335,12 @@ export default function ProjectPeekSheet({
 	};
 
 	const handleDeleteProject = async () => {
+		const targetName = (project.title || "").trim();
+		if (deleteConfirmInput.trim() !== targetName) {
+			toast.error("Project name does not match");
+			return;
+		}
+
 		setIsDeleting(true);
 		try {
 			const res = await deleteProject(project.id);
@@ -308,6 +349,7 @@ export default function ProjectPeekSheet({
 			} else {
 				toast.success("Project deleted successfully");
 				setDeleteDialogOpen(false);
+				setDeleteConfirmInput("");
 				onOpenChange(false);
 				onProjectDeleted?.(project.id);
 			}
@@ -383,7 +425,7 @@ export default function ProjectPeekSheet({
 						{/* Quick Properties Grid */}
 						<div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-[16px] bg-secondary/5 border border-secondary/10">
 							{/* Status */}
-							<div className="flex flex-col gap-1">
+							<div className="flex flex-col gap-1 min-w-0">
 								<span className="text-[11px] font-semibold text-secondary/60 uppercase tracking-wider">
 									Status
 								</span>
@@ -394,15 +436,15 @@ export default function ProjectPeekSheet({
 												disabled={isUpdatingStatus}
 												className={`${renderStatus(
 													project.status,
-												)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity`}
+												)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity whitespace-nowrap shrink-0`}
 											>
 												{isUpdatingStatus ? (
-													<Loader2 className="w-3 h-3 animate-spin" />
+													<Loader2 className="w-3 h-3 animate-spin shrink-0" />
 												) : (
-													<CheckCircle2 className="w-3 h-3" />
+													<CheckCircle2 className="w-3 h-3 shrink-0" />
 												)}
-												<span>{project.status.replace("_", " ")}</span>
-												<ChevronDown className="w-3 h-3 opacity-70" />
+												<span className="whitespace-nowrap">{formatStatus(project.status)}</span>
+												<ChevronDown className="w-3 h-3 opacity-70 shrink-0" />
 											</button>
 										</DropdownMenuTrigger>
 										<DropdownMenuContent className="bg-primary border border-secondary/20 text-secondary min-w-[140px] rounded-[12px]">
@@ -410,18 +452,18 @@ export default function ProjectPeekSheet({
 												<DropdownMenuItem
 													key={opt.value}
 													onClick={() => handleStatusChange(opt.value)}
-													className="cursor-pointer hover:bg-secondary/10 flex items-center justify-between text-xs py-2"
+													className="cursor-pointer hover:bg-secondary/10 flex items-center justify-between text-xs py-2 whitespace-nowrap"
 												>
-													<span className="flex items-center gap-2">
+													<span className="flex items-center gap-2 whitespace-nowrap">
 														<span
-															className={`w-2 h-2 rounded-full ${renderStatus(
+															className={`w-2 h-2 rounded-full shrink-0 ${renderStatus(
 																opt.value,
 															)}`}
 														/>
 														{opt.label}
 													</span>
 													{project.status === opt.value && (
-														<Check className="w-3.5 h-3.5 text-accent" />
+														<Check className="w-3.5 h-3.5 text-accent shrink-0" />
 													)}
 												</DropdownMenuItem>
 											))}
@@ -431,16 +473,16 @@ export default function ProjectPeekSheet({
 									<div
 										className={`${renderStatus(
 											project.status,
-										)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5`}
+										)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0`}
 									>
-										<CheckCircle2 className="w-3 h-3" />
-										<span>{project.status.replace("_", " ")}</span>
+										<CheckCircle2 className="w-3 h-3 shrink-0" />
+										<span className="whitespace-nowrap">{formatStatus(project.status)}</span>
 									</div>
 								)}
 							</div>
 
 							{/* Priority */}
-							<div className="flex flex-col gap-1">
+							<div className="flex flex-col gap-1 min-w-0">
 								<span className="text-[11px] font-semibold text-secondary/60 uppercase tracking-wider">
 									Priority
 								</span>
@@ -451,15 +493,15 @@ export default function ProjectPeekSheet({
 												disabled={isUpdatingPriority}
 												className={`${renderPriority(
 													project.priority,
-												)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold text-primary flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity`}
+												)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold text-primary flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity whitespace-nowrap shrink-0`}
 											>
 												{isUpdatingPriority ? (
-													<Loader2 className="w-3 h-3 animate-spin" />
+													<Loader2 className="w-3 h-3 animate-spin shrink-0" />
 												) : (
-													<Flag className="w-3 h-3" />
+													<Flag className="w-3 h-3 shrink-0" />
 												)}
-												<span>{project.priority}</span>
-												<ChevronDown className="w-3 h-3 opacity-70" />
+												<span className="whitespace-nowrap">{formatPriority(project.priority)}</span>
+												<ChevronDown className="w-3 h-3 opacity-70 shrink-0" />
 											</button>
 										</DropdownMenuTrigger>
 										<DropdownMenuContent className="bg-primary border border-secondary/20 text-secondary min-w-[140px] rounded-[12px]">
@@ -467,18 +509,18 @@ export default function ProjectPeekSheet({
 												<DropdownMenuItem
 													key={opt.value}
 													onClick={() => handlePriorityChange(opt.value)}
-													className="cursor-pointer hover:bg-secondary/10 flex items-center justify-between text-xs py-2"
+													className="cursor-pointer hover:bg-secondary/10 flex items-center justify-between text-xs py-2 whitespace-nowrap"
 												>
-													<span className="flex items-center gap-2">
+													<span className="flex items-center gap-2 whitespace-nowrap">
 														<span
-															className={`w-2 h-2 rounded-full ${renderPriority(
+															className={`w-2 h-2 rounded-full shrink-0 ${renderPriority(
 																opt.value,
 															)}`}
 														/>
 														{opt.label}
 													</span>
 													{project.priority === opt.value && (
-														<Check className="w-3.5 h-3.5 text-accent" />
+														<Check className="w-3.5 h-3.5 text-accent shrink-0" />
 													)}
 												</DropdownMenuItem>
 											))}
@@ -488,10 +530,10 @@ export default function ProjectPeekSheet({
 									<div
 										className={`${renderPriority(
 											project.priority,
-										)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold text-primary flex items-center gap-1.5`}
+										)} w-fit px-2.5 py-1 rounded-full text-xs font-semibold text-primary flex items-center gap-1.5 whitespace-nowrap shrink-0`}
 									>
-										<Flag className="w-3 h-3" />
-										<span>{project.priority}</span>
+										<Flag className="w-3 h-3 shrink-0" />
+										<span className="whitespace-nowrap">{formatPriority(project.priority)}</span>
 									</div>
 								)}
 							</div>
@@ -701,7 +743,7 @@ export default function ProjectPeekSheet({
 						<div className="flex flex-col gap-3">
 							<div className="flex items-center justify-between">
 								<h4 className="text-xs font-bold text-secondary uppercase tracking-wider flex items-center gap-1.5">
-									<CheckCircle2 className="w-3.5 h-3.5 text-accent" />
+									<Diamond className="w-3.5 h-3.5 text-accent" />
 									Tasks ({totalTasks})
 								</h4>
 								<Link
@@ -746,14 +788,14 @@ export default function ProjectPeekSheet({
 														task.priority,
 													)} text-primary`}
 												>
-													{task.priority}
+													{formatPriority(task.priority)}
 												</span>
 												<span
 													className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${renderStatus(
 														task.status,
 													)} text-primary`}
 												>
-													{task.status.replace("_", " ")}
+													{formatStatus(task.status)}
 												</span>
 											</div>
 										</Link>
@@ -769,44 +811,89 @@ export default function ProjectPeekSheet({
 				</SheetContent>
 			</Sheet>
 
-			{/* Delete Confirmation Dialog */}
-			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-				<DialogContent className="bg-primary text-secondary border border-secondary/20 rounded-[20px] max-w-md">
-					<DialogHeader>
-						<DialogTitle className="text-destructive flex items-center gap-2">
-							<Trash2 className="w-5 h-5" />
+			{/* Delete Confirmation Alert Dialog */}
+			<AlertDialog
+				open={deleteDialogOpen}
+				onOpenChange={(open) => {
+					setDeleteDialogOpen(open);
+					if (!open) {
+						setDeleteConfirmInput("");
+					}
+				}}
+			>
+				<AlertDialogContent className="rounded-[20px] border border-secondary/20 bg-primary text-secondary sm:max-w-md p-6">
+					<AlertDialogHeader>
+						<AlertDialogTitle className="text-xl font-bold text-destructive flex items-center gap-2">
+							<Trash2 className="w-5 h-5 text-destructive shrink-0" />
 							Delete Project
-						</DialogTitle>
-						<DialogDescription className="text-secondary/70 text-sm">
-							Are you sure you want to delete{" "}
-							<span className="font-semibold text-secondary">
-								"{project.title}"
+						</AlertDialogTitle>
+						<AlertDialogDescription className="text-[13px] text-secondary/80 mt-2 leading-relaxed">
+							This action cannot be undone. This will permanently
+							delete the project{" "}
+							<strong className="text-secondary font-semibold">
+								{project.title}
+							</strong>{" "}
+							and all associated tasks, comments, and resources.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+
+					<div className="flex flex-col gap-3 my-4">
+						<label className="text-xs font-semibold text-secondary/90 text-center">
+							Project name to verify:
+						</label>
+						<div className="flex items-center justify-center p-3 rounded-xl bg-secondary/10 border border-secondary/20">
+							<span className="font-mono text-sm font-medium text-accent truncate select-all text-center">
+								{project.title}
 							</span>
-							? All tasks, milestones, comments, and resources associated with this
-							project will be permanently deleted. This action cannot be undone.
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter className="gap-2 sm:gap-0 mt-4">
-						<DialogClose asChild>
-							<Button
-								variant="ghost"
-								className="rounded-full text-secondary hover:bg-secondary/10"
-							>
-								Cancel
-							</Button>
-						</DialogClose>
-						<Button
-							variant="destructive"
-							onClick={handleDeleteProject}
+						</div>
+
+						<label className="text-xs font-semibold text-secondary/90 mt-1">
+							Type project name to confirm:
+						</label>
+						<Input
+							value={deleteConfirmInput}
+							onChange={(e) =>
+								setDeleteConfirmInput(e.target.value)
+							}
+							placeholder={`Type "${project.title}" to confirm`}
+							className="h-10 rounded-xl bg-primary border-secondary/30 text-secondary placeholder:text-secondary/40 focus-visible:ring-accent"
+						/>
+					</div>
+
+					<AlertDialogFooter className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-3 mt-4">
+						<AlertDialogCancel
 							disabled={isDeleting}
-							className="rounded-full gap-2"
+							className="w-full sm:w-auto rounded-full bg-accent hover:bg-accent/90 text-primary border-0 font-medium cursor-pointer"
 						>
-							{isDeleting && <Loader2 className="w-4 h-4 animate-spin" />}
-							Delete Project
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							onClick={async (e) => {
+								e.preventDefault();
+								await handleDeleteProject();
+							}}
+							disabled={
+								deleteConfirmInput.trim() !== (project.title || "").trim() ||
+								isDeleting
+							}
+							className="w-full sm:w-auto rounded-full bg-destructive text-white hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+						>
+							{isDeleting ? (
+								<>
+									<Loader2 className="w-4 h-4 animate-spin" />
+									Deleting...
+								</>
+							) : (
+								<>
+									<Trash2 className="w-4 h-4" />
+									Delete Project
+								</>
+							)}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</>
 	);
 }

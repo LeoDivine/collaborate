@@ -8,8 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { MemberDashboardData } from "@/lib/services/dashboard.services";
-import { renderPriority, renderStatus, stripHtml } from "@/lib/utils";
-import { CheckCircle2, Clock, FolderKanban, Info, ListTodo, MoveRight } from "lucide-react";
+import { formatPriority, formatStatus, renderPriority, renderStatus, stripHtml } from "@/lib/utils";
+import { Box, CheckCircle2, Clock, Diamond, FolderKanban, Info, ListTodo, MoveRight } from "lucide-react";
 import { User } from "next-auth";
 import Link from "next/link";
 import React from "react";
@@ -50,13 +50,13 @@ export default function MemberDashboard({ user, data }: MemberDashboardProps) {
 				<div className="flex flex-wrap gap-2">
 					<Button asChild variant="outline" className="rounded-full size-sm" size="sm">
 						<Link href="/projects">
-							<FolderKanban className="w-3.5 h-3.5 mr-1.5" />
+							<Box className="w-3.5 h-3.5 mr-1.5" />
 							My Projects
 						</Link>
 					</Button>
 					<Button asChild className="rounded-full size-sm" size="sm">
 						<Link href="/tasks">
-							<ListTodo className="w-3.5 h-3.5 mr-1.5" />
+							<Diamond className="w-3.5 h-3.5 mr-1.5" />
 							My Tasks
 						</Link>
 					</Button>
@@ -70,9 +70,10 @@ export default function MemberDashboard({ user, data }: MemberDashboardProps) {
 						<InfoCards
 							title="Assigned Tasks"
 							value={assignedTasks}
+							icon={Diamond}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
-									<ListTodo className="w-3 h-3" />
+									<Diamond className="w-3 h-3" />
 									<p className="text-[13px]">
 										Pending workload
 									</p>
@@ -82,6 +83,7 @@ export default function MemberDashboard({ user, data }: MemberDashboardProps) {
 						<InfoCards
 							title="In Progress"
 							value={inProgressTasks}
+							icon={Diamond}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
 									<Clock className="w-3 h-3" />
@@ -94,6 +96,7 @@ export default function MemberDashboard({ user, data }: MemberDashboardProps) {
 						<InfoCards
 							title="Completed Tasks"
 							value={completedTasks}
+							icon={Diamond}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
 									<CheckCircle2 className="w-3 h-3" />
@@ -106,9 +109,10 @@ export default function MemberDashboard({ user, data }: MemberDashboardProps) {
 						<InfoCards
 							title="My Projects"
 							value={assignedProjects}
+							icon={Box}
 							extraInfo={
 								<div className="mt-[10px] text-primary flex items-center gap-1">
-									<FolderKanban className="w-3 h-3" />
+									<Box className="w-3 h-3" />
 									<p className="text-[13px]">
 										Contributed projects
 									</p>
@@ -163,10 +167,10 @@ export default function MemberDashboard({ user, data }: MemberDashboardProps) {
 													</Badge>
 													<div className="flex items-center gap-1.5 shrink-0">
 														<Badge className={`text-[10px] text-white ${renderPriority(task.priority as any)}`}>
-															{task.priority}
+															{formatPriority(task.priority)}
 														</Badge>
 														<Badge className={`text-[10px] ${renderStatus(task.status as any)}`}>
-															{task.status.replace("_", " ")}
+															{formatStatus(task.status)}
 														</Badge>
 													</div>
 												</div>

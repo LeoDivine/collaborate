@@ -2,11 +2,13 @@
 
 import { db } from "../db";
 import { auth } from "../../../auth";
-import { MileStoneStatus, PriorityLevel, Status } from "../../../generated/prisma/client";
+import { MileStoneStatus, PriorityLevel, Status, Prisma } from "../../../generated/prisma/client";
 import { revalidatePath } from "next/cache";
 import { triggerPusherEvent } from "@/lib/pusher/server";
 import { PUSHER_CHANNELS, PUSHER_EVENTS } from "@/lib/pusher/events";
 import { computeTaskAccess } from "@/lib/permissions/task-permissions";
+import { formatLabel, formatPriority, formatStatus } from "@/lib/utils";
+import type { Tasks } from "../types";
 
 export async function resolveTaskMemberAndAccess(
 	taskId: string,
@@ -22,7 +24,10 @@ export async function resolveTaskMemberAndAccess(
 
 	const task = await db.task.findUnique({
 		where: { id: taskId },
-		include: { taskMembers: true },
+		include: {
+			taskMembers: true,
+			milestones: true,
+		},
 	});
 	if (!task) return null;
 
@@ -57,9 +62,25 @@ export interface CreateTaskInput {
 	memberIds?: string[];
 	labels?: string[];
 	resources?: { name: string; url: string }[];
+	milestones?: {
+		title: string;
+		description?: string;
+		dueDate?: Date;
+	}[];
 }
 
-export const getTasksByWorkspaceId = async (workspaceId: string) => {
+export const getTasksByWorkspaceId = async (
+	workspaceId: string,
+	options?: {
+		startDate?: Date;
+		endDate?: Date;
+	},
+): Promise<{
+	success: boolean;
+	message: string;
+	tasks: Tasks[];
+	total: number;
+}> => {
 	if (!workspaceId) {
 		return {
 			success: false,
@@ -87,7 +108,7 @@ export const getTasksByWorkspaceId = async (workspaceId: string) => {
 		const isWorkspaceAdmin =
 			currentMember?.role === "OWNER" || currentMember?.role === "ADMIN";
 
-		const projectPrivacyFilter =
+		const projectPrivacyFilter: Prisma.TaskWhereInput =
 			isWorkspaceAdmin || !currentMember
 				? {}
 				: {
@@ -100,10 +121,23 @@ export const getTasksByWorkspaceId = async (workspaceId: string) => {
 						},
 				  };
 
+		const dateFilter: Prisma.TaskWhereInput = {};
+		if (options?.startDate && options?.endDate) {
+			dateFilter.AND = [
+				{ startPeriod: { lte: options.endDate } },
+				{ endPeriod: { gte: options.startDate } },
+			];
+		} else if (options?.startDate) {
+			dateFilter.endPeriod = { gte: options.startDate };
+		} else if (options?.endDate) {
+			dateFilter.startPeriod = { lte: options.endDate };
+		}
+
 		const tasks = await db.task.findMany({
 			where: {
 				workspaceId,
 				...projectPrivacyFilter,
+				...dateFilter,
 			},
 			include: {
 				project: true,
@@ -132,7 +166,7 @@ export const getTasksByWorkspaceId = async (workspaceId: string) => {
 		return {
 			success: true,
 			message: "Tasks fetched successfully",
-			tasks,
+			tasks: tasks as unknown as Tasks[],
 			total: tasks.length,
 		};
 	} catch (error: any) {
@@ -755,6 +789,7 @@ export const createTask = async (input: CreateTaskInput) => {
 		memberIds = [],
 		labels = [],
 		resources = [],
+		milestones = [],
 	} = input;
 
 	if (!title || !projectId || !workspaceId || !createdById) {
@@ -766,6 +801,64 @@ export const createTask = async (input: CreateTaskInput) => {
 	}
 
 	try {
+		const taskStart = new Date(startPeriod);
+		const taskEnd = new Date(endPeriod);
+
+		if (taskEnd < taskStart) {
+			return {
+				success: false,
+				message: "Task due date cannot be before start date",
+			};
+		}
+
+		const project = await db.project.findUnique({
+			where: { id: projectId },
+		});
+
+		if (!project) {
+			return {
+				success: false,
+				message: "Project not found",
+			};
+		}
+
+		const projStart = new Date(project.startPeriod);
+		const projEnd = new Date(project.endPeriod);
+
+		if (taskStart < projStart || taskStart > projEnd) {
+			return {
+				success: false,
+				message: "Task start date must be within the project date range",
+			};
+		}
+
+		if (taskEnd > projEnd || taskEnd < taskStart) {
+			return {
+				success: false,
+				message: "Task due date must be within the project date range and not before start date",
+			};
+		}
+
+		if (milestones && milestones.length > 0) {
+			for (const m of milestones) {
+				if (!m.title?.trim()) {
+					return {
+						success: false,
+						message: "Milestone title is required",
+					};
+				}
+				if (m.dueDate) {
+					const mDate = new Date(m.dueDate);
+					if (mDate < taskStart || mDate > taskEnd) {
+						return {
+							success: false,
+							message: `Milestone "${m.title}" date must be within the task date range`,
+						};
+					}
+				}
+			}
+		}
+
 		const newTask = await db.task.create({
 			data: {
 				title,
@@ -775,14 +868,26 @@ export const createTask = async (input: CreateTaskInput) => {
 				createdById,
 				priority,
 				status,
-				startPeriod: new Date(startPeriod),
-				endPeriod: new Date(endPeriod),
-				Labels: labels,
+				startPeriod: taskStart,
+				endPeriod: taskEnd,
+				Labels: (labels || []).map(formatLabel).filter(Boolean),
 				taskMembers: {
 					create: memberIds.map((memberId) => ({
 						memberId,
 					})),
 				},
+				milestones:
+					milestones && milestones.length > 0 ?
+						{
+							create: milestones.map((m) => ({
+								title: m.title.trim(),
+								description: m.description?.trim() || "",
+								dueDate: m.dueDate ? new Date(m.dueDate) : taskEnd,
+								status: MileStoneStatus.NOT_STARTED,
+								createdById,
+							})),
+						}
+					:	undefined,
 				resources:
 					resources.length > 0 ?
 						{
@@ -909,6 +1014,8 @@ export const updateTaskDetails = async ({
 		startPeriod?: Date;
 		endPeriod?: Date;
 		projectId?: string;
+		Labels?: string[];
+		labels?: string[];
 	};
 	memberId?: string;
 }) => {
@@ -942,10 +1049,83 @@ export const updateTaskDetails = async ({
 
 		const existingTask = resolved.task;
 
+		if (values.startPeriod || values.endPeriod) {
+			const project = await db.project.findUnique({
+				where: { id: existingTask.projectId },
+			});
+			if (project) {
+				const newStart = values.startPeriod ? new Date(values.startPeriod) : new Date(existingTask.startPeriod);
+				const newEnd = values.endPeriod ? new Date(values.endPeriod) : new Date(existingTask.endPeriod);
+				const projStart = new Date(project.startPeriod);
+				const projEnd = new Date(project.endPeriod);
+
+				if (newStart < projStart || newStart > projEnd) {
+					return {
+						success: false,
+						message: "Task start date must be within the project date range",
+					};
+				}
+				if (newEnd > projEnd || newEnd < newStart) {
+					return {
+						success: false,
+						message: "Task due date must be within the project date range and not before start date",
+					};
+				}
+
+				const milestones = existingTask.milestones || [];
+				for (const m of milestones) {
+					if (m.dueDate) {
+						const mDate = new Date(m.dueDate);
+						if (mDate < newStart || mDate > newEnd) {
+							return {
+								success: false,
+								message: `Cannot update task dates: milestone "${m.title}" falls outside the new task date range`,
+							};
+						}
+					}
+				}
+			}
+		}
+
+		let memberIdToUse = memberId;
+		if (!memberIdToUse) {
+			const session = await auth();
+			const workspaceId = session?.user?.currentWorkspaceId;
+			const userId = session?.user?.id;
+			if (userId && workspaceId) {
+				const member = await db.member.findUnique({
+					where: { userId_workspaceId: { userId, workspaceId } },
+				});
+				memberIdToUse = member?.id;
+			}
+		}
+
+		if (values.status === Status.COMPLETED) {
+			await db.mileStone.updateMany({
+				where: { taskId },
+				data: {
+					status: MileStoneStatus.DONE,
+					...(memberIdToUse ? { completedById: memberIdToUse } : {}),
+				},
+			});
+		} else if (values.status === Status.IN_PROGRESS || values.status === Status.TODO) {
+			await db.mileStone.updateMany({
+				where: { taskId },
+				data: {
+					status: MileStoneStatus.NOT_STARTED,
+					completedById: null,
+				},
+			});
+		}
+
+		const { labels, Labels, ...otherValues } = values;
+		const taskLabels = Labels ?? labels;
+
 		const updatedTask = await db.task.update({
 			where: { id: taskId },
 			data: {
-				...values,
+				...otherValues,
+				...(taskLabels !== undefined ? { Labels: taskLabels } : {}),
 			},
 			include: {
 				project: true,
@@ -961,19 +1141,6 @@ export const updateTaskDetails = async ({
 				milestones: true,
 			},
 		});
-
-		let memberIdToUse = memberId;
-		if (!memberIdToUse) {
-			const session = await auth();
-			const workspaceId = session?.user?.currentWorkspaceId;
-			const userId = session?.user?.id;
-			if (userId && workspaceId) {
-				const member = await db.member.findUnique({
-					where: { userId_workspaceId: { userId, workspaceId } },
-				});
-				memberIdToUse = member?.id;
-			}
-		}
 
 		let createdActivity = null;
 		if (memberIdToUse) {
@@ -994,13 +1161,13 @@ export const updateTaskDetails = async ({
 				values.status !== existingTask.status
 			) {
 				activityTitle = "Task Status Changed";
-				activityDesc = `Changed status of task "${updatedTask.title}" to ${values.status.replaceAll("_", " ")}`;
+				activityDesc = `Changed status of task "${updatedTask.title}" to ${formatStatus(values.status)}`;
 			} else if (
 				values.priority &&
 				values.priority !== existingTask.priority
 			) {
 				activityTitle = "Task Priority Changed";
-				activityDesc = `Changed priority of task "${updatedTask.title}" to ${values.priority}`;
+				activityDesc = `Changed priority of task "${updatedTask.title}" to ${formatPriority(values.priority)}`;
 			} else if (
 				values.startPeriod &&
 				new Date(values.startPeriod).getTime() !==
@@ -1015,6 +1182,9 @@ export const updateTaskDetails = async ({
 			) {
 				activityTitle = "Task Due Date Updated";
 				activityDesc = `Updated due date for task "${updatedTask.title}"`;
+			} else if (taskLabels !== undefined) {
+				activityTitle = "Task Labels Updated";
+				activityDesc = `Updated labels for task "${updatedTask.title}"`;
 			}
 
 			createdActivity = await db.activity.create({
@@ -1338,12 +1508,25 @@ export const addMilestone = async ({
 		const task = resolved.task;
 		const member = resolved.member;
 
+		const taskStart = new Date(task.startPeriod);
+		const taskEnd = new Date(task.endPeriod);
+
+		if (dueDate) {
+			const mDate = new Date(dueDate);
+			if (mDate < taskStart || mDate > taskEnd) {
+				return {
+					success: false,
+					message: "Milestone date must be within the task date range",
+				};
+			}
+		}
+
 		const milestone = await db.mileStone.create({
 			data: {
 				title: title.trim(),
 				description: description?.trim() || "",
 				taskId,
-				dueDate: dueDate || task.endPeriod,
+				dueDate: dueDate ? new Date(dueDate) : taskEnd,
 				status: MileStoneStatus.NOT_STARTED,
 				createdById: member?.id ?? userId,
 			},

@@ -5,7 +5,7 @@ import {
 	AvatarGroupCount,
 } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { getInitials, stripHtml } from "@/lib/utils";
+import { formatLabel, formatStatus, getInitials, stripHtml } from "@/lib/utils";
 import { MoveRight } from "lucide-react";
 import Link from "next/link";
 import React from "react";
@@ -42,16 +42,12 @@ export default function OngoingProjectsOverview({
 				<div className="flex justify-between items-center gap-2">
 					<div className="flex flex-wrap gap-1">
 						{project.labels && project.labels.length > 0 ?
-							project.labels.slice(0, 2).map((label, index) => {
-								const formattedLabel =
-									label.startsWith("#") ? label : `#${label}`;
-								return (
-									<Badge key={index}>
-										{formattedLabel}
-									</Badge>
-								);
-							})
-						:	<Badge>#{project.status.toLowerCase()}</Badge>}
+							project.labels.slice(0, 2).map((label, index) => (
+								<Badge key={index} className="bg-[#AD6B3D] text-white shadow-xs">
+									{formatLabel(label)}
+								</Badge>
+							))
+						:	<Badge>{formatStatus(project.status)}</Badge>}
 					</div>
 					{project.projectMembers.length > 0 && (
 						<AvatarGroup className="*:data-[slot=avatar]:ring-transparent shrink-0">

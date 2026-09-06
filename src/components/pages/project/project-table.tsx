@@ -1,8 +1,19 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import PaginationControls from "@/components/shared/pagination-controls";
 import ProjectTaskProgress from "@/components/shared/project-task-progress";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -40,7 +51,10 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { deleteProject, updateProjectDetails } from "@/lib/services/project.services";
+import {
+	deleteProject,
+	updateProjectDetails,
+} from "@/lib/services/project.services";
 import type { MembersUsers, Projects } from "@/lib/types";
 import { renderPriority, renderStatus } from "@/lib/utils";
 import { format, isPast, isToday } from "date-fns";
@@ -52,6 +66,7 @@ import {
 	ArrowUpDown,
 	Box,
 	Calendar as CalendarIcon,
+	CalendarDays,
 	Check,
 	CheckCircle2,
 	ChevronDown,
@@ -73,6 +88,7 @@ import {
 	Squircle,
 	Trash2,
 	UserCheck,
+	Users,
 	X,
 } from "lucide-react";
 import Link from "next/link";
@@ -94,7 +110,7 @@ const STATUS_LABELS: Record<Status, string> = {
 	[Status.IN_PROGRESS]: "In Progress",
 	[Status.ON_HOLD]: "On Hold",
 	[Status.COMPLETED]: "Completed",
-	[Status.CANCELLED]: "Cancelled",
+	[Status.CANCELLED]: "Canceled",
 };
 
 const PRIORITY_OPTIONS = Object.values(PriorityLevel).map((value) => ({
@@ -154,13 +170,15 @@ interface ColumnVisibility {
 }
 
 export const computeProjectProgress = (p: Projects): number => {
+	if (p.status === Status.COMPLETED) return 100;
 	const totalTasks = p.tasks?.length || 0;
 	if (totalTasks > 0) {
 		const totalTaskProgressSum = p.tasks.reduce((acc, t) => {
 			const totalMilestones = t.milestones?.length || 0;
 			if (totalMilestones > 0) {
 				const doneMilestones =
-					t.milestones?.filter((m) => m.status === "DONE").length || 0;
+					t.milestones?.filter((m) => m.status === "DONE").length ||
+					0;
 				return acc + (doneMilestones / totalMilestones) * 100;
 			}
 			if (t.status === Status.COMPLETED) return acc + 100;
@@ -169,7 +187,7 @@ export const computeProjectProgress = (p: Projects): number => {
 		}, 0);
 		return Math.round(totalTaskProgressSum / totalTasks);
 	}
-	return p.status === Status.COMPLETED ? 100 : 0;
+	return 0;
 };
 
 export default function ProjectTable({
@@ -179,7 +197,7 @@ export default function ProjectTable({
 	currentUserId,
 	currentMemberId,
 	totalItems,
-	pageSize = 10,
+	pageSize = 20,
 }: {
 	project: Projects[];
 	members?: MembersUsers[];
@@ -228,7 +246,9 @@ export default function ProjectTable({
 
 	// Search and filter states
 	const [searchQuery, setSearchQuery] = useState("");
-	const [selectedPriorities, setSelectedPriorities] = useState<PriorityLevel[]>([]);
+	const [selectedPriorities, setSelectedPriorities] = useState<
+		PriorityLevel[]
+	>([]);
 	const [selectedStatuses, setSelectedStatuses] = useState<Status[]>([]);
 	const [filterAssignedToMe, setFilterAssignedToMe] = useState(false);
 	const [filterOverdue, setFilterOverdue] = useState(false);
@@ -239,7 +259,9 @@ export default function ProjectTable({
 	const [groupBy, setGroupBy] = useState<GroupByField>("none");
 	const [sortField, setSortField] = useState<SortField | null>(null);
 	const [sortDirection, setSortDirection] = useState<SortDirection>(null);
-	const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+	const [collapsedGroups, setCollapsedGroups] = useState<
+		Record<string, boolean>
+	>({});
 
 	// Column Visibility state
 	const [visibleColumns, setVisibleColumns] = useState<ColumnVisibility>({
@@ -252,9 +274,14 @@ export default function ProjectTable({
 	});
 
 	// Selection & Bulk actions
-	const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
+	const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(
+		new Set(),
+	);
 	const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
 	const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+	const [projectToDelete, setProjectToDelete] = useState<Projects | null>(null);
+	const [isDeletingSingleProject, setIsDeletingSingleProject] = useState(false);
+	const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
 
 	// Side Peek Sheet state
 	const [peekProjectId, setPeekProjectId] = useState<string | null>(null);
@@ -307,17 +334,17 @@ export default function ProjectTable({
 	// Filter toggle handlers
 	const togglePriority = (value: PriorityLevel) => {
 		setSelectedPriorities((prev) =>
-			prev.includes(value)
-				? prev.filter((item) => item !== value)
-				: [...prev, value],
+			prev.includes(value) ?
+				prev.filter((item) => item !== value)
+			:	[...prev, value],
 		);
 	};
 
 	const toggleStatus = (value: Status) => {
 		setSelectedStatuses((prev) =>
-			prev.includes(value)
-				? prev.filter((item) => item !== value)
-				: [...prev, value],
+			prev.includes(value) ?
+				prev.filter((item) => item !== value)
+			:	[...prev, value],
 		);
 	};
 
@@ -362,7 +389,8 @@ export default function ProjectTable({
 			const matchesSearch =
 				query === "" ||
 				item.title.toLowerCase().includes(query) ||
-				(item.description && item.description.toLowerCase().includes(query));
+				(item.description &&
+					item.description.toLowerCase().includes(query));
 
 			const matchesPriority =
 				selectedPriorities.length === 0 ||
@@ -432,7 +460,8 @@ export default function ProjectTable({
 				comparison = a.title.localeCompare(b.title);
 			} else if (sortField === "assignees") {
 				comparison =
-					(a.projectMembers?.length || 0) - (b.projectMembers?.length || 0);
+					(a.projectMembers?.length || 0) -
+					(b.projectMembers?.length || 0);
 			} else if (sortField === "priority") {
 				comparison =
 					PRIORITY_WEIGHTS[a.priority] - PRIORITY_WEIGHTS[b.priority];
@@ -447,17 +476,36 @@ export default function ProjectTable({
 					new Date(a.endPeriod).getTime() -
 					new Date(b.endPeriod).getTime();
 			} else if (sortField === "progress") {
-				comparison = computeProjectProgress(a) - computeProjectProgress(b);
+				comparison =
+					computeProjectProgress(a) - computeProjectProgress(b);
 			}
 
 			return sortDirection === "asc" ? comparison : -comparison;
 		});
 	}, [filteredProjects, sortField, sortDirection]);
 
+	// Pagination computation
+	const searchParams = useSearchParams();
+	const rawPage = Number(searchParams?.get("page") ?? "1");
+	const currentPage = Math.max(Number.isNaN(rawPage) ? 1 : rawPage, 1);
+	const totalPages = Math.max(1, Math.ceil(sortedProjects.length / pageSize));
+	const safePage = Math.min(currentPage, totalPages);
+
+	const paginatedProjects = useMemo(() => {
+		const start = (safePage - 1) * pageSize;
+		return sortedProjects.slice(start, start + pageSize);
+	}, [sortedProjects, safePage, pageSize]);
+
 	// Grouped projects computation
 	const groupedProjectSections = useMemo((): GroupedProjectSection[] => {
 		if (groupBy === "none") {
-			return [{ id: "all", label: "All Projects", projects: sortedProjects }];
+			return [
+				{
+					id: "all",
+					label: "All Projects",
+					projects: paginatedProjects,
+				},
+			];
 		}
 
 		if (groupBy === "status") {
@@ -468,7 +516,7 @@ export default function ProjectTable({
 				[Status.COMPLETED]: [],
 				[Status.CANCELLED]: [],
 			};
-			sortedProjects.forEach((p) => {
+			paginatedProjects.forEach((p) => {
 				if (groups[p.status]) groups[p.status].push(p);
 			});
 			return Object.entries(groups)
@@ -489,7 +537,7 @@ export default function ProjectTable({
 				[PriorityLevel.LOW]: [],
 				[PriorityLevel.NO_PRIORITY]: [],
 			};
-			sortedProjects.forEach((p) => {
+			paginatedProjects.forEach((p) => {
 				if (groups[p.priority]) groups[p.priority].push(p);
 			});
 			return Object.entries(groups)
@@ -502,12 +550,14 @@ export default function ProjectTable({
 				}));
 		}
 
-		return [{ id: "all", label: "All Projects", projects: sortedProjects }];
-	}, [sortedProjects, groupBy]);
+		return [
+			{ id: "all", label: "All Projects", projects: paginatedProjects },
+		];
+	}, [paginatedProjects, groupBy]);
 
 	const selectableProjects = useMemo(() => {
-		return sortedProjects.filter((p) => checkCanEdit(p));
-	}, [sortedProjects, currentMember]);
+		return paginatedProjects.filter((p) => checkCanEdit(p));
+	}, [paginatedProjects, currentMember]);
 
 	// Selection handlers
 	const toggleSelectProject = (projectId: string) => {
@@ -546,10 +596,37 @@ export default function ProjectTable({
 	};
 
 	// Inline updates
-	const handleInlineStatusChange = async (projectId: string, newStatus: Status) => {
+	const handleInlineStatusChange = async (
+		projectId: string,
+		newStatus: Status,
+	) => {
+		const prevProjects = projects;
 		// Optimistic update
 		setProjects((prev) =>
-			prev.map((p) => (p.id === projectId ? { ...p, status: newStatus } : p)),
+			prev.map((p) => {
+				if (p.id !== projectId) return p;
+				let updatedTasks = p.tasks;
+				if (newStatus === Status.COMPLETED && p.tasks) {
+					updatedTasks = p.tasks.map((t) => ({
+						...t,
+						status: Status.COMPLETED,
+						milestones: (t.milestones || []).map((m: any) => ({
+							...m,
+							status: "DONE",
+						})),
+					}));
+				} else if ((newStatus === Status.TODO || newStatus === Status.IN_PROGRESS) && p.tasks) {
+					updatedTasks = p.tasks.map((t) => ({
+						...t,
+						status: Status.IN_PROGRESS,
+						milestones: (t.milestones || []).map((m: any) => ({
+							...m,
+							status: "IN_PROGRESS",
+						})),
+					}));
+				}
+				return { ...p, status: newStatus, tasks: updatedTasks };
+			}),
 		);
 
 		try {
@@ -559,11 +636,22 @@ export default function ProjectTable({
 			});
 			if (!res.success) {
 				toast.error(res.message || "Failed to update status");
+				setProjects(prevProjects);
 			} else {
 				toast.success(`Status updated to ${STATUS_LABELS[newStatus]}`);
+				if ((res as any).tasks) {
+					setProjects((prev) =>
+						prev.map((p) =>
+							p.id === projectId
+								? { ...p, status: newStatus, tasks: (res as any).tasks }
+								: p,
+						),
+					);
+				}
 			}
 		} catch {
 			toast.error("An error occurred while updating status");
+			setProjects(prevProjects);
 		}
 	};
 
@@ -586,7 +674,9 @@ export default function ProjectTable({
 			if (!res.success) {
 				toast.error(res.message || "Failed to update priority");
 			} else {
-				toast.success(`Priority set to ${PRIORITY_LABELS[newPriority]}`);
+				toast.success(
+					`Priority set to ${PRIORITY_LABELS[newPriority]}`,
+				);
 			}
 		} catch {
 			toast.error("An error occurred while updating priority");
@@ -610,13 +700,17 @@ export default function ProjectTable({
 		});
 
 		if (editableProjectIds.length === 0) {
-			toast.error("You do not have permission to update the selected projects");
+			toast.error(
+				"You do not have permission to update the selected projects",
+			);
 			return;
 		}
 
 		setProjects((prev) =>
 			prev.map((p) =>
-				editableProjectIds.includes(p.id) ? { ...p, status: newStatus } : p,
+				editableProjectIds.includes(p.id) ?
+					{ ...p, status: newStatus }
+				:	p,
 			),
 		);
 		setSelectedProjectIds(new Set());
@@ -648,13 +742,17 @@ export default function ProjectTable({
 		});
 
 		if (editableProjectIds.length === 0) {
-			toast.error("You do not have permission to update the selected projects");
+			toast.error(
+				"You do not have permission to update the selected projects",
+			);
 			return;
 		}
 
 		setProjects((prev) =>
 			prev.map((p) =>
-				editableProjectIds.includes(p.id) ? { ...p, priority: newPriority } : p,
+				editableProjectIds.includes(p.id) ?
+					{ ...p, priority: newPriority }
+				:	p,
 			),
 		);
 		setSelectedProjectIds(new Set());
@@ -686,15 +784,21 @@ export default function ProjectTable({
 		});
 
 		if (editableProjectIds.length === 0) {
-			toast.error("You do not have permission to delete the selected projects");
+			toast.error(
+				"You do not have permission to delete the selected projects",
+			);
 			setBulkDeleteDialogOpen(false);
 			return;
 		}
 
 		setIsBulkDeleting(true);
 		try {
-			await Promise.all(editableProjectIds.map((id) => deleteProject(id)));
-			setProjects((prev) => prev.filter((p) => !editableProjectIds.includes(p.id)));
+			await Promise.all(
+				editableProjectIds.map((id) => deleteProject(id)),
+			);
+			setProjects((prev) =>
+				prev.filter((p) => !editableProjectIds.includes(p.id)),
+			);
 			setSelectedProjectIds(new Set());
 			setBulkDeleteDialogOpen(false);
 			toast.success(`Deleted ${editableProjectIds.length} projects`);
@@ -726,7 +830,7 @@ export default function ProjectTable({
 				<div className="flex flex-wrap gap-2.5 items-center justify-between">
 					<div className="flex flex-wrap gap-2.5 items-center flex-1 min-w-[280px]">
 						{/* Search Input */}
-						<div className="relative flex-1 min-w-[200px] max-w-md">
+						<div className="relative flex-1 min-w-[200px]">
 							<Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-accent pointer-events-none" />
 							<Input
 								placeholder="Search projects, descriptions..."
@@ -747,25 +851,29 @@ export default function ProjectTable({
 						{/* Quick Filter: Assigned to me */}
 						<button
 							type="button"
-							onClick={() => setFilterAssignedToMe((prev) => !prev)}
+							onClick={() =>
+								setFilterAssignedToMe((prev) => !prev)
+							}
 							className={`inline-flex items-center justify-center rounded-full h-9 px-3.5 text-xs font-semibold border cursor-pointer select-none ${
-								filterAssignedToMe
-									? "bg-[#969696] text-primary border-[#969696]"
-									: "bg-primary text-secondary border-secondary/15"
+								filterAssignedToMe ?
+									"bg-[#969696] text-primary border-[#969696]"
+								:	"bg-primary text-secondary border-secondary/15"
 							}`}
 						>
 							<UserCheck
 								className={`w-3.5 h-3.5 mr-1.5 ${
-									filterAssignedToMe ? "text-primary" : "text-accent"
+									filterAssignedToMe ? "text-primary" : (
+										"text-accent"
+									)
 								}`}
 							/>
 							Assigned to me
 							{stats.assignedToMe > 0 && (
 								<span
 									className={`ml-1.5 flex h-4 px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${
-										filterAssignedToMe
-											? "bg-primary text-secondary"
-											: "bg-secondary text-primary"
+										filterAssignedToMe ?
+											"bg-primary text-secondary"
+										:	"bg-secondary text-primary"
 									}`}
 								>
 									{stats.assignedToMe}
@@ -777,16 +885,20 @@ export default function ProjectTable({
 						{stats.overdue > 0 && (
 							<button
 								type="button"
-								onClick={() => setFilterOverdue((prev) => !prev)}
+								onClick={() =>
+									setFilterOverdue((prev) => !prev)
+								}
 								className={`inline-flex items-center justify-center rounded-full h-9 px-3.5 text-xs font-semibold border cursor-pointer select-none ${
-									filterOverdue
-										? "bg-destructive text-primary border-destructive"
-										: "bg-primary text-secondary border-secondary/15"
+									filterOverdue ?
+										"bg-destructive text-primary border-destructive"
+									:	"bg-primary text-secondary border-secondary/15"
 								}`}
 							>
 								<AlertCircle
 									className={`w-3.5 h-3.5 mr-1.5 ${
-										filterOverdue ? "text-primary" : "text-destructive"
+										filterOverdue ? "text-primary" : (
+											"text-destructive"
+										)
 									}`}
 								/>
 								Overdue
@@ -800,16 +912,20 @@ export default function ProjectTable({
 						{stats.highUrgent > 0 && (
 							<button
 								type="button"
-								onClick={() => setFilterHighUrgent((prev) => !prev)}
+								onClick={() =>
+									setFilterHighUrgent((prev) => !prev)
+								}
 								className={`inline-flex items-center justify-center rounded-full h-9 px-3.5 text-xs font-semibold border cursor-pointer select-none ${
-									filterHighUrgent
-										? "bg-destructive text-primary border-destructive"
-										: "bg-primary text-secondary border-secondary/15"
+									filterHighUrgent ?
+										"bg-destructive text-primary border-destructive"
+									:	"bg-primary text-secondary border-secondary/15"
 								}`}
 							>
 								<Flag
 									className={`w-3.5 h-3.5 mr-1.5 ${
-										filterHighUrgent ? "text-primary" : "text-destructive"
+										filterHighUrgent ? "text-primary" : (
+											"text-destructive"
+										)
 									}`}
 								/>
 								High Priority
@@ -828,14 +944,18 @@ export default function ProjectTable({
 								<button
 									type="button"
 									className={`inline-flex items-center justify-center rounded-full h-9 px-3.5 text-xs gap-1.5 border border-secondary/15 bg-primary text-secondary cursor-pointer select-none ${
-										groupBy !== "none" ? "border-accent text-accent" : ""
+										groupBy !== "none" ?
+											"border-accent text-accent"
+										:	""
 									}`}
 								>
 									<Layers className="w-3.5 h-3.5 text-accent" />
 									<span>
 										Group:{" "}
 										<strong className="capitalize">
-											{groupBy === "none" ? "None" : groupBy}
+											{groupBy === "none" ?
+												"None"
+											:	groupBy}
 										</strong>
 									</span>
 									<ChevronDown className="w-3 h-3 text-accent/70" />
@@ -873,11 +993,13 @@ export default function ProjectTable({
 								<button
 									type="button"
 									className={`inline-flex items-center justify-center rounded-full h-9 px-3.5 text-xs gap-1.5 border border-secondary/15 bg-primary text-secondary cursor-pointer select-none ${
-										selectedPriorities.length > 0 ||
-										selectedStatuses.length > 0 ||
-										hideCompleted
-											? "border-accent text-accent font-semibold"
-											: ""
+										(
+											selectedPriorities.length > 0 ||
+											selectedStatuses.length > 0 ||
+											hideCompleted
+										) ?
+											"border-accent text-accent font-semibold"
+										:	""
 									}`}
 								>
 									<SlidersHorizontal className="w-3.5 h-3.5 text-accent" />
@@ -916,17 +1038,23 @@ export default function ProjectTable({
 								<div className="flex flex-col gap-1 px-1 py-1">
 									{PRIORITY_OPTIONS.map((opt) => {
 										const isChecked =
-											selectedPriorities.includes(opt.value);
+											selectedPriorities.includes(
+												opt.value,
+											);
 										return (
 											<label
 												key={opt.value}
-												onClick={(e) => e.stopPropagation()}
+												onClick={(e) =>
+													e.stopPropagation()
+												}
 												className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-secondary/10 cursor-pointer select-none text-xs text-secondary"
 											>
 												<Checkbox
 													checked={isChecked}
 													onCheckedChange={() =>
-														togglePriority(opt.value)
+														togglePriority(
+															opt.value,
+														)
 													}
 												/>
 												<span
@@ -949,11 +1077,15 @@ export default function ProjectTable({
 								<div className="flex flex-col gap-1 px-1 py-1">
 									{STATUS_OPTIONS.map((opt) => {
 										const isChecked =
-											selectedStatuses.includes(opt.value);
+											selectedStatuses.includes(
+												opt.value,
+											);
 										return (
 											<label
 												key={opt.value}
-												onClick={(e) => e.stopPropagation()}
+												onClick={(e) =>
+													e.stopPropagation()
+												}
 												className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-secondary/10 cursor-pointer select-none text-xs text-secondary"
 											>
 												<Checkbox
@@ -1084,7 +1216,8 @@ export default function ProjectTable({
 				{isFilterActive && (
 					<div className="flex items-center gap-1.5 flex-wrap text-xs text-primary/70">
 						<span className="font-semibold text-primary">
-							Showing {sortedProjects.length} of {projects.length} projects
+							Showing {sortedProjects.length} of {projects.length}{" "}
+							projects
 						</span>
 						{filterAssignedToMe && (
 							<Badge className="bg-primary/10 text-primary border border-primary/15 gap-1 text-[11px] py-0.5 px-2 font-normal">
@@ -1152,25 +1285,24 @@ export default function ProjectTable({
 
 			{/* Main Table Container */}
 			<div className="relative rounded-[20px] border border-secondary/15 bg-primary/40 backdrop-blur-sm overflow-hidden shadow-sm">
-				{sortedProjects.length === 0 ? (
+				{sortedProjects.length === 0 ?
 					/* Empty States */
 					<div className="flex justify-center py-16 px-6 flex-col items-center text-center">
 						<div className="bg-secondary/10 text-secondary p-4 rounded-full mb-3">
-							{isFilterActive ? (
+							{isFilterActive ?
 								<ListFilter className="w-6 h-6 text-accent" />
-							) : (
-								<Squircle className="w-6 h-6 text-accent" />
-							)}
+							:	<Box className="w-6 h-6 text-accent" />}
 						</div>
 						<h3 className="text-base font-bold text-secondary">
-							{isFilterActive
-								? "No matching projects found"
-								: "No projects available"}
+							{isFilterActive ?
+								"No matching projects found"
+							:	"No projects available"}
 						</h3>
 						<p className="text-xs text-secondary/60 max-w-sm mt-1">
-							{isFilterActive
-								? "None of the projects match your active filters or search term. Try resetting your filters."
-								: "No projects have been created in this workspace yet. Get started by clicking New Project."}
+							{isFilterActive ?
+								"None of the projects match your active filters or search term. Try resetting your filters."
+							:	"No projects have been created in this workspace yet. Get started by clicking New Project."
+							}
 						</p>
 						{isFilterActive && (
 							<Button
@@ -1183,25 +1315,33 @@ export default function ProjectTable({
 							</Button>
 						)}
 					</div>
-				) : (
-					<div className="overflow-x-auto custom-scrollbar">
+				:	<div className="overflow-x-auto custom-scrollbar">
 						<Table className="w-full">
 							<TableHeader className="bg-secondary/5 border-b border-secondary/10">
 								<TableRow className="hover:bg-transparent border-secondary/10">
 									{/* Selection Checkbox Header */}
 									<TableHead className="w-[44px] px-3">
 										<Checkbox
-											disabled={selectableProjects.length === 0}
+											disabled={
+												selectableProjects.length === 0
+											}
 											checked={
-												selectableProjects.length > 0 &&
-												selectedProjectIds.size > 0 &&
-												selectableProjects.every((p) =>
-													selectedProjectIds.has(p.id),
-												)
-													? true
-													: selectedProjectIds.size > 0
-													? "indeterminate"
-													: false
+												(
+													selectableProjects.length >
+														0 &&
+													selectedProjectIds.size >
+														0 &&
+													selectableProjects.every(
+														(p) =>
+															selectedProjectIds.has(
+																p.id,
+															),
+													)
+												) ?
+													true
+												: selectedProjectIds.size > 0 ?
+													"indeterminate"
+												:	false
 											}
 											onCheckedChange={toggleSelectAll}
 											aria-label="Select all editable projects"
@@ -1210,40 +1350,42 @@ export default function ProjectTable({
 
 									{/* Project Title Header (Sortable) */}
 									<TableHead
-										onClick={() => handleColumnSort("title")}
+										onClick={() =>
+											handleColumnSort("title")
+										}
 										className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
 									>
 										<div className="flex items-center gap-1.5">
+											<Box className="w-3.5 h-3.5 text-accent shrink-0" />
 											<span>Project Title</span>
-											{sortField === "title" ? (
-												sortDirection === "asc" ? (
+											{sortField === "title" ?
+												sortDirection === "asc" ?
 													<ArrowUp className="w-3.5 h-3.5 text-accent" />
-												) : (
-													<ArrowDown className="w-3.5 h-3.5 text-accent" />
-												)
-											) : (
-												<ArrowUpDown className="w-3 h-3 text-accent/50" />
-											)}
+												:	<ArrowDown className="w-3.5 h-3.5 text-accent" />
+
+											:	<ArrowUpDown className="w-3 h-3 text-accent/50" />
+											}
 										</div>
 									</TableHead>
 
 									{/* Assignees Header (Sortable) */}
 									{visibleColumns.assignees && (
 										<TableHead
-											onClick={() => handleColumnSort("assignees")}
+											onClick={() =>
+												handleColumnSort("assignees")
+											}
 											className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
 										>
 											<div className="flex items-center gap-1.5">
+												<Users className="w-3.5 h-3.5 text-accent shrink-0" />
 												<span>Assignees</span>
-												{sortField === "assignees" ? (
-													sortDirection === "asc" ? (
+												{sortField === "assignees" ?
+													sortDirection === "asc" ?
 														<ArrowUp className="w-3.5 h-3.5 text-accent" />
-													) : (
-														<ArrowDown className="w-3.5 h-3.5 text-accent" />
-													)
-												) : (
-													<ArrowUpDown className="w-3 h-3 text-accent/50" />
-												)}
+													:	<ArrowDown className="w-3.5 h-3.5 text-accent" />
+
+												:	<ArrowUpDown className="w-3 h-3 text-accent/50" />
+												}
 											</div>
 										</TableHead>
 									)}
@@ -1258,15 +1400,13 @@ export default function ProjectTable({
 										>
 											<div className="flex items-center gap-1.5">
 												<span>Created</span>
-												{sortField === "createdAt" ? (
-													sortDirection === "asc" ? (
+												{sortField === "createdAt" ?
+													sortDirection === "asc" ?
 														<ArrowUp className="w-3.5 h-3.5 text-accent" />
-													) : (
-														<ArrowDown className="w-3.5 h-3.5 text-accent" />
-													)
-												) : (
-													<ArrowUpDown className="w-3 h-3 text-accent/50" />
-												)}
+													:	<ArrowDown className="w-3.5 h-3.5 text-accent" />
+
+												:	<ArrowUpDown className="w-3 h-3 text-accent/50" />
+												}
 											</div>
 										</TableHead>
 									)}
@@ -1280,16 +1420,15 @@ export default function ProjectTable({
 											className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
 										>
 											<div className="flex items-center gap-1.5">
+												<CalendarDays className="w-3.5 h-3.5 text-accent shrink-0" />
 												<span>Timeline / Due</span>
-												{sortField === "endPeriod" ? (
-													sortDirection === "asc" ? (
+												{sortField === "endPeriod" ?
+													sortDirection === "asc" ?
 														<ArrowUp className="w-3.5 h-3.5 text-accent" />
-													) : (
-														<ArrowDown className="w-3.5 h-3.5 text-accent" />
-													)
-												) : (
-													<ArrowUpDown className="w-3 h-3 text-accent/50" />
-												)}
+													:	<ArrowDown className="w-3.5 h-3.5 text-accent" />
+
+												:	<ArrowUpDown className="w-3 h-3 text-accent/50" />
+												}
 											</div>
 										</TableHead>
 									)}
@@ -1304,15 +1443,13 @@ export default function ProjectTable({
 										>
 											<div className="flex items-center gap-1.5">
 												<span>Priority</span>
-												{sortField === "priority" ? (
-													sortDirection === "asc" ? (
+												{sortField === "priority" ?
+													sortDirection === "asc" ?
 														<ArrowUp className="w-3.5 h-3.5 text-accent" />
-													) : (
-														<ArrowDown className="w-3.5 h-3.5 text-accent" />
-													)
-												) : (
-													<ArrowUpDown className="w-3 h-3 text-accent/50" />
-												)}
+													:	<ArrowDown className="w-3.5 h-3.5 text-accent" />
+
+												:	<ArrowUpDown className="w-3 h-3 text-accent/50" />
+												}
 											</div>
 										</TableHead>
 									)}
@@ -1327,15 +1464,13 @@ export default function ProjectTable({
 										>
 											<div className="flex items-center gap-1.5">
 												<span>Status</span>
-												{sortField === "status" ? (
-													sortDirection === "asc" ? (
+												{sortField === "status" ?
+													sortDirection === "asc" ?
 														<ArrowUp className="w-3.5 h-3.5 text-accent" />
-													) : (
-														<ArrowDown className="w-3.5 h-3.5 text-accent" />
-													)
-												) : (
-													<ArrowUpDown className="w-3 h-3 text-accent/50" />
-												)}
+													:	<ArrowDown className="w-3.5 h-3.5 text-accent" />
+
+												:	<ArrowUpDown className="w-3 h-3 text-accent/50" />
+												}
 											</div>
 										</TableHead>
 									)}
@@ -1350,15 +1485,13 @@ export default function ProjectTable({
 										>
 											<div className="flex items-center gap-1.5">
 												<span>Progress</span>
-												{sortField === "progress" ? (
-													sortDirection === "asc" ? (
+												{sortField === "progress" ?
+													sortDirection === "asc" ?
 														<ArrowUp className="w-3.5 h-3.5 text-accent" />
-													) : (
-														<ArrowDown className="w-3.5 h-3.5 text-accent" />
-													)
-												) : (
-													<ArrowUpDown className="w-3 h-3 text-accent/50" />
-												)}
+													:	<ArrowDown className="w-3.5 h-3.5 text-accent" />
+
+												:	<ArrowUpDown className="w-3 h-3 text-accent/50" />
+												}
 											</div>
 										</TableHead>
 									)}
@@ -1391,11 +1524,10 @@ export default function ProjectTable({
 															className="flex items-center gap-2 cursor-pointer select-none group w-fit"
 														>
 															<button className="text-secondary/70 group-hover:text-secondary p-0.5">
-																{isCollapsed ? (
+																{isCollapsed ?
 																	<ChevronRight className="w-4 h-4 text-accent" />
-																) : (
-																	<ChevronDown className="w-4 h-4 text-accent" />
-																)}
+																:	<ChevronDown className="w-4 h-4 text-accent" />
+																}
 															</button>
 															<span className="text-xs font-bold text-secondary group-hover:text-accent transition-colors flex items-center gap-2">
 																{section.status && (
@@ -1416,7 +1548,8 @@ export default function ProjectTable({
 															</span>
 															<span className="text-[11px] font-semibold bg-secondary/10 px-2 py-0.5 rounded-full text-secondary/80">
 																{
-																	section.projects
+																	section
+																		.projects
 																		.length
 																}
 															</span>
@@ -1477,21 +1610,25 @@ export default function ProjectTable({
 															proj.id,
 														);
 
-													const canEdit = checkCanEdit(proj);
+													const canEdit =
+														checkCanEdit(proj);
 
 													return (
 														<TableRow
 															key={proj.id}
-															className={`border-secondary/10 ${
-																isSelected
-																	? "bg-secondary/10"
-																	: ""
+															data-state={isSelected ? "selected" : undefined}
+															className={`border-secondary/10 transition-colors ${
+																isSelected ?
+																	"bg-secondary text-primary dark:bg-zinc-800 dark:text-zinc-100 font-medium border-primary/20"
+																:	"hover:bg-secondary/[0.04]"
 															}`}
 														>
 															{/* Selection Checkbox */}
 															<TableCell className="px-3">
 																<Checkbox
-																	disabled={!canEdit}
+																	disabled={
+																		!canEdit
+																	}
 																	checked={
 																		isSelected
 																	}
@@ -1503,9 +1640,16 @@ export default function ProjectTable({
 																	}
 																	aria-label={`Select project ${proj.title}`}
 																	title={
-																		!canEdit
-																			? "You do not have permission to edit this project"
-																			: undefined
+																		(
+																			!canEdit
+																		) ?
+																			"You do not have permission to edit this project"
+																		:	undefined
+																	}
+																	className={
+																		isSelected
+																			? "border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:text-secondary"
+																			: ""
 																	}
 																/>
 															</TableCell>
@@ -1515,7 +1659,9 @@ export default function ProjectTable({
 																<div className="flex items-center gap-2">
 																	{/* Quick Complete Button */}
 																	<button
-																		disabled={!canEdit}
+																		disabled={
+																			!canEdit
+																		}
 																		onClick={() =>
 																			canEdit &&
 																			handleInlineQuickComplete(
@@ -1523,24 +1669,42 @@ export default function ProjectTable({
 																			)
 																		}
 																		className={`shrink-0 transition-colors p-0.5 rounded-full ${
-																			proj.status ===
-																			Status.COMPLETED
-																				? canEdit
-																					? "text-emerald-500 hover:text-emerald-600 cursor-pointer"
-																					: "text-emerald-500 cursor-default"
-																				: canEdit
-																					? "text-secondary/40 hover:text-emerald-500 cursor-pointer"
-																					: "text-secondary/25 cursor-default opacity-40"
+																			(
+																				proj.status ===
+																				Status.COMPLETED
+																			) ?
+																				(
+																					canEdit
+																				) ?
+																					"text-emerald-500 hover:text-emerald-600 cursor-pointer"
+																				:	"text-emerald-500 cursor-default"
+																			: (
+																				canEdit
+																			) ?
+																				isSelected
+																					? "text-primary/60 hover:text-emerald-600 cursor-pointer dark:text-zinc-300"
+																					: "text-secondary/40 hover:text-emerald-500 cursor-pointer"
+																			: isSelected
+																				? "text-primary/30 cursor-default opacity-40 dark:text-zinc-500"
+																				: "text-secondary/25 cursor-default opacity-40"
 																		}`}
 																		title={
-																			proj.status ===
-																			Status.COMPLETED
-																				? canEdit
-																					? "Mark as Incomplete"
-																					: "Project is Completed"
-																				: canEdit
-																					? "Mark as Completed"
-																					: "You do not have permission to edit this project"
+																			(
+																				proj.status ===
+																				Status.COMPLETED
+																			) ?
+																				(
+																					canEdit
+																				) ?
+																					"Mark as Incomplete"
+																				:	"Project is Completed"
+
+																			: (
+																				canEdit
+																			) ?
+																				"Mark as Completed"
+																			:	"You do not have permission to edit this project"
+
 																		}
 																	>
 																		<CheckCircle2 className="w-4 h-4" />
@@ -1553,11 +1717,17 @@ export default function ProjectTable({
 																					proj.id,
 																				)
 																			}
-																			className={`font-semibold text-xs text-left truncate hover:underline hover:text-accent transition-colors flex items-center gap-1.5 ${
-																				proj.status ===
-																				Status.COMPLETED
-																					? "line-through text-secondary/60"
-																					: "text-secondary"
+																			className={`font-semibold text-xs text-left truncate hover:underline transition-colors flex items-center gap-1.5 ${
+																				(
+																					proj.status ===
+																					Status.COMPLETED
+																				) ?
+																					isSelected
+																						? "line-through text-primary/60 dark:text-zinc-400"
+																						: "line-through text-secondary/60"
+																				: isSelected
+																					? "text-primary font-bold dark:text-white hover:text-primary/80"
+																					: "text-secondary hover:text-accent"
 																			}`}
 																		>
 																			<span className="truncate">
@@ -1567,7 +1737,11 @@ export default function ProjectTable({
 																			</span>
 																		</button>
 
-																		{(proj as any).visibility === "PRIVATE" && (
+																		{(
+																			proj as any
+																		)
+																			.visibility ===
+																			"PRIVATE" && (
 																			<Badge className="w-fit text-[9px] py-0 px-1.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1 border-0">
 																				<Lock className="w-2.5 h-2.5" />
 																				Private
@@ -1575,9 +1749,15 @@ export default function ProjectTable({
 																		)}
 
 																		{isAssignedToCurrentUser && (
-																			<Badge className="w-fit text-[9px] py-0 px-1.5 bg-secondary/15 text-secondary font-medium flex items-center gap-1">
-																				<UserCheck className="w-2.5 h-2.5 text-accent" />
-																				Assigned to me
+																			<Badge className={`w-fit text-[9px] py-0 px-1.5 font-medium flex items-center gap-1 ${
+																				isSelected
+																					? "bg-primary/15 text-primary border border-primary/25 dark:bg-white/15 dark:text-white"
+																					: "bg-secondary/15 text-secondary"
+																			}`}>
+																				<UserCheck className={`w-2.5 h-2.5 ${isSelected ? "text-primary dark:text-accent" : "text-accent"}`} />
+																				Assigned
+																				to
+																				me
 																			</Badge>
 																		)}
 																	</div>
@@ -1591,6 +1771,9 @@ export default function ProjectTable({
 																		projectMembers={
 																			proj.projectMembers
 																		}
+																		isSelected={
+																			isSelected
+																		}
 																	/>
 																</TableCell>
 															)}
@@ -1598,7 +1781,7 @@ export default function ProjectTable({
 															{/* Created At */}
 															{visibleColumns.createdAt && (
 																<TableCell>
-																	<span className="text-xs text-secondary/70">
+																	<span className={`text-xs ${isSelected ? "text-primary/80 font-medium dark:text-zinc-300" : "text-secondary/70"}`}>
 																		{format(
 																			createdAt,
 																			"MMM d, yyyy",
@@ -1610,16 +1793,20 @@ export default function ProjectTable({
 															{/* Period & Due Date with Overdue Indicator */}
 															{visibleColumns.period && (
 																<TableCell>
-																	{canEdit ? (
+																	{canEdit ?
 																		<Popover>
 																			<PopoverTrigger
 																				asChild
 																			>
 																				<button
-																					className={`flex items-center gap-1 text-xs font-medium p-1 rounded-md hover:bg-secondary/10 transition-colors w-fit ${
-																						isOverdue
-																							? "text-destructive font-semibold bg-destructive/10 px-1.5"
-																							: "text-secondary"
+																					className={`flex items-center gap-1 text-xs font-medium p-1 rounded-md transition-colors w-fit ${
+																						(
+																							isOverdue
+																						) ?
+																							"text-destructive font-semibold bg-destructive/10 px-1.5"
+																						: isSelected
+																							? "text-primary hover:bg-primary/10 dark:text-zinc-200"
+																							: "text-secondary hover:bg-secondary/10"
 																					}`}
 																				>
 																					{isOverdue && (
@@ -1675,16 +1862,18 @@ export default function ProjectTable({
 																										(
 																											p,
 																										) =>
-																											p.id ===
-																											proj.id
-																												? {
-																														...p,
-																														startPeriod:
-																															range.from!,
-																														endPeriod:
-																															range.to!,
-																												  }
-																												: p,
+																											(
+																												p.id ===
+																												proj.id
+																											) ?
+																												{
+																													...p,
+																													startPeriod:
+																														range.from!,
+																													endPeriod:
+																														range.to!,
+																												}
+																											:	p,
 																									),
 																							);
 																							await updateProjectDetails(
@@ -1708,11 +1897,14 @@ export default function ProjectTable({
 																				/>
 																			</PopoverContent>
 																		</Popover>
-																	) : (
-																		<div
+																	:	<div
 																			className={`flex items-center gap-1 text-xs font-medium p-1 w-fit ${
-																				isOverdue
-																					? "text-destructive font-semibold bg-destructive/10 px-1.5 rounded-md"
+																				(
+																					isOverdue
+																				) ?
+																					"text-destructive font-semibold bg-destructive/10 px-1.5 rounded-md"
+																				: isSelected
+																					? "text-primary/80 dark:text-zinc-300"
 																					: "text-secondary/70"
 																			}`}
 																		>
@@ -1740,14 +1932,14 @@ export default function ProjectTable({
 																				</span>
 																			)}
 																		</div>
-																	)}
+																	}
 																</TableCell>
 															)}
 
 															{/* Interactive Priority Badge */}
 															{visibleColumns.priority && (
 																<TableCell>
-																	{canEdit ? (
+																	{canEdit ?
 																		<DropdownMenu>
 																			<DropdownMenuTrigger
 																				asChild
@@ -1804,8 +1996,7 @@ export default function ProjectTable({
 																				)}
 																			</DropdownMenuContent>
 																		</DropdownMenu>
-																	) : (
-																		<span
+																	:	<span
 																			className={`${renderPriority(
 																				proj.priority,
 																			)} text-primary px-2 py-0.5 rounded-full text-xs font-semibold inline-flex items-center`}
@@ -1817,14 +2008,14 @@ export default function ProjectTable({
 																				]
 																			}
 																		</span>
-																	)}
+																	}
 																</TableCell>
 															)}
 
 															{/* Interactive Status Badge */}
 															{visibleColumns.status && (
 																<TableCell>
-																	{canEdit ? (
+																	{canEdit ?
 																		<DropdownMenu>
 																			<DropdownMenuTrigger
 																				asChild
@@ -1891,8 +2082,7 @@ export default function ProjectTable({
 																				)}
 																			</DropdownMenuContent>
 																		</DropdownMenu>
-																	) : (
-																		<span
+																	:	<span
 																			className={`${renderStatus(
 																				proj.status,
 																			)} text-primary px-2.5 py-0.5 rounded-full text-xs font-semibold inline-flex items-center gap-1.5`}
@@ -1916,7 +2106,7 @@ export default function ProjectTable({
 																				}
 																			</span>
 																		</span>
-																	)}
+																	}
 																</TableCell>
 															)}
 
@@ -1929,10 +2119,23 @@ export default function ProjectTable({
 																				value={
 																					progressPercent
 																				}
+																				isSelected={
+																					isSelected
+																				}
 																			/>
 																		</div>
-																		<span className="text-[10px] text-secondary/60 shrink-0 font-medium">
-																			{completedTasks}/{totalTasks}
+																		<span className={`text-[10px] shrink-0 font-medium ${
+																			isSelected
+																				? "text-primary font-bold dark:text-zinc-200"
+																				: "text-secondary/60"
+																		}`}>
+																			{
+																				completedTasks
+																			}
+																			/
+																			{
+																				totalTasks
+																			}
 																		</span>
 																	</div>
 																</TableCell>
@@ -1949,10 +2152,14 @@ export default function ProjectTable({
 																				proj.id,
 																			)
 																		}
-																		className="h-7 w-7 rounded-full text-secondary hover:bg-secondary/10"
+																		className={`h-7 w-7 rounded-full transition-colors ${
+																			isSelected
+																				? "text-primary hover:bg-primary/15 hover:text-primary dark:text-zinc-200"
+																				: "text-secondary hover:bg-secondary/10 hover:text-secondary"
+																		}`}
 																		title="Inspect Project"
 																	>
-																		<PanelRightOpen className="w-3.5 h-3.5 text-accent" />
+																		<PanelRightOpen className={`w-3.5 h-3.5 ${isSelected ? "text-primary dark:text-accent" : "text-accent"}`} />
 																	</Button>
 																	<DropdownMenu>
 																		<DropdownMenuTrigger
@@ -1961,16 +2168,22 @@ export default function ProjectTable({
 																			<Button
 																				variant="ghost"
 																				size="icon"
-																				className="h-7 w-7 rounded-full text-secondary hover:bg-secondary/10"
+																				className={`h-7 w-7 rounded-full transition-colors ${
+																					isSelected
+																						? "text-primary hover:bg-primary/15 hover:text-primary dark:text-zinc-200"
+																						: "text-secondary hover:bg-secondary/10 hover:text-secondary"
+																				}`}
 																			>
-																				<MoreHorizontal className="w-3.5 h-3.5 text-accent" />
+																				<MoreHorizontal className={`w-3.5 h-3.5 ${isSelected ? "text-primary dark:text-accent" : "text-accent"}`} />
 																			</Button>
 																		</DropdownMenuTrigger>
 																		<DropdownMenuContent
 																			align="end"
 																			className="bg-primary border border-secondary/20 text-secondary rounded-[14px]"
 																		>
-																			<DropdownMenuItem asChild>
+																			<DropdownMenuItem
+																				asChild
+																			>
 																				<Link
 																					href={`/projects/${proj.id}`}
 																					className="cursor-pointer text-xs flex items-center gap-2"
@@ -1999,38 +2212,11 @@ export default function ProjectTable({
 																				<>
 																					<DropdownMenuSeparator className="bg-secondary/15" />
 																					<DropdownMenuItem
-																						onClick={async () => {
-																							const res = await deleteProject(
-																								proj.id,
-																							);
-																							if (!res.success) {
-																								toast.error(
-																									res.message ||
-																										"Failed to delete project",
-																								);
-																							} else {
-																								setProjects(
-																									(
-																										p,
-																									) =>
-																										p.filter(
-																											(
-																												item,
-																											) =>
-																												item.id !==
-																												proj.id,
-																										),
-																								);
-																								toast.success(
-																									"Project deleted",
-																								);
-																							}
-																						}}
+																						onClick={() => setProjectToDelete(proj)}
 																						className="cursor-pointer text-xs text-destructive hover:bg-destructive/10 flex items-center gap-2"
 																					>
 																						<Trash2 className="w-3.5 h-3.5" />
-																						Delete
-																						Project
+																						Delete Project
 																					</DropdownMenuItem>
 																				</>
 																			)}
@@ -2047,15 +2233,16 @@ export default function ProjectTable({
 							</TableBody>
 						</Table>
 					</div>
-				)}
+				}
 
 				{/* Pagination Controls */}
 				<div className="p-3 border-t border-secondary/10 bg-secondary/5 flex items-center justify-between">
 					<span className="text-xs text-primary font-medium">
-						Showing {sortedProjects.length} of {totalItems ?? projects.length} projects
+						Showing {paginatedProjects.length} of{" "}
+						{sortedProjects.length} projects
 					</span>
 					<PaginationControls
-						totalItems={totalItems ?? projects.length}
+						totalItems={sortedProjects.length}
 						pageSize={pageSize}
 					/>
 				</div>
@@ -2160,49 +2347,163 @@ export default function ProjectTable({
 				</div>
 			)}
 
-			{/* Bulk Delete Confirmation Dialog */}
-			<Dialog
+			{/* Bulk Delete Confirmation Alert Dialog */}
+			<AlertDialog
 				open={bulkDeleteDialogOpen}
 				onOpenChange={setBulkDeleteDialogOpen}
 			>
-				<DialogContent className="bg-primary text-secondary border border-secondary/20 rounded-[20px] max-w-md">
-					<DialogHeader>
-						<DialogTitle className="text-destructive flex items-center gap-2">
+				<AlertDialogContent className="bg-primary text-secondary border border-secondary/20 rounded-[20px] max-w-md">
+					<AlertDialogHeader>
+						<AlertDialogTitle className="text-destructive flex items-center gap-2">
 							<Trash2 className="w-5 h-5" />
 							Delete {selectedProjectIds.size} Projects
-						</DialogTitle>
-						<DialogDescription className="text-secondary/70 text-sm">
+						</AlertDialogTitle>
+						<AlertDialogDescription className="text-secondary/70 text-sm">
 							Are you sure you want to delete these{" "}
 							<span className="font-semibold text-secondary">
 								{selectedProjectIds.size} projects
 							</span>
-							? All associated tasks, milestones, comments, and resources will be
-							permanently deleted. This action cannot be undone.
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter className="gap-2 sm:gap-0 mt-4">
-						<DialogClose asChild>
-							<Button
-								variant="ghost"
-								className="rounded-full text-secondary hover:bg-secondary/10"
-							>
-								Cancel
-							</Button>
-						</DialogClose>
-						<Button
-							variant="destructive"
-							onClick={handleBulkDelete}
+							? All associated tasks, milestones, comments, and
+							resources will be permanently deleted. This action
+							cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter className="gap-3 sm:gap-3 mt-4">
+						<AlertDialogCancel
 							disabled={isBulkDeleting}
-							className="rounded-full gap-2"
+							className="rounded-full border-secondary/20 text-secondary hover:bg-secondary/10"
+						>
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							onClick={async (e) => {
+								e.preventDefault();
+								await handleBulkDelete();
+							}}
+							disabled={isBulkDeleting}
+							className="rounded-full bg-destructive text-white hover:bg-destructive/90 gap-2"
 						>
 							{isBulkDeleting && (
 								<Loader2 className="w-4 h-4 animate-spin" />
 							)}
 							Delete Selected
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
+			{/* Single Project Delete Alert Dialog */}
+			<AlertDialog
+				open={!!projectToDelete}
+				onOpenChange={(open) => {
+					if (!open && !isDeletingSingleProject) {
+						setProjectToDelete(null);
+						setDeleteConfirmInput("");
+					}
+				}}
+			>
+				<AlertDialogContent className="rounded-[20px] border border-secondary/20 bg-primary text-secondary sm:max-w-md p-6">
+					<AlertDialogHeader>
+						<AlertDialogTitle className="text-xl font-bold text-destructive flex items-center gap-2">
+							<Trash2 className="w-5 h-5 text-destructive shrink-0" />
+							Delete Project
+						</AlertDialogTitle>
+						<AlertDialogDescription className="text-[13px] text-secondary/80 mt-2 leading-relaxed">
+							This action cannot be undone. This will permanently
+							delete the project{" "}
+							<strong className="text-secondary font-semibold">
+								{projectToDelete?.title}
+							</strong>{" "}
+							and all associated tasks, comments, and resources.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+
+					<div className="flex flex-col gap-3 my-4">
+						<label className="text-xs font-semibold text-secondary/90 text-center">
+							Project name to verify:
+						</label>
+						<div className="flex items-center justify-center p-3 rounded-xl bg-secondary/10 border border-secondary/20">
+							<span className="font-mono text-sm font-medium text-accent truncate select-all text-center">
+								{projectToDelete?.title}
+							</span>
+						</div>
+
+						<label className="text-xs font-semibold text-secondary/90 mt-1">
+							Type project name to confirm:
+						</label>
+						<Input
+							value={deleteConfirmInput}
+							onChange={(e) =>
+								setDeleteConfirmInput(e.target.value)
+							}
+							placeholder={`Type "${projectToDelete?.title || ""}" to confirm`}
+							className="h-10 rounded-xl bg-primary border-secondary/30 text-secondary placeholder:text-secondary/40 focus-visible:ring-accent"
+						/>
+					</div>
+
+					<AlertDialogFooter className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-3 mt-4">
+						<AlertDialogCancel
+							disabled={isDeletingSingleProject}
+							className="w-full sm:w-auto rounded-full bg-accent hover:bg-accent/90 text-primary border-0 font-medium cursor-pointer"
+						>
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							onClick={async (e) => {
+								e.preventDefault();
+								if (!projectToDelete) return;
+								const targetName = (projectToDelete.title || "").trim();
+								if (deleteConfirmInput.trim() !== targetName) {
+									toast.error("Project name does not match");
+									return;
+								}
+								setIsDeletingSingleProject(true);
+								try {
+									const res = await deleteProject(projectToDelete.id);
+									if (!res.success) {
+										toast.error(res.message || "Failed to delete project");
+									} else {
+										setProjects((p) =>
+											p.filter((item) => item.id !== projectToDelete.id),
+										);
+										setSelectedProjectIds((prev) => {
+											const next = new Set(prev);
+											next.delete(projectToDelete.id);
+											return next;
+										});
+										toast.success("Project deleted");
+										setProjectToDelete(null);
+										setDeleteConfirmInput("");
+									}
+								} catch {
+									toast.error("Failed to delete project");
+								} finally {
+									setIsDeletingSingleProject(false);
+								}
+							}}
+							disabled={
+								deleteConfirmInput.trim() !== (projectToDelete?.title || "").trim() ||
+								isDeletingSingleProject
+							}
+							className="w-full sm:w-auto rounded-full bg-destructive text-white hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+						>
+							{isDeletingSingleProject ? (
+								<>
+									<Loader2 className="w-4 h-4 animate-spin" />
+									Deleting...
+								</>
+							) : (
+								<>
+									<Trash2 className="w-4 h-4" />
+									Delete Project
+								</>
+							)}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 
 			{/* Side Peek Drawer */}
 			<ProjectPeekSheet
@@ -2217,9 +2518,9 @@ export default function ProjectTable({
 				onProjectUpdated={(updatedPartial) => {
 					setProjects((prev) =>
 						prev.map((p) =>
-							p.id === updatedPartial.id
-								? { ...p, ...updatedPartial }
-								: p,
+							p.id === updatedPartial.id ?
+								{ ...p, ...updatedPartial }
+							:	p,
 						),
 					);
 				}}

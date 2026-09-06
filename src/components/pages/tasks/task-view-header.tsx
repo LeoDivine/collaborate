@@ -20,6 +20,8 @@ interface TaskViewHeaderProps {
 	workspaceId: string;
 	currentMemberId: string;
 	initialTotal?: number;
+	defaultStartDate?: Date;
+	defaultProjectId?: string;
 	onOpenDialog: () => void;
 	onDialogChange: (nextOpen: boolean) => void;
 }
@@ -32,12 +34,15 @@ export default function TaskViewHeader({
 	workspaceId,
 	currentMemberId,
 	initialTotal = 0,
+	defaultStartDate,
+	defaultProjectId,
 	onOpenDialog,
 	onDialogChange,
 }: TaskViewHeaderProps) {
 	return (
 		<div className="flex justify-between items-center">
-			<div className="flex items-center gap-3">
+			<div className="flex items-center gap-2.5">
+				<Diamond className="w-5 h-5 text-primary" />
 				<p className="text-[20px] font-bold text-primary">
 					Tasks ({tasksTotal})
 				</p>
@@ -62,6 +67,8 @@ export default function TaskViewHeader({
 							workspaceId={workspaceId}
 							currentMemberId={currentMemberId}
 							initialTotal={initialTotal}
+							defaultStartDate={defaultStartDate}
+							defaultProjectId={defaultProjectId}
 							onSuccess={() => onDialogChange(false)}
 						/>
 					</DialogHeader>

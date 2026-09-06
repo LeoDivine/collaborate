@@ -21,6 +21,7 @@ export default async function Projects(props: { searchParams: SearchParams }) {
 	const allProjects: Projects[] = projectsResponse.projects;
 	const allMembers = membersResponse.members || [];
 	const currentMember = allMembers.find((m) => m.userId === userId);
+	const pageSize = 20;
 
 	return (
 		<div>
@@ -33,6 +34,7 @@ export default async function Projects(props: { searchParams: SearchParams }) {
 				projectsTotal={projectsResponse.total}
 				currentUserId={userId}
 				currentMemberId={currentMember?.id || ""}
+				pageSize={pageSize}
 			/>
 		</div>
 	);

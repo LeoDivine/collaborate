@@ -227,7 +227,12 @@ export default function MembersView({
 					<Table className="min-w-[700px]">
 						<TableHeader>
 							<TableRow>
-								<TableHead className="">Fullname</TableHead>
+								<TableHead className="">
+									<div className="flex items-center gap-1.5">
+										<Users className="w-3.5 h-3.5 text-accent shrink-0" />
+										<span>Fullname</span>
+									</div>
+								</TableHead>
 								<TableHead>Email Address</TableHead>
 								<TableHead>Username</TableHead>
 								<TableHead className="">Role</TableHead>
@@ -449,7 +454,7 @@ export default function MembersView({
 							from this workspace? This action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
-					<AlertDialogFooter className="mt-4">
+					<AlertDialogFooter className="gap-3 sm:gap-3 mt-4">
 						<AlertDialogCancel
 							disabled={loading}
 							className="rounded-full border-accent text-secondary hover:bg-accent hover:text-primary"
@@ -457,6 +462,7 @@ export default function MembersView({
 							Cancel
 						</AlertDialogCancel>
 						<AlertDialogAction
+							variant="destructive"
 							onClick={handleConfirmRemove}
 							disabled={loading}
 							className="rounded-full bg-destructive text-white hover:bg-destructive/90"

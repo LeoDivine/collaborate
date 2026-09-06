@@ -1,8 +1,19 @@
 "use client";
 
 import React from "react";
+import { useSearchParams } from "next/navigation";
 import PaginationControls from "@/components/shared/pagination-controls";
 import ProjectTaskProgress from "@/components/shared/project-task-progress";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +69,7 @@ import {
 	ArrowUpDown,
 	Box,
 	Calendar as CalendarIcon,
+	CalendarDays,
 	Check,
 	CheckCircle,
 	CheckCircle2,
@@ -66,6 +78,7 @@ import {
 	CircleCheck,
 	CircleX,
 	Columns3,
+	Diamond,
 	ExternalLink,
 	Eye,
 	EyeOff,
@@ -106,7 +119,7 @@ const STATUS_LABELS: Record<Status, string> = {
 	[Status.IN_PROGRESS]: "In Progress",
 	[Status.ON_HOLD]: "On Hold",
 	[Status.COMPLETED]: "Completed",
-	[Status.CANCELLED]: "Cancelled",
+	[Status.CANCELLED]: "Canceled",
 };
 
 const PRIORITY_OPTIONS = Object.values(PriorityLevel).map((value) => ({
@@ -174,7 +187,7 @@ export default function TaskTable({
 	currentUserId,
 	currentMemberId,
 	totalItems,
-	pageSize = 10,
+	pageSize = 20,
 }: {
 	tasks: Tasks[];
 	projects?: Projects[];
@@ -198,10 +211,17 @@ export default function TaskTable({
 	const [selectedPriorities, setSelectedPriorities] = useState<PriorityLevel[]>([]);
 	const [selectedStatuses, setSelectedStatuses] = useState<Status[]>([]);
 	const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+	const [projectFilterSearch, setProjectFilterSearch] = useState("");
 	const [filterAssignedToMe, setFilterAssignedToMe] = useState(true);
 	const [filterOverdue, setFilterOverdue] = useState(false);
 	const [filterHighUrgent, setFilterHighUrgent] = useState(false);
 	const [hideCompleted, setHideCompleted] = useState(false);
+
+	const filteredFilterProjects = useMemo(() => {
+		if (!projectFilterSearch.trim()) return projects;
+		const q = projectFilterSearch.toLowerCase();
+		return projects.filter((p) => p.title.toLowerCase().includes(q));
+	}, [projects, projectFilterSearch]);
 
 	// Grouping & Sorting states
 	const [groupBy, setGroupBy] = useState<GroupByField>("none");
@@ -224,6 +244,8 @@ export default function TaskTable({
 	const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
 	const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
 	const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+	const [taskToDelete, setTaskToDelete] = useState<Tasks | null>(null);
+	const [isDeletingSingleTask, setIsDeletingSingleTask] = useState(false);
 
 	// RBAC member identification
 	const currentMember = useMemo(() => {
@@ -517,10 +539,22 @@ export default function TaskTable({
 		});
 	}, [filteredTasks, sortField, sortDirection]);
 
+	// Pagination computation
+	const searchParams = useSearchParams();
+	const rawPage = Number(searchParams?.get("page") ?? "1");
+	const currentPage = Math.max(Number.isNaN(rawPage) ? 1 : rawPage, 1);
+	const totalPages = Math.max(1, Math.ceil(sortedTasks.length / pageSize));
+	const safePage = Math.min(currentPage, totalPages);
+
+	const paginatedTasks = useMemo(() => {
+		const start = (safePage - 1) * pageSize;
+		return sortedTasks.slice(start, start + pageSize);
+	}, [sortedTasks, safePage, pageSize]);
+
 	// Grouped tasks computation
 	const groupedTaskSections = useMemo((): GroupedTaskSection[] => {
 		if (groupBy === "none") {
-			return [{ id: "all", label: "All Tasks", tasks: sortedTasks }];
+			return [{ id: "all", label: "All Tasks", tasks: paginatedTasks }];
 		}
 
 		if (groupBy === "status") {
@@ -531,7 +565,7 @@ export default function TaskTable({
 				[Status.COMPLETED]: [],
 				[Status.CANCELLED]: [],
 			};
-			sortedTasks.forEach((t) => {
+			paginatedTasks.forEach((t) => {
 				if (groups[t.status]) groups[t.status].push(t);
 			});
 			return Object.entries(groups)
@@ -552,7 +586,7 @@ export default function TaskTable({
 				[PriorityLevel.LOW]: [],
 				[PriorityLevel.NO_PRIORITY]: [],
 			};
-			sortedTasks.forEach((t) => {
+			paginatedTasks.forEach((t) => {
 				if (groups[t.priority]) groups[t.priority].push(t);
 			});
 			return Object.entries(groups)
@@ -567,7 +601,7 @@ export default function TaskTable({
 
 		if (groupBy === "project") {
 			const groups: Record<string, { label: string; tasks: Tasks[] }> = {};
-			sortedTasks.forEach((t) => {
+			paginatedTasks.forEach((t) => {
 				const key = t.projectId || "no-project";
 				const label = t.project?.title || "No Project";
 				if (!groups[key]) {
@@ -582,12 +616,12 @@ export default function TaskTable({
 			}));
 		}
 
-		return [{ id: "all", label: "All Tasks", tasks: sortedTasks }];
-	}, [sortedTasks, groupBy]);
+		return [{ id: "all", label: "All Tasks", tasks: paginatedTasks }];
+	}, [paginatedTasks, groupBy]);
 
 	const selectableTasks = useMemo(() => {
-		return sortedTasks.filter((t) => checkCanEditTask(t));
-	}, [sortedTasks, currentMember]);
+		return paginatedTasks.filter((t) => checkCanEditTask(t));
+	}, [paginatedTasks, currentMember]);
 
 	// Selection handlers
 	const toggleSelectTask = (taskId: string) => {
@@ -629,7 +663,24 @@ export default function TaskTable({
 	const handleInlineStatusChange = async (taskId: string, newStatus: Status) => {
 		// Optimistic update
 		setTasks((prev) =>
-			prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)),
+			prev.map((t) => {
+				if (t.id !== taskId) return t;
+				let nextMilestones = t.milestones;
+				if (newStatus === Status.COMPLETED) {
+					nextMilestones = (t.milestones || []).map((m) => ({
+						...m,
+						status: MileStoneStatus.DONE,
+						...(currentMember?.id ? { completedById: currentMember.id } : {}),
+					}));
+				} else if (newStatus === Status.IN_PROGRESS || newStatus === Status.TODO) {
+					nextMilestones = (t.milestones || []).map((m) => ({
+						...m,
+						status: MileStoneStatus.NOT_STARTED,
+						completedById: null,
+					}));
+				}
+				return { ...t, status: newStatus, milestones: nextMilestones };
+			}),
 		);
 
 		try {
@@ -640,6 +691,13 @@ export default function TaskTable({
 			if (!res.success) {
 				toast.error(res.message || "Failed to update status");
 			} else {
+				if (res.task && (res.task as any).milestones) {
+					setTasks((prev) =>
+						prev.map((t) =>
+							t.id === taskId ? { ...t, milestones: (res.task as any).milestones } : t,
+						),
+					);
+				}
 				toast.success(`Status updated to ${STATUS_LABELS[newStatus]}`);
 			}
 		} catch {
@@ -693,9 +751,24 @@ export default function TaskTable({
 		}
 
 		setTasks((prev) =>
-			prev.map((t) =>
-				editableTaskIds.includes(t.id) ? { ...t, status: newStatus } : t,
-			),
+			prev.map((t) => {
+				if (!editableTaskIds.includes(t.id)) return t;
+				let nextMilestones = t.milestones;
+				if (newStatus === Status.COMPLETED) {
+					nextMilestones = (t.milestones || []).map((m) => ({
+						...m,
+						status: MileStoneStatus.DONE,
+						...(currentMember?.id ? { completedById: currentMember.id } : {}),
+					}));
+				} else if (newStatus === Status.IN_PROGRESS || newStatus === Status.TODO) {
+					nextMilestones = (t.milestones || []).map((m) => ({
+						...m,
+						status: MileStoneStatus.NOT_STARTED,
+						completedById: null,
+					}));
+				}
+				return { ...t, status: newStatus, milestones: nextMilestones };
+			}),
 		);
 		setSelectedTaskIds(new Set());
 
@@ -804,7 +877,7 @@ export default function TaskTable({
 				<div className="flex flex-wrap gap-2.5 items-center justify-between">
 					<div className="flex flex-wrap gap-2.5 items-center flex-1 min-w-[280px]">
 						{/* Search Input */}
-						<div className="relative flex-1 min-w-[200px] max-w-md">
+						<div className="relative flex-1 min-w-[200px]">
 							<Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-accent pointer-events-none" />
 							<Input
 								placeholder="Search tasks, descriptions, projects..."
@@ -987,11 +1060,60 @@ export default function TaskTable({
 								{/* Filter by Project */}
 								{projects.length > 0 && (
 									<>
-										<DropdownMenuLabel className="text-xs font-bold text-secondary/70">
-											Projects
-										</DropdownMenuLabel>
-										<div className="flex flex-col gap-1 px-1 py-1 max-h-[120px] overflow-y-auto custom-scrollbar">
-											{projects.map((proj) => {
+										<div className="flex items-center justify-between px-2 pt-1">
+											<DropdownMenuLabel className="text-xs font-bold text-secondary/70 p-0">
+												Projects
+											</DropdownMenuLabel>
+											{selectedProjectIds.length > 0 && (
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation();
+														setSelectedProjectIds([]);
+													}}
+													className="text-[10px] text-secondary/60 hover:text-secondary underline cursor-pointer"
+												>
+													Clear ({selectedProjectIds.length})
+												</button>
+											)}
+										</div>
+
+										{/* Search Bar within Project Filter */}
+										<div
+											className="px-1.5 py-1"
+											onClick={(e) => e.stopPropagation()}
+											onKeyDown={(e) => e.stopPropagation()}
+										>
+											<div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary/10 text-secondary">
+												<Search className="w-3 h-3 opacity-50 shrink-0" />
+												<input
+													value={projectFilterSearch}
+													onChange={(e) =>
+														setProjectFilterSearch(
+															e.target.value,
+														)
+													}
+													placeholder="Search projects..."
+													className="bg-transparent text-[11px] outline-none w-full placeholder:text-secondary/40 text-secondary"
+												/>
+												{projectFilterSearch && (
+													<button
+														type="button"
+														onClick={() =>
+															setProjectFilterSearch(
+																"",
+															)
+														}
+														className="opacity-50 hover:opacity-100"
+													>
+														<X className="w-3 h-3" />
+													</button>
+												)}
+											</div>
+										</div>
+
+										<div className="flex flex-col gap-1 px-1 py-1 max-h-[160px] overflow-y-auto custom-scrollbar">
+											{filteredFilterProjects.map((proj) => {
 												const isChecked =
 													selectedProjectIds.includes(
 														proj.id,
@@ -1016,6 +1138,11 @@ export default function TaskTable({
 													</label>
 												);
 											})}
+											{filteredFilterProjects.length === 0 && (
+												<p className="text-[11px] text-secondary/50 text-center py-2">
+													No projects found
+												</p>
+											)}
 										</div>
 										<DropdownMenuSeparator className="bg-secondary/15" />
 									</>
@@ -1302,7 +1429,7 @@ export default function TaskTable({
 							{isFilterActive ? (
 								<ListFilter className="w-6 h-6 text-accent" />
 							) : (
-								<Squircle className="w-6 h-6 text-accent" />
+								<Diamond className="w-6 h-6 text-accent" />
 							)}
 						</div>
 						<h3 className="text-base font-bold text-secondary">
@@ -1357,6 +1484,7 @@ export default function TaskTable({
 										className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
 									>
 										<div className="flex items-center gap-1.5">
+											<Diamond className="w-3.5 h-3.5 text-accent shrink-0" />
 											<span>Task Title</span>
 											{sortField === "title" ? (
 												sortDirection === "asc" ? (
@@ -1379,6 +1507,7 @@ export default function TaskTable({
 											className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
 										>
 											<div className="flex items-center gap-1.5">
+												<Box className="w-3.5 h-3.5 text-accent shrink-0" />
 												<span>Project</span>
 												{sortField === "project" ? (
 													sortDirection === "asc" ? (
@@ -1396,7 +1525,10 @@ export default function TaskTable({
 									{/* Assignees Header */}
 									{visibleColumns.assignees && (
 										<TableHead className="text-xs font-bold text-secondary">
-											Assignees
+											<div className="flex items-center gap-1.5">
+												<Users className="w-3.5 h-3.5 text-accent shrink-0" />
+												<span>Assignees</span>
+											</div>
 										</TableHead>
 									)}
 
@@ -1432,6 +1564,7 @@ export default function TaskTable({
 											className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
 										>
 											<div className="flex items-center gap-1.5">
+												<CalendarDays className="w-3.5 h-3.5 text-accent shrink-0" />
 												<span>Timeline / Due</span>
 												{sortField === "endPeriod" ? (
 													sortDirection === "asc" ? (
@@ -1501,6 +1634,7 @@ export default function TaskTable({
 											className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors w-[180px]"
 										>
 											<div className="flex items-center gap-1.5">
+												<Squircle className="w-3.5 h-3.5 text-accent shrink-0" />
 												<span>Milestones</span>
 												{sortField === "milestones" ? (
 													sortDirection === "asc" ? (
@@ -1641,10 +1775,11 @@ export default function TaskTable({
 													return (
 														<TableRow
 															key={task.id}
-															className={`border-secondary/10 ${
+															data-state={isSelected ? "selected" : undefined}
+															className={`border-secondary/10 transition-colors ${
 																isSelected
-																	? "bg-secondary/10"
-																	: ""
+																	? "bg-secondary text-primary dark:bg-zinc-800 dark:text-zinc-100 font-medium border-primary/20"
+																	: "hover:bg-secondary/[0.04]"
 															}`}
 														>
 															{/* Selection Checkbox */}
@@ -1665,6 +1800,11 @@ export default function TaskTable({
 																		!canEdit
 																			? "You do not have permission to edit this task"
 																			: undefined
+																	}
+																	className={
+																		isSelected
+																			? "border-primary/60 data-[state=checked]:bg-primary data-[state=checked]:text-secondary"
+																			: ""
 																	}
 																/>
 															</TableCell>
@@ -1688,8 +1828,12 @@ export default function TaskTable({
 																					? "text-emerald-500 hover:text-emerald-600 cursor-pointer"
 																					: "text-emerald-500 cursor-default"
 																				: canEdit
-																					? "text-secondary/40 hover:text-emerald-500 cursor-pointer"
-																					: "text-secondary/25 cursor-default opacity-40"
+																					? isSelected
+																						? "text-primary/60 hover:text-emerald-600 cursor-pointer dark:text-zinc-300"
+																						: "text-secondary/40 hover:text-emerald-500 cursor-pointer"
+																					: isSelected
+																						? "text-primary/30 cursor-default opacity-40 dark:text-zinc-500"
+																						: "text-secondary/25 cursor-default opacity-40"
 																		}`}
 																		title={
 																			task.status ===
@@ -1712,11 +1856,15 @@ export default function TaskTable({
 																					task.id,
 																				)
 																			}
-																			className={`font-semibold text-xs text-left truncate hover:underline hover:text-accent transition-colors flex items-center gap-1.5 ${
+																			className={`font-semibold text-xs text-left truncate hover:underline transition-colors flex items-center gap-1.5 ${
 																				task.status ===
 																				Status.COMPLETED
-																					? "line-through text-secondary/60"
-																					: "text-secondary"
+																					? isSelected
+																						? "line-through text-primary/60 dark:text-zinc-400"
+																						: "line-through text-secondary/60"
+																					: isSelected
+																						? "text-primary font-bold dark:text-white hover:text-primary/80"
+																						: "text-secondary hover:text-accent"
 																			}`}
 																		>
 																			<span className="truncate">
@@ -1727,8 +1875,12 @@ export default function TaskTable({
 																		</button>
 
 																		{isAssignedToCurrentUser && (
-																			<Badge className="w-fit text-[9px] py-0 px-1.5 bg-secondary/15 text-secondary font-medium flex items-center gap-1">
-																				<UserCheck className="w-2.5 h-2.5 text-accent" />
+																			<Badge className={`w-fit text-[9px] py-0 px-1.5 font-medium flex items-center gap-1 ${
+																				isSelected
+																					? "bg-primary/15 text-primary border border-primary/25 dark:bg-white/15 dark:text-white"
+																					: "bg-secondary/15 text-secondary"
+																			}`}>
+																				<UserCheck className={`w-2.5 h-2.5 ${isSelected ? "text-primary dark:text-accent" : "text-accent"}`} />
 																				Assigned to me
 																			</Badge>
 																		)}
@@ -1746,13 +1898,19 @@ export default function TaskTable({
 																		>
 																			<Badge
 																				variant="outline"
-																				className="bg-secondary/10 text-secondary border-secondary/20 hover:bg-secondary/20 flex items-center gap-1.5 py-0.5 px-2 text-xs font-medium w-fit truncate max-w-[160px]"
+																				className={`flex items-center gap-1.5 py-0.5 px-2 text-xs font-medium w-fit truncate max-w-[160px] ${
+																					isSelected
+																						? "bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 dark:bg-white/10 dark:text-white dark:border-white/20"
+																						: "bg-secondary/10 text-secondary border-secondary/20 hover:bg-secondary/20"
+																				}`}
 																			>
 																				<Box
 																					className={`w-3 h-3 shrink-0 ${
 																						task.status ===
 																						Status.COMPLETED
 																							? "text-emerald-500"
+																							: isSelected
+																							? "text-primary dark:text-accent"
 																							: "text-accent"
 																					}`}
 																				/>
@@ -1766,7 +1924,7 @@ export default function TaskTable({
 																			</Badge>
 																		</Link>
 																	) : (
-																		<span className="text-[11px] text-secondary/40 italic">
+																		<span className={`text-[11px] italic ${isSelected ? "text-primary/50 dark:text-zinc-400" : "text-secondary/40"}`}>
 																			No
 																			project
 																		</span>
@@ -1781,6 +1939,9 @@ export default function TaskTable({
 																		taskMembers={
 																			task.taskMembers
 																		}
+																		isSelected={
+																			isSelected
+																		}
 																	/>
 																</TableCell>
 															)}
@@ -1788,7 +1949,7 @@ export default function TaskTable({
 															{/* Created At */}
 															{visibleColumns.createdAt && (
 																<TableCell>
-																	<span className="text-xs text-secondary/70">
+																	<span className={`text-xs ${isSelected ? "text-primary/80 font-medium dark:text-zinc-300" : "text-secondary/70"}`}>
 																		{format(
 																			createdAt,
 																			"MMM d, yyyy",
@@ -1806,10 +1967,12 @@ export default function TaskTable({
 																				asChild
 																			>
 																				<button
-																					className={`flex items-center gap-1 text-xs font-medium p-1 rounded-md hover:bg-secondary/10 transition-colors w-fit ${
+																					className={`flex items-center gap-1 text-xs font-medium p-1 rounded-md transition-colors w-fit ${
 																						isOverdue
 																							? "text-destructive font-semibold bg-destructive/10 px-1.5"
-																							: "text-secondary"
+																							: isSelected
+																							? "text-primary hover:bg-primary/10 dark:text-zinc-200"
+																							: "text-secondary hover:bg-secondary/10"
 																					}`}
 																				>
 																					{isOverdue && (
@@ -1902,6 +2065,8 @@ export default function TaskTable({
 																			className={`flex items-center gap-1 text-xs font-medium p-1 w-fit ${
 																				isOverdue
 																					? "text-destructive font-semibold bg-destructive/10 px-1.5 rounded-md"
+																					: isSelected
+																					? "text-primary/80 dark:text-zinc-300"
 																					: "text-secondary/70"
 																			}`}
 																		>
@@ -2098,11 +2263,18 @@ export default function TaskTable({
 																				value={
 																					milestonePercent
 																				}
+																				isSelected={
+																					isSelected
+																				}
 																			/>
 																		</div>
 																		{totalMilestones >
 																			0 && (
-																			<span className="text-[10px] text-secondary/60 shrink-0 font-medium">
+																			<span className={`text-[10px] shrink-0 font-medium ${
+																				isSelected
+																					? "text-primary font-bold dark:text-zinc-200"
+																					: "text-secondary/60"
+																			}`}>
 																				{
 																					completedMilestones
 																				}
@@ -2127,10 +2299,14 @@ export default function TaskTable({
 																				task.id,
 																			)
 																		}
-																		className="h-7 w-7 rounded-full text-secondary hover:bg-secondary/10"
+																		className={`h-7 w-7 rounded-full transition-colors ${
+																			isSelected
+																				? "text-primary hover:bg-primary/15 hover:text-primary dark:text-zinc-200"
+																				: "text-secondary hover:bg-secondary/10 hover:text-secondary"
+																		}`}
 																		title="Inspect Task"
 																	>
-																		<PanelRightOpen className="w-3.5 h-3.5 text-accent" />
+																		<PanelRightOpen className={`w-3.5 h-3.5 ${isSelected ? "text-primary dark:text-accent" : "text-accent"}`} />
 																	</Button>
 																	<DropdownMenu>
 																		<DropdownMenuTrigger
@@ -2139,9 +2315,13 @@ export default function TaskTable({
 																			<Button
 																				variant="ghost"
 																				size="icon"
-																				className="h-7 w-7 rounded-full text-secondary hover:bg-secondary/10"
+																				className={`h-7 w-7 rounded-full transition-colors ${
+																					isSelected
+																						? "text-primary hover:bg-primary/15 hover:text-primary dark:text-zinc-200"
+																						: "text-secondary hover:bg-secondary/10 hover:text-secondary"
+																				}`}
 																			>
-																				<MoreHorizontal className="w-3.5 h-3.5 text-accent" />
+																				<MoreHorizontal className={`w-3.5 h-3.5 ${isSelected ? "text-primary dark:text-accent" : "text-accent"}`} />
 																			</Button>
 																		</DropdownMenuTrigger>
 																		<DropdownMenuContent
@@ -2177,31 +2357,11 @@ export default function TaskTable({
 																				<>
 																					<DropdownMenuSeparator className="bg-secondary/15" />
 																					<DropdownMenuItem
-																						onClick={async () => {
-																							await deleteTask(
-																								task.id,
-																							);
-																							setTasks(
-																								(
-																									p,
-																								) =>
-																									p.filter(
-																										(
-																											t,
-																										) =>
-																											t.id !==
-																											task.id,
-																									),
-																							);
-																							toast.success(
-																								"Task deleted",
-																							);
-																						}}
+																						onClick={() => setTaskToDelete(task)}
 																						className="cursor-pointer text-xs text-destructive hover:bg-destructive/10 flex items-center gap-2"
 																					>
 																						<Trash2 className="w-3.5 h-3.5" />
-																						Delete
-																						Task
+																						Delete Task
 																					</DropdownMenuItem>
 																				</>
 																			)}
@@ -2223,10 +2383,10 @@ export default function TaskTable({
 				{/* Pagination Controls */}
 				<div className="p-3 border-t border-secondary/10 bg-secondary/5 flex items-center justify-between">
 					<span className="text-xs text-primary font-medium">
-						Showing {sortedTasks.length} of {totalItems ?? tasks.length} tasks
+						Showing {paginatedTasks.length} of {sortedTasks.length} tasks
 					</span>
 					<PaginationControls
-						totalItems={totalItems ?? tasks.length}
+						totalItems={sortedTasks.length}
 						pageSize={pageSize}
 					/>
 				</div>
@@ -2331,48 +2491,121 @@ export default function TaskTable({
 				</div>
 			)}
 
-			{/* Bulk Delete Confirmation Dialog */}
-			<Dialog
+			{/* Bulk Delete Confirmation Alert Dialog */}
+			<AlertDialog
 				open={bulkDeleteDialogOpen}
 				onOpenChange={setBulkDeleteDialogOpen}
 			>
-				<DialogContent className="bg-primary text-secondary border border-secondary/20 rounded-[20px] max-w-md">
-					<DialogHeader>
-						<DialogTitle className="text-destructive flex items-center gap-2">
+				<AlertDialogContent className="bg-primary text-secondary border border-secondary/20 rounded-[20px] max-w-md">
+					<AlertDialogHeader>
+						<AlertDialogTitle className="text-destructive flex items-center gap-2">
 							<Trash2 className="w-5 h-5" />
 							Delete {selectedTaskIds.size} Tasks
-						</DialogTitle>
-						<DialogDescription className="text-secondary/70 text-sm">
+						</AlertDialogTitle>
+						<AlertDialogDescription className="text-secondary/70 text-sm">
 							Are you sure you want to delete these{" "}
 							<span className="font-semibold text-secondary">
 								{selectedTaskIds.size} tasks
 							</span>
-							? This action cannot be undone.
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter className="gap-2 sm:gap-0 mt-4">
-						<DialogClose asChild>
-							<Button
-								variant="ghost"
-								className="rounded-full text-secondary hover:bg-secondary/10"
-							>
-								Cancel
-							</Button>
-						</DialogClose>
-						<Button
-							variant="destructive"
-							onClick={handleBulkDelete}
+							? This action cannot be undone and will remove all
+							associated milestones, comments, and resources.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter className="gap-3 sm:gap-3 mt-4">
+						<AlertDialogCancel
 							disabled={isBulkDeleting}
-							className="rounded-full gap-2"
+							className="rounded-full border-secondary/20 text-secondary hover:bg-secondary/10"
+						>
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							onClick={async (e) => {
+								e.preventDefault();
+								await handleBulkDelete();
+							}}
+							disabled={isBulkDeleting}
+							className="rounded-full bg-destructive text-white hover:bg-destructive/90 gap-2"
 						>
 							{isBulkDeleting && (
 								<Loader2 className="w-4 h-4 animate-spin" />
 							)}
 							Delete Selected
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
+			{/* Single Task Delete Alert Dialog */}
+			<AlertDialog
+				open={!!taskToDelete}
+				onOpenChange={(open) => {
+					if (!open && !isDeletingSingleTask) {
+						setTaskToDelete(null);
+					}
+				}}
+			>
+				<AlertDialogContent className="bg-primary text-secondary border border-secondary/20 rounded-[20px] max-w-md">
+					<AlertDialogHeader>
+						<AlertDialogTitle className="text-destructive flex items-center gap-2">
+							<Trash2 className="w-5 h-5" />
+							Delete Task
+						</AlertDialogTitle>
+						<AlertDialogDescription className="text-secondary/70 text-sm">
+							Are you sure you want to delete{" "}
+							<span className="font-semibold text-secondary">
+								"{taskToDelete?.title}"
+							</span>
+							? This action cannot be undone and will remove all
+							associated milestones, comments, and resources.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter className="gap-3 sm:gap-3 mt-4">
+						<AlertDialogCancel
+							disabled={isDeletingSingleTask}
+							className="rounded-full border-secondary/20 text-secondary hover:bg-secondary/10"
+						>
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							onClick={async (e) => {
+								e.preventDefault();
+								if (!taskToDelete) return;
+								setIsDeletingSingleTask(true);
+								try {
+									const res = await deleteTask(taskToDelete.id);
+									if (!res.success) {
+										toast.error(res.message || "Failed to delete task");
+									} else {
+										setTasks((p) =>
+											p.filter((item) => item.id !== taskToDelete.id),
+										);
+										setSelectedTaskIds((prev) => {
+											const next = new Set(prev);
+											next.delete(taskToDelete.id);
+											return next;
+										});
+										toast.success("Task deleted");
+										setTaskToDelete(null);
+									}
+								} catch {
+									toast.error("Failed to delete task");
+								} finally {
+									setIsDeletingSingleTask(false);
+								}
+							}}
+							disabled={isDeletingSingleTask}
+							className="rounded-full bg-destructive text-white hover:bg-destructive/90 gap-2"
+						>
+							{isDeletingSingleTask && (
+								<Loader2 className="w-4 h-4 animate-spin" />
+							)}
+							Delete Task
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 
 			{/* Side Peek Drawer */}
 			<TaskPeekSheet

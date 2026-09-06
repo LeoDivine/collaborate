@@ -128,7 +128,12 @@ export default function RequestsView({
 				:	<Table className="min-w-[700px]">
 						<TableHeader>
 							<TableRow>
-								<TableHead>Full Name</TableHead>
+								<TableHead>
+									<div className="flex items-center gap-1.5">
+										<Blocks className="w-3.5 h-3.5 text-accent shrink-0" />
+										<span>Full Name</span>
+									</div>
+								</TableHead>
 								<TableHead>Email Address</TableHead>
 								<TableHead>Requested At</TableHead>
 								<TableHead>Message</TableHead>
