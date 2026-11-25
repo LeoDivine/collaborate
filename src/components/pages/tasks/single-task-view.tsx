@@ -1,6 +1,8 @@
 "use client";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import PresenceIndicator from "@/components/shared/presence-indicator";
+import { PresenceAvatar } from "@/components/shared/presence-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -111,7 +113,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
 	MileStoneStatus,
@@ -645,11 +647,20 @@ export default function SingleTaskView({
 								:	"hover:bg-primary/10 text-primary"
 							}`}
 						>
-							<Avatar className="w-5 h-5 shrink-0">
-								<AvatarFallback className="w-full h-full text-[9px] bg-primary text-secondary font-bold">
-									{getInitials(displayName)}
-								</AvatarFallback>
-							</Avatar>
+							<div className="relative inline-flex shrink-0">
+								<Avatar className="w-5 h-5 shrink-0">
+									<AvatarFallback className="w-full h-full text-[9px] bg-primary text-secondary font-bold">
+										{getInitials(displayName)}
+									</AvatarFallback>
+								</Avatar>
+								<span className="absolute -bottom-0.5 -right-0.5 leading-none">
+									<PresenceIndicator
+										userId={m.userId || m.user?.id}
+										size="xs"
+										ringColor="ring-primary"
+									/>
+								</span>
+							</div>
 							<div className="flex flex-col min-w-0">
 								<span className="font-semibold truncate leading-tight">
 									{displayName}
@@ -694,8 +705,20 @@ export default function SingleTaskView({
 							</HoverCardTrigger>
 							<HoverCardContent className="flex w-full bg-accent border-accent text-primary flex-col gap-0.5 z-[99999]">
 								<div className="items-center flex gap-4">
-									<div className="flex text-accent w-[50px] h-[50px] font-extrabold text-[20px] items-center justify-center rounded-full bg-primary shrink-0">
-										{getInitials(displayName)}
+									<div className="relative inline-flex shrink-0">
+										<div className="flex text-accent w-[50px] h-[50px] font-extrabold text-[20px] items-center justify-center rounded-full bg-primary shrink-0">
+											{getInitials(displayName)}
+										</div>
+										<span className="absolute bottom-0 right-0 leading-none">
+											<PresenceIndicator
+												userId={
+													user.id ||
+													matchedMember.userId
+												}
+												size="sm"
+												ringColor="ring-accent"
+											/>
+										</span>
 									</div>
 									<div>
 										{user.userName && (
@@ -760,6 +783,7 @@ export default function SingleTaskView({
 			creatorUser?.email ||
 			"Creator"
 		);
+	const creatorUserId = task.createdBy?.userId || creatorUser?.id;
 
 	// Calculate milestone metrics
 	const totalMilestones = task.milestones?.length || 0;
@@ -771,6 +795,18 @@ export default function SingleTaskView({
 			Math.round((completedMilestones / totalMilestones) * 100)
 		: status === Status.COMPLETED ? 100
 		: 0;
+
+	const sortedMilestones = useMemo(() => {
+		return [...(task.milestones || [])].sort((a, b) => {
+			const isADone = a.status === MileStoneStatus.DONE;
+			const isBDone = b.status === MileStoneStatus.DONE;
+
+			if (isADone !== isBDone) {
+				return isADone ? 1 : -1;
+			}
+			return 0;
+		});
+	}, [task.milestones]);
 
 	// Save Title
 	const handleSaveTitle = async () => {
@@ -1658,19 +1694,40 @@ export default function SingleTaskView({
 		<div className="flex flex-col lg:flex-row gap-4 w-full items-start">
 			{/* Main Left Content Area */}
 			<div className="w-full lg:w-[75%] grow flex flex-col gap-4">
-				{/* Top Bar: Back Button, Title, Edit Description */}
-				<div className="flex flex-wrap gap-3 justify-between items-center">
-					<div className="gap-2 sm:gap-3 items-center flex min-w-0 flex-1">
+				{/* Top Bar: Responsive 2-tier header preventing buttons from blocking task title */}
+				<div className="flex flex-col gap-3 w-full">
+					{/* Actions & Navigation Row */}
+					<div className="flex items-center justify-between gap-2.5 w-full">
 						<Link
 							href="/tasks"
-							className="py-2 px-3.5 rounded-full flex gap-2 items-center justify-center bg-primary shrink-0 text-secondary"
+							className="py-2 px-3.5 rounded-full flex gap-2 items-center justify-center bg-primary shrink-0 text-secondary hover:bg-primary/90 transition-colors shadow-sm"
 						>
 							<MoveLeft className="w-4 h-4" />
-							<p className="text-[14px]">Back</p>
+							<span className="text-[14px]">Back</span>
 						</Link>
 
+						{canEditTask && (
+							<Button
+								size="sm"
+								onClick={() =>
+									setIsEditingDescription(!isEditingDescription)
+								}
+								className="rounded-full flex items-center gap-2 h-9 px-3.5 text-xs font-semibold"
+							>
+								<PenLine className="w-3.5 h-3.5" />
+								<span>
+									{isEditingDescription ?
+										"Close Editor"
+									:	"Edit Description"}
+								</span>
+							</Button>
+						)}
+					</div>
+
+					{/* Task Title Row */}
+					<div className="flex items-center gap-2.5 flex-wrap min-w-0">
 						{isEditingTitle ?
-							<div className="flex items-center gap-2 flex-1 max-w-lg">
+							<div className="flex items-center gap-2 flex-1 max-w-lg min-w-[200px]">
 								<Input
 									autoFocus
 									disabled={isSavingTitle}
@@ -1685,43 +1742,28 @@ export default function SingleTaskView({
 										}
 									}}
 									onBlur={handleSaveTitle}
-									className="text-primary text-xl sm:text-2xl font-bold bg-accent rounded-xl border-primary/20"
+									placeholder="Task title"
+									className="text-primary text-xl sm:text-2xl md:text-3xl font-bold bg-accent rounded-xl border-primary/20 placeholder:text-primary/50"
 								/>
 								{isSavingTitle && (
-									<Loader2 className="w-4 h-4 animate-spin text-primary" />
+									<Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
 								)}
 							</div>
 						: canEditTask ?
 							<div
 								onClick={() => setIsEditingTitle(true)}
-								className="group flex items-center gap-2 cursor-pointer min-w-0"
+								className="group flex items-center gap-2 cursor-pointer min-w-0 max-w-full"
 							>
-								<p className="text-primary text-xl sm:text-2xl font-bold truncate hover:opacity-80">
+								<h1 className="text-primary text-xl sm:text-2xl md:text-3xl font-bold break-words leading-tight hover:opacity-80">
 									{title}
-								</p>
+								</h1>
 								<PenLine className="w-4 h-4 text-primary/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
 							</div>
-						:	<div className="flex items-center gap-2 min-w-0">
-								<p className="text-primary text-xl sm:text-2xl font-bold truncate">
-									{title}
-								</p>
-							</div>
+						:	<h1 className="text-primary text-xl sm:text-2xl md:text-3xl font-bold break-words leading-tight">
+								{title}
+							</h1>
 						}
 					</div>
-
-					{canEditTask && (
-						<Button
-							onClick={() =>
-								setIsEditingDescription(!isEditingDescription)
-							}
-							className="rounded-full flex items-center gap-2"
-						>
-							<PenLine className="w-4 h-4" />
-							{isEditingDescription ?
-								"Close Editor"
-							:	"Edit Description"}
-						</Button>
-					)}
 				</div>
 
 				{/* Task Description Card */}
@@ -1841,7 +1883,10 @@ export default function SingleTaskView({
 												{safeFormatDate(startDate, "LLL d")}
 											</span>
 										</PopoverTrigger>
-										<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
+										<PopoverContent
+											className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden"
+											align="start"
+										>
 											<Calendar
 												mode="single"
 												selected={startDate}
@@ -1850,7 +1895,7 @@ export default function SingleTaskView({
 													before: task.project?.startPeriod ? new Date(task.project.startPeriod) : undefined,
 													after: dueDate || (task.project?.endPeriod ? new Date(task.project.endPeriod) : undefined),
 												}}
-												className="bg-primary text-secondary"
+												className="rounded-[20px] bg-primary text-secondary"
 											/>
 										</PopoverContent>
 									</Popover>
@@ -1869,7 +1914,10 @@ export default function SingleTaskView({
 												{safeFormatDate(dueDate, "LLL d")}
 											</span>
 										</PopoverTrigger>
-										<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
+										<PopoverContent
+											className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden"
+											align="start"
+										>
 											<Calendar
 												mode="single"
 												selected={dueDate}
@@ -1878,7 +1926,7 @@ export default function SingleTaskView({
 													before: startDate || (task.project?.startPeriod ? new Date(task.project.startPeriod) : undefined),
 													after: task.project?.endPeriod ? new Date(task.project.endPeriod) : undefined,
 												}}
-												className="bg-primary text-secondary"
+												className="rounded-[20px] bg-primary text-secondary"
 											/>
 										</PopoverContent>
 									</Popover>
@@ -2003,7 +2051,7 @@ export default function SingleTaskView({
 											type="button"
 											disabled={deletingResourceId === i.id}
 											onClick={() => handleDeleteResource(i.id)}
-											className="p-0.5 hover:bg-secondary/20 rounded-full transition-colors text-secondary/70 hover:text-secondary disabled:opacity-50"
+											className="p-0.5 hover:bg-destructive/10 rounded-full transition-colors text-secondary/70 hover:text-destructive disabled:opacity-50"
 											title="Delete resource"
 										>
 											{deletingResourceId === i.id ?
@@ -2116,27 +2164,36 @@ export default function SingleTaskView({
 				</div>
 
 				<Tabs defaultValue="milestones" className="w-full">
-					<TabsList className="bg-primary/10 dark:bg-accent/40 p-1 rounded-full mb-3 flex-wrap h-auto">
+					<TabsList className="bg-primary/10 dark:bg-accent/40 p-1 rounded-full mb-3 max-w-full overflow-x-auto custom-scrollbar flex-nowrap sm:flex-wrap h-auto">
 						<TabsTrigger
 							value="milestones"
-							className="text-xs rounded-full px-4 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5"
+							title={`Milestones (${totalMilestones})`}
+							className="group text-xs rounded-full px-2.5 py-1.5 data-[state=active]:px-4 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5 transition-all duration-200"
 						>
-							<Squircle className="w-3.5 h-3.5" />
-							Milestones ({totalMilestones})
+							<Squircle className="w-3.5 h-3.5 shrink-0" />
+							<span className="hidden group-data-[state=active]:inline whitespace-nowrap">
+								Milestones ({totalMilestones})
+							</span>
 						</TabsTrigger>
 						<TabsTrigger
 							value="activity"
-							className="text-xs rounded-full px-4 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5"
+							title={`Activity (${activities.length})`}
+							className="group text-xs rounded-full px-2.5 py-1.5 data-[state=active]:px-4 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5 transition-all duration-200"
 						>
-							<Workflow className="w-3.5 h-3.5" />
-							Activity ({activities.length})
+							<Workflow className="w-3.5 h-3.5 shrink-0" />
+							<span className="hidden group-data-[state=active]:inline whitespace-nowrap">
+								Activity ({activities.length})
+							</span>
 						</TabsTrigger>
 						<TabsTrigger
 							value="comments"
-							className="text-xs rounded-full px-4 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5"
+							title={`Comments (${comments.length})`}
+							className="group text-xs rounded-full px-2.5 py-1.5 data-[state=active]:px-4 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5 transition-all duration-200"
 						>
-							<MessageSquare className="w-3.5 h-3.5" />
-							Comments ({comments.length})
+							<MessageSquare className="w-3.5 h-3.5 shrink-0" />
+							<span className="hidden group-data-[state=active]:inline whitespace-nowrap">
+								Comments ({comments.length})
+							</span>
 						</TabsTrigger>
 					</TabsList>
 
@@ -2200,7 +2257,7 @@ export default function SingleTaskView({
 										</TableRow>
 									</TableHeader>
 									<TableBody>
-										{task.milestones?.map((m) => {
+										{sortedMilestones.map((m) => {
 											const isDone =
 												m.status ===
 												MileStoneStatus.DONE;
@@ -2333,10 +2390,22 @@ export default function SingleTaskView({
 														</HoverCardTrigger>
 														<HoverCardContent className="flex w-full bg-accent border-accent text-primary flex-col gap-0.5">
 															<div className="items-center flex gap-4">
-																<div className="flex text-accent w-[50px] h-[50px] font-extrabold text-[20px] items-center justify-center rounded-full bg-primary shrink-0">
-																	{getInitials(
-																		displayName,
-																	)}
+																<div className="relative inline-flex shrink-0">
+																	<div className="flex text-accent w-[50px] h-[50px] font-extrabold text-[20px] items-center justify-center rounded-full bg-primary shrink-0">
+																		{getInitials(
+																			displayName,
+																		)}
+																	</div>
+																	<span className="absolute bottom-0 right-0 leading-none">
+																		<PresenceIndicator
+																			userId={
+																				actUser?.id ||
+																				act.member?.userId
+																			}
+																			size="sm"
+																			ringColor="ring-accent"
+																		/>
+																	</span>
 																</div>
 																<div>
 																	{actUser.userName && (
@@ -2436,28 +2505,37 @@ export default function SingleTaskView({
 												>
 													<div className="flex items-center justify-between">
 														<div className="flex items-center gap-2.5">
-															<Avatar
-																className={
-																	depth > 0 ?
-																		"w-6 h-6"
-																	:	"w-8 h-8"
-																}
-															>
-																<AvatarFallback
-																	className={`w-full border border-primary bg-accent text-primary font-bold ${
-																		(
-																			depth >
-																			0
-																		) ?
-																			"text-[10px]"
-																		:	"text-xs"
-																	}`}
+															<div className="relative inline-flex shrink-0">
+																<Avatar
+																	className={
+																		depth > 0 ?
+																			"w-6 h-6"
+																		:	"w-8 h-8"
+																	}
 																>
-																	{getInitials(
-																		authorName,
-																	)}
-																</AvatarFallback>
-															</Avatar>
+																	<AvatarFallback
+																		className={`w-full border border-primary bg-accent text-primary font-bold ${
+																			depth > 0 ?
+																				"text-[10px]"
+																			:	"text-xs"
+																		}`}
+																	>
+																		{getInitials(
+																			authorName,
+																		)}
+																	</AvatarFallback>
+																</Avatar>
+																<span className="absolute -bottom-0.5 -right-0.5 leading-none">
+																	<PresenceIndicator
+																		userId={
+																			comment.member?.userId ||
+																			comment.member?.user?.id
+																		}
+																		size="xs"
+																		ringColor="ring-primary"
+																	/>
+																</span>
+															</div>
 															<div className="text-[12px]">
 																<p className="font-bold leading-tight">
 																	{authorName}
@@ -2521,14 +2599,15 @@ export default function SingleTaskView({
 																			deletingCommentId ===
 																			comment.id
 																		}
-																		className="cursor-pointer flex items-center gap-2 text-xs py-1.5 px-2 rounded-[8px] text-primary hover:bg-primary/10"
+																		variant="destructive"
+																		className="cursor-pointer flex items-center gap-2 text-xs py-1.5 px-2 rounded-[8px] text-destructive hover:bg-destructive/10"
 																	>
 																		{(
 																			deletingCommentId ===
 																			comment.id
 																		) ?
-																			<Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
-																		:	<Trash2 className="w-3.5 h-3.5 text-primary shrink-0" />
+																			<Loader2 className="w-3.5 h-3.5 animate-spin text-destructive shrink-0" />
+																		:	<Trash2 className="w-3.5 h-3.5 text-destructive shrink-0" />
 																		}
 																		<span>
 																			Delete
@@ -2974,8 +3053,15 @@ export default function SingleTaskView({
 									<p className="font-bold">Created By</p>
 								</div>
 							</div>
-							<div className="mt-[10px] w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] ">
-								{creatorName}
+							<div className="mt-[10px] w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] flex items-center gap-1.5">
+								{creatorUserId && (
+									<PresenceIndicator
+										userId={creatorUserId}
+										size="xs"
+										ringColor="ring-primary"
+									/>
+								)}
+								<span>{creatorName}</span>
 							</div>
 						</div>
 
@@ -3005,13 +3091,22 @@ export default function SingleTaskView({
 												m.user.fullName ||
 												m.user.userName
 											);
+										const memberUserId =
+											m.userId || m.user?.id;
 										return (
-											<p
+											<div
 												key={m.id}
-												className="w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] "
+												className="w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] flex items-center gap-1.5"
 											>
-												{name}
-											</p>
+												{memberUserId && (
+													<PresenceIndicator
+														userId={memberUserId}
+														size="xs"
+														ringColor="ring-primary"
+													/>
+												)}
+												<span>{name}</span>
+											</div>
 										);
 									})}
 
@@ -3048,18 +3143,34 @@ export default function SingleTaskView({
 																i.id,
 															)
 														}
-														className="cursor-pointer flex items-center gap-3 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors"
+														className="cursor-pointer flex items-center gap-2.5 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors"
 													>
 														<Checkbox
 															checked={selectedMembers.includes(
 																i.id,
 															)}
 														/>
-														<div>
-															<p className="font-semibold text-[13px]">
+														<PresenceAvatar
+															userId={
+																i.userId ||
+																i.user?.id
+															}
+															src={
+																i.user
+																	?.profilePicture
+															}
+															name={
+																i.user
+																	?.fullName
+															}
+															size="xs"
+															ringColor="ring-primary"
+														/>
+														<div className="min-w-0 flex-1">
+															<p className="font-semibold text-[13px] truncate">
 																{i.user.fullName}
 															</p>
-															<p className="text-[13px] text-primary/60">
+															<p className="text-[11px] text-primary/60 truncate">
 																@{i.user.userName}
 															</p>
 														</div>
@@ -3086,7 +3197,10 @@ export default function SingleTaskView({
 											{safeFormatDate(dueDate, "PPP")}
 										</p>
 									</PopoverTrigger>
-									<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
+									<PopoverContent
+										className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden"
+										align="start"
+									>
 										<Calendar
 											mode="single"
 											selected={dueDate}
@@ -3095,7 +3209,7 @@ export default function SingleTaskView({
 												before: startDate || (task.project?.startPeriod ? new Date(task.project.startPeriod) : undefined),
 												after: task.project?.endPeriod ? new Date(task.project.endPeriod) : undefined,
 											}}
-											className="bg-primary text-secondary"
+											className="rounded-[20px] bg-primary text-secondary"
 										/>
 									</PopoverContent>
 								</Popover>
@@ -3273,9 +3387,12 @@ export default function SingleTaskView({
 										}
 									</Button>
 								</PopoverTrigger>
-								<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2 z-[99999]">
+								<PopoverContent
+									className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden z-[99999]"
+									align="start"
+								>
 									{(startDate || task.startPeriod) && (dueDate || task.endPeriod) && (
-										<div className="text-[11px] font-medium text-primary/70 text-center pb-2 mb-1 border-b border-primary/10">
+										<div className="text-[11px] font-medium text-secondary/70 text-center pt-3 pb-2 px-4 border-b border-secondary/10">
 											Task: {safeFormatDate(startDate || new Date(task.startPeriod), "PPP")} – {safeFormatDate(dueDate || new Date(task.endPeriod), "PPP")}
 										</div>
 									)}
@@ -3289,7 +3406,7 @@ export default function SingleTaskView({
 											after: dueDate ? new Date(dueDate) : new Date(task.endPeriod),
 										}}
 										initialFocus
-										className="bg-primary text-secondary"
+										className="rounded-[20px] bg-primary text-secondary"
 									/>
 								</PopoverContent>
 							</Popover>

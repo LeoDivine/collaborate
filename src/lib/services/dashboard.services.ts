@@ -1886,3 +1886,431 @@ export const getMemberDashboardData = async (
 		};
 	}
 };
+
+export interface PersonalProjectItem {
+	id: string;
+	title: string;
+	description: string;
+	labels: string[];
+	status: string;
+	endPeriod: Date;
+	totalTasksCount: number;
+	completedTasksCount: number;
+}
+
+export interface PersonalFocusTaskItem {
+	id: string;
+	title: string;
+	description: string;
+	priority: string;
+	status: string;
+	endPeriod: Date;
+	project: {
+		id: string;
+		title: string;
+	};
+	completedMilestonesCount: number;
+	totalMilestonesCount: number;
+}
+
+export interface PersonalDashboardData {
+	totalProjectsCount: number;
+	activeProjectsCount: number;
+	completedProjectsCount: number;
+	pendingTasksCount: number;
+	inProgressTasksCount: number;
+	completedTasksCount: number;
+	overdueTasksCount: number;
+	completionRate: number;
+	taskStatusDistribution: StatusDistributionItem[];
+	taskPriorityDistribution: PriorityDistributionItem[];
+	milestoneDistribution: MilestoneDistributionItem[];
+	projectTaskDistribution: ProjectTaskDistributionItem[];
+	monthlyAnalysis: MonthlyAnalysisItem[];
+	focusTasks: PersonalFocusTaskItem[];
+	ongoingProjects: PersonalProjectItem[];
+	upcomingDeadlines: Array<{
+		id: string;
+		title: string;
+		description: string;
+		endPeriod: Date;
+		completedMilestonesCount: number;
+		totalMilestonesCount: number;
+	}>;
+	recentActivities: Array<{
+		id: string;
+		title: string;
+		description: string;
+		createdAt: Date;
+		type: string;
+	}>;
+}
+
+export const getPersonalDashboardData = async (
+	workspaceId: string,
+): Promise<{
+	success: boolean;
+	data?: PersonalDashboardData;
+	message?: string;
+}> => {
+	if (!workspaceId) {
+		return {
+			success: false,
+			message: "Workspace ID is required",
+		};
+	}
+
+	try {
+		const now = new Date();
+
+		const [
+			totalProjectsCount,
+			activeProjectsCount,
+			completedProjectsCount,
+			pendingTasksCount,
+			inProgressTasksCount,
+			completedTasksCount,
+			overdueTasksCount,
+			totalTasksCount,
+			focusTasksRaw,
+			ongoingProjectsRaw,
+			upcomingTasksRaw,
+			recentActivitiesRaw,
+			taskStatusCountsRaw,
+			taskPriorityCountsRaw,
+			milestonesRaw,
+			projectTaskDistributionRaw,
+			projectsCreatedRaw,
+			tasksCreatedRaw,
+		] = await Promise.all([
+			db.project.count({
+				where: { workspaceId },
+			}),
+
+			db.project.count({
+				where: {
+					workspaceId,
+					status: {
+						notIn: ["COMPLETED", "CANCELLED"],
+					},
+				},
+			}),
+
+			db.project.count({
+				where: {
+					workspaceId,
+					status: "COMPLETED",
+				},
+			}),
+
+			db.task.count({
+				where: {
+					workspaceId,
+					status: {
+						notIn: ["COMPLETED", "CANCELLED"],
+					},
+				},
+			}),
+
+			db.task.count({
+				where: {
+					workspaceId,
+					status: "IN_PROGRESS",
+				},
+			}),
+
+			db.task.count({
+				where: {
+					workspaceId,
+					status: "COMPLETED",
+				},
+			}),
+
+			db.task.count({
+				where: {
+					workspaceId,
+					status: {
+						notIn: ["COMPLETED", "CANCELLED"],
+					},
+					endPeriod: {
+						lt: now,
+					},
+				},
+			}),
+
+			db.task.count({
+				where: { workspaceId },
+			}),
+
+			db.task.findMany({
+				where: {
+					workspaceId,
+					status: {
+						notIn: ["COMPLETED", "CANCELLED"],
+					},
+				},
+				take: 6,
+				orderBy: [
+					{ endPeriod: "asc" },
+					{ updatedAt: "desc" },
+				],
+				select: {
+					id: true,
+					title: true,
+					description: true,
+					priority: true,
+					status: true,
+					endPeriod: true,
+					project: {
+						select: {
+							id: true,
+							title: true,
+						},
+					},
+					milestones: {
+						select: {
+							id: true,
+							status: true,
+						},
+					},
+				},
+			}),
+
+			db.project.findMany({
+				where: {
+					workspaceId,
+					status: {
+						notIn: ["COMPLETED", "CANCELLED"],
+					},
+				},
+				take: 6,
+				orderBy: {
+					updatedAt: "desc",
+				},
+				select: {
+					id: true,
+					title: true,
+					description: true,
+					labels: true,
+					status: true,
+					endPeriod: true,
+					tasks: {
+						select: {
+							id: true,
+							status: true,
+						},
+					},
+				},
+			}),
+
+			db.task.findMany({
+				where: {
+					workspaceId,
+					status: {
+						notIn: ["COMPLETED", "CANCELLED"],
+					},
+				},
+				take: 5,
+				orderBy: {
+					endPeriod: "asc",
+				},
+				select: {
+					id: true,
+					title: true,
+					description: true,
+					endPeriod: true,
+					milestones: {
+						select: {
+							id: true,
+							status: true,
+						},
+					},
+				},
+			}),
+
+			db.activity.findMany({
+				where: {
+					workspaceId,
+				},
+				take: 5,
+				orderBy: {
+					createdAt: "desc",
+				},
+				select: {
+					id: true,
+					title: true,
+					description: true,
+					type: true,
+					createdAt: true,
+				},
+			}),
+
+			db.task.groupBy({
+				by: ["status"],
+				where: { workspaceId },
+				_count: { status: true },
+			}),
+
+			db.task.groupBy({
+				by: ["priority"],
+				where: { workspaceId },
+				_count: { priority: true },
+			}),
+
+			db.mileStone.groupBy({
+				by: ["status"],
+				where: {
+					task: { workspaceId },
+				},
+				_count: { status: true },
+			}),
+
+			db.project.findMany({
+				where: { workspaceId },
+				take: 6,
+				orderBy: { updatedAt: "desc" },
+				select: {
+					id: true,
+					title: true,
+					tasks: {
+						select: {
+							status: true,
+						},
+					},
+				},
+			}),
+
+			db.project.findMany({
+				where: { workspaceId },
+				select: { createdAt: true },
+			}),
+
+			db.task.findMany({
+				where: { workspaceId },
+				select: { createdAt: true },
+			}),
+		]);
+
+		const completionRate =
+			totalTasksCount > 0
+				? Math.round((completedTasksCount / totalTasksCount) * 100)
+				: 0;
+
+		const focusTasks: PersonalFocusTaskItem[] = focusTasksRaw.map((t) => ({
+			id: t.id,
+			title: t.title,
+			description: t.description,
+			priority: t.priority,
+			status: t.status,
+			endPeriod: t.endPeriod,
+			project: t.project,
+			completedMilestonesCount: t.milestones.filter((m) => m.status === "DONE").length,
+			totalMilestonesCount: t.milestones.length,
+		}));
+
+		const ongoingProjects: PersonalProjectItem[] = ongoingProjectsRaw.map((p) => ({
+			id: p.id,
+			title: p.title,
+			description: p.description,
+			labels: p.labels,
+			status: p.status,
+			endPeriod: p.endPeriod,
+			totalTasksCount: p.tasks.length,
+			completedTasksCount: p.tasks.filter((t) => t.status === "COMPLETED").length,
+		}));
+
+		const upcomingDeadlines = upcomingTasksRaw.map((t) => ({
+			id: t.id,
+			title: t.title,
+			description: t.description,
+			endPeriod: t.endPeriod,
+			completedMilestonesCount: t.milestones.filter((m) => m.status === "DONE").length,
+			totalMilestonesCount: t.milestones.length,
+		}));
+
+		const recentActivities = recentActivitiesRaw.map((a) => ({
+			id: a.id,
+			title: a.title,
+			description: a.description,
+			createdAt: a.createdAt,
+			type: a.type,
+		}));
+
+		const statusMap = new Map(
+			(taskStatusCountsRaw || []).map((s) => [s.status, s._count.status]),
+		);
+		const taskStatusDistribution = STATUS_ORDER.map((status) => ({
+			status,
+			label: STATUS_LABELS[status] || status,
+			count: statusMap.get(status) || 0,
+		}));
+
+		const priorityMap = new Map(
+			(taskPriorityCountsRaw || []).map((p) => [p.priority, p._count.priority]),
+		);
+		const taskPriorityDistribution = PRIORITY_ORDER.map((priority) => ({
+			priority,
+			label: PRIORITY_LABELS[priority] || priority,
+			count: priorityMap.get(priority) || 0,
+		}));
+
+		const milestoneMap = new Map(
+			(milestonesRaw || []).map((m) => [m.status, m._count.status]),
+		);
+		const milestoneDistribution = MILESTONE_ORDER.map((status) => ({
+			status,
+			label: MILESTONE_LABELS[status] || status,
+			count: milestoneMap.get(status) || 0,
+		}));
+
+		const projectTaskDistribution: ProjectTaskDistributionItem[] =
+			projectTaskDistributionRaw.map((p) => {
+				const total = p.tasks.length;
+				const completed = p.tasks.filter((t) => t.status === "COMPLETED").length;
+				const inProgress = p.tasks.filter((t) => t.status === "IN_PROGRESS").length;
+				const pending = total - completed - inProgress;
+				return {
+					id: p.id,
+					title: p.title,
+					total,
+					completed,
+					inProgress,
+					pending: Math.max(0, pending),
+				};
+			});
+
+		const monthlyAnalysis = computeMonthlyAnalysis(
+			projectsCreatedRaw || [],
+			tasksCreatedRaw || [],
+		);
+
+		return {
+			success: true,
+			data: {
+				totalProjectsCount,
+				activeProjectsCount,
+				completedProjectsCount,
+				pendingTasksCount,
+				inProgressTasksCount,
+				completedTasksCount,
+				overdueTasksCount,
+				completionRate,
+				taskStatusDistribution,
+				taskPriorityDistribution,
+				milestoneDistribution,
+				projectTaskDistribution,
+				monthlyAnalysis,
+				focusTasks,
+				ongoingProjects,
+				upcomingDeadlines,
+				recentActivities,
+			},
+		};
+	} catch (error: any) {
+		console.error("Error fetching personal dashboard data:", error);
+		return {
+			success: false,
+			message: "Failed to fetch personal dashboard data",
+		};
+	}
+};

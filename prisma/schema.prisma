@@ -27,6 +27,17 @@ model Account {
   @@map("accounts")
 }
 
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([email, token])
+  @@map("password-reset-tokens")
+}
+
 model User {
   id               String        @id @default(uuid())
   email            String        @unique
@@ -119,20 +130,20 @@ model JoinRequest {
 }
 
 model Project {
-  id             String          @id @default(uuid())
+  id             String            @id @default(uuid())
   title          String
   description    String
-  workspace      Workspace       @relation(fields: [workspaceId], references: [id])
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id])
   workspaceId    String
-  createdBy      Member          @relation("ProjectCreator", fields: [createdById], references: [id])
+  createdBy      Member            @relation("ProjectCreator", fields: [createdById], references: [id])
   createdById    String
   visibility     ProjectVisibility @default(PUBLIC)
-  status         Status          @default(TODO)
+  status         Status            @default(TODO)
   startPeriod    DateTime
   endPeriod      DateTime
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  priority       PriorityLevel   @default(MEDIUM)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  priority       PriorityLevel     @default(MEDIUM)
   labels         String[]
   tasks          Task[]
   comments       Comment[]
@@ -177,7 +188,10 @@ model Task {
   resources   Resource[]
   taskMembers TaskMember[]
   activities  Activity[]
+  team        Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  teamId      String?
 
+  @@index([teamId])
   @@map("tasks")
 }
 
@@ -277,11 +291,25 @@ model inviteCode {
 }
 
 model Team {
-  id          String    @id @default(uuid())
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
-  workspaceId String
-  name        String
-  members     Member[]
+  id                      String            @id @default(uuid())
+  workspace               Workspace         @relation(fields: [workspaceId], references: [id])
+  workspaceId             String
+  name                    String
+  description             String?
+  visibility              ProjectVisibility @default(PUBLIC)
+  allowSelfJoin           Boolean           @default(true)
+  requireApproval         Boolean           @default(false)
+  allowMemberTaskCreation Boolean           @default(false)
+  autoAssignAllMembers    Boolean           @default(false)
+  allowMemberInvites      Boolean           @default(false)
+  hideTasksFromNonMembers Boolean           @default(false)
+  notifyAllOnNewTask      Boolean           @default(true)
+  notifyLeadsOnJoinLeave  Boolean           @default(true)
+  leadIds                 String[]          @default([])
+  memberIds               String[]          @default([])
+  pendingMemberIds        String[]          @default([])
+  members                 Member[]
+  tasks                   Task[]
 
   @@map("teams")
 }
@@ -311,6 +339,8 @@ enum ProjectVisibility {
 enum RequestStatus {
   PENDING
   ACCEPTED
+  REJECTED
+  CANCELLED
 }
 
 enum MemberStatus {

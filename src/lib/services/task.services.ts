@@ -2,7 +2,7 @@
 
 import { db } from "../db";
 import { auth } from "../../../auth";
-import { MileStoneStatus, PriorityLevel, Status, Prisma } from "../../../generated/prisma/client";
+import { MileStoneStatus, PriorityLevel, Status, Prisma, WorkspaceRoles } from "../../../generated/prisma/client";
 import { revalidatePath } from "next/cache";
 import { triggerPusherEvent } from "@/lib/pusher/server";
 import { PUSHER_CHANNELS, PUSHER_EVENTS } from "@/lib/pusher/events";
@@ -67,6 +67,23 @@ export interface CreateTaskInput {
 		description?: string;
 		dueDate?: Date;
 	}[];
+	teamId?: string;
+}
+
+let isTaskTeamSchemaEnsured = false;
+export async function ensureTaskTeamSchema() {
+	if (isTaskTeamSchemaEnsured) return;
+	try {
+		await db.$executeRawUnsafe(
+			`ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "teamId" text REFERENCES "teams"("id") ON DELETE SET NULL`
+		);
+		await db.$executeRawUnsafe(
+			`CREATE INDEX IF NOT EXISTS "tasks_teamId_idx" ON "tasks"("teamId")`
+		);
+		isTaskTeamSchemaEnsured = true;
+	} catch (e) {
+		console.error("Error ensuring task team schema:", e);
+	}
 }
 
 export const getTasksByWorkspaceId = async (
@@ -91,6 +108,7 @@ export const getTasksByWorkspaceId = async (
 	}
 
 	try {
+		await ensureTaskTeamSchema();
 		const session = await auth();
 		const userId = session?.user?.id;
 		let currentMember = null;
@@ -155,6 +173,12 @@ export const getTasksByWorkspaceId = async (
 				createdBy: {
 					include: {
 						user: true,
+					},
+				},
+				team: {
+					select: {
+						id: true,
+						name: true,
 					},
 				},
 			},
@@ -248,6 +272,12 @@ export const getTaskById = async (taskId: string) => {
 				createdBy: {
 					include: {
 						user: true,
+					},
+				},
+				team: {
+					select: {
+						id: true,
+						name: true,
 					},
 				},
 			},
@@ -790,6 +820,7 @@ export const createTask = async (input: CreateTaskInput) => {
 		labels = [],
 		resources = [],
 		milestones = [],
+		teamId,
 	} = input;
 
 	if (!title || !projectId || !workspaceId || !createdById) {
@@ -801,6 +832,76 @@ export const createTask = async (input: CreateTaskInput) => {
 	}
 
 	try {
+		await ensureTaskTeamSchema();
+
+		let teamName: string | undefined;
+		let effectiveMemberIds = memberIds;
+		let combinedTeamMemberIds: string[] = [];
+		let notifyAllOnNewTask = true;
+
+		if (teamId) {
+			const team = await db.team.findUnique({
+				where: { id: teamId },
+				include: { members: true },
+			});
+			if (!team || team.workspaceId !== workspaceId) {
+				return {
+					success: false,
+					message: "Team not found in this workspace",
+				};
+			}
+
+			let storedMemberIds: string[] = [];
+			let allowMemberTaskCreation = false;
+			let autoAssignAllMembers = false;
+			try {
+				const rows: {
+					memberIds?: string[];
+					allowMemberTaskCreation?: boolean;
+					autoAssignAllMembers?: boolean;
+					notifyAllOnNewTask?: boolean;
+				}[] = await db.$queryRawUnsafe(
+					`SELECT "memberIds", "allowMemberTaskCreation", "autoAssignAllMembers", "notifyAllOnNewTask" FROM "teams" WHERE id = $1`,
+					teamId
+				);
+				if (rows.length > 0) {
+					if (Array.isArray(rows[0].memberIds)) {
+						storedMemberIds = rows[0].memberIds;
+					}
+					allowMemberTaskCreation = Boolean(rows[0].allowMemberTaskCreation);
+					autoAssignAllMembers = Boolean(rows[0].autoAssignAllMembers);
+					notifyAllOnNewTask = rows[0].notifyAllOnNewTask !== false;
+				}
+			} catch {
+				// Ignore
+			}
+
+			combinedTeamMemberIds = Array.from(
+				new Set([...storedMemberIds, ...team.members.map((m) => m.id)])
+			);
+
+			const callerMember = await db.member.findUnique({
+				where: { id: createdById },
+			});
+			const isLead = Array.isArray(team.leadIds) && team.leadIds.includes(createdById);
+			const isWorkspaceAdmin =
+				callerMember?.role === WorkspaceRoles.OWNER ||
+				callerMember?.role === WorkspaceRoles.ADMIN;
+			const isTeamMember = combinedTeamMemberIds.includes(createdById);
+
+			if (!isLead && !isWorkspaceAdmin && !(allowMemberTaskCreation && isTeamMember)) {
+				return {
+					success: false,
+					message: "Only team leads or workspace administrators can assign tasks for this team",
+				};
+			}
+
+			if (autoAssignAllMembers && effectiveMemberIds.length === 0 && combinedTeamMemberIds.length > 0) {
+				effectiveMemberIds = combinedTeamMemberIds;
+			}
+
+			teamName = team.name;
+		}
 		const taskStart = new Date(startPeriod);
 		const taskEnd = new Date(endPeriod);
 
@@ -870,9 +971,10 @@ export const createTask = async (input: CreateTaskInput) => {
 				status,
 				startPeriod: taskStart,
 				endPeriod: taskEnd,
+				teamId: teamId || null,
 				Labels: (labels || []).map(formatLabel).filter(Boolean),
 				taskMembers: {
-					create: memberIds.map((memberId) => ({
+					create: effectiveMemberIds.map((memberId) => ({
 						memberId,
 					})),
 				},
@@ -903,7 +1005,7 @@ export const createTask = async (input: CreateTaskInput) => {
 					create: {
 						type: "TASKS",
 						title: "Task Created",
-						description: `Created task "${title}"`,
+						description: teamName ? `Created task "${title}" for team "${teamName}"` : `Created task "${title}"`,
 						workspaceId,
 						projectId,
 						memberId: createdById,
@@ -912,6 +1014,12 @@ export const createTask = async (input: CreateTaskInput) => {
 			},
 			include: {
 				project: true,
+				team: {
+					select: {
+						id: true,
+						name: true,
+					},
+				},
 				taskMembers: {
 					include: {
 						member: {
@@ -942,6 +1050,7 @@ export const createTask = async (input: CreateTaskInput) => {
 
 		revalidatePath("/tasks");
 		revalidatePath(`/projects/${projectId}`);
+		revalidatePath("/teams");
 
 		const createdActivity = newTask.activities?.[0];
 
@@ -958,6 +1067,34 @@ export const createTask = async (input: CreateTaskInput) => {
 			PUSHER_EVENTS.TASK_CREATED,
 			{ task: newTask, taskId: newTask.id, projectId, workspaceId }
 		);
+
+		if (teamId && notifyAllOnNewTask && combinedTeamMemberIds.length > 0) {
+			try {
+				const notifyTargets = await db.member.findMany({
+					where: {
+						id: { in: combinedTeamMemberIds },
+						workspaceId,
+					},
+					select: { id: true, userId: true },
+				});
+				for (const target of notifyTargets) {
+					if (target.id !== createdById && target.userId) {
+						await triggerPusherEvent(
+							PUSHER_CHANNELS.getUserChannel(target.userId),
+							PUSHER_EVENTS.NOTIFICATION_NEW,
+							{
+								title: "New Team Task Assigned",
+								message: `A new task "${title}" was created for team "${teamName}"`,
+								taskId: newTask.id,
+								teamId,
+							}
+						);
+					}
+				}
+			} catch {
+				// Ignore notification errors
+			}
+		}
 
 		let projectSetToInProgress = false;
 		if (newTask.status !== Status.TODO) {
@@ -2404,3 +2541,77 @@ export const updateTaskResource = async ({
 		return { success: false, message: "Failed to update resource" };
 	}
 };
+
+export const getTeamTasks = async (
+	teamId: string,
+	workspaceId: string,
+): Promise<{
+	success: boolean;
+	message: string;
+	tasks: Tasks[];
+	total: number;
+}> => {
+	if (!teamId || !workspaceId) {
+		return {
+			success: false,
+			message: "Team ID and Workspace ID are required",
+			tasks: [],
+			total: 0,
+		};
+	}
+
+	try {
+		await ensureTaskTeamSchema();
+
+		const tasks = await db.task.findMany({
+			where: {
+				teamId,
+				workspaceId,
+			},
+			include: {
+				project: true,
+				team: {
+					select: {
+						id: true,
+						name: true,
+					},
+				},
+				taskMembers: {
+					include: {
+						member: {
+							include: {
+								user: true,
+							},
+						},
+					},
+				},
+				milestones: true,
+				resources: true,
+				createdBy: {
+					include: {
+						user: true,
+					},
+				},
+			},
+			orderBy: {
+				createdAt: "desc",
+			},
+		});
+
+		return {
+			success: true,
+			message: "Team tasks fetched successfully",
+			tasks: tasks as unknown as Tasks[],
+			total: tasks.length,
+		};
+	} catch (error: any) {
+		console.error("Error fetching team tasks:", error);
+		return {
+			success: false,
+			message: "Failed to fetch team tasks",
+			tasks: [],
+			total: 0,
+		};
+	}
+};
+

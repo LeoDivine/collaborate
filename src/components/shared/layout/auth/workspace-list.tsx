@@ -7,13 +7,14 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Search, User, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { DeskMode, WorkspaceRoles } from "../../../../../generated/prisma/enums";
+import { DeskMode, MemberStatus, WorkspaceRoles } from "../../../../../generated/prisma/enums";
 import WorkspaceView from "./workspace-view";
 import { cn } from "@/lib/utils";
 
 export type WorkspaceMemberItem = {
 	id: string;
 	role: WorkspaceRoles;
+	status?: MemberStatus;
 	workspaceId: string;
 	workspace: {
 		id: string;
@@ -159,6 +160,7 @@ export default function WorkspaceList({
 										key={item.id}
 										memberId={item.id}
 										role={item.role}
+										status={item.status}
 										workspaceId={item.workspace.id}
 										mode={item.workspace.mode}
 										title={item.workspace.name}

@@ -43,15 +43,26 @@ function InviteRedirectInner() {
 
 			if (requestWorkspaceID) {
 				const workspace = await getWorkspaceBByID(requestWorkspaceID);
-				await createMemberForWorkspace(
+				const memberRes = await createMemberForWorkspace(
 					session.user?.id!,
 					requestWorkspaceID,
 				);
+
+				if (!memberRes.success && (memberRes as any).isDeactivated) {
+					toast.error(
+						memberRes.message ||
+							"Your membership in this workspace has been deactivated.",
+					);
+					router.push("/sign-in/my-workspaces");
+					return;
+				}
+
 				await update({
 					currentWorkspaceId: requestWorkspaceID,
 					currentWorkspaceMode: workspace?.mode,
 					currentWorkspaceRole: "MEMBER" as WorkspaceRoles,
 					currentWorkspaceName: workspace?.name,
+					currentMemberId: memberRes.member?.id,
 				});
 				toast.success(`Welcome to ${workspace?.name}`);
 				router.push("/dashboard");

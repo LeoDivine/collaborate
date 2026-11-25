@@ -19,6 +19,9 @@ export const PUSHER_EVENTS = {
 	WORKSPACE_MEMBER_JOINED: "workspace:member_joined",
 	WORKSPACE_MEMBER_LEFT: "workspace:member_left",
 	WORKSPACE_MEMBER_ROLE_UPDATED: "workspace:member_role_updated",
+	WORKSPACE_MEMBER_STATUS_UPDATED: "workspace:member_status_updated",
+	WORKSPACE_REQUEST_RECEIVED: "workspace:request_received",
+	WORKSPACE_REQUEST_UPDATED: "workspace:request_updated",
 
 	// Project Events
 	PROJECT_CREATED: "project:created",
@@ -48,6 +51,13 @@ export const PUSHER_EVENTS = {
 
 	// Member Assignment Events
 	MEMBERS_UPDATED: "members:updated",
+
+	// Team Events
+	TEAM_CREATED: "team:created",
+	TEAM_UPDATED: "team:updated",
+	TEAM_DELETED: "team:deleted",
+	TEAM_LEADS_UPDATED: "team:leads_updated",
+	TEAM_MEMBERS_CHANGED: "team:members_changed",
 
 	// Activity & Notification Events
 	ACTIVITY_CREATED: "activity:created",
@@ -145,4 +155,52 @@ export interface NotificationEventPayload {
 		type?: string;
 		createdAt: string | Date;
 	};
+}
+
+export interface RequestReceivedEventPayload {
+	request: {
+		id: string;
+		email: string;
+		fullName: string;
+		inviteCode?: string | null;
+		createdAt: string | Date;
+		status: string;
+		message?: string | null;
+		reviewedById?: string | null;
+		reviewedAt?: string | Date | null;
+		workspaceId: string;
+		userId?: string | null;
+	};
+	workspaceId: string;
+}
+
+export interface RequestUpdatedEventPayload {
+	requestId: string;
+	workspaceId: string;
+	status: string;
+	reviewedById?: string | null;
+	reviewedAt?: string | Date | null;
+	request?: {
+		id: string;
+		email: string;
+		fullName: string;
+		inviteCode?: string | null;
+		createdAt: string | Date;
+		status: string;
+		message?: string | null;
+		reviewedById?: string | null;
+		reviewedAt?: string | Date | null;
+		workspaceId: string;
+		userId?: string | null;
+	};
+}
+
+export interface MemberStatusUpdatedEventPayload {
+	memberId: string;
+	userId: string;
+	userEmail?: string;
+	workspaceId: string;
+	workspaceName?: string;
+	status: "ACTIVE" | "INACTIVE";
+	reason?: string | null;
 }

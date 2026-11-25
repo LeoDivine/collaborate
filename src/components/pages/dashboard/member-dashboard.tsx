@@ -66,7 +66,7 @@ export default function MemberDashboard({ user, data }: MemberDashboardProps) {
 			{/* Stat Cards */}
 			<div className="mt-[20px] gap-4 flex flex-col lg:flex-row">
 				<div className="w-full">
-					<div className="gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 grid">
+					<div className="gap-3 sm:gap-4 grid-cols-2 grid">
 						<InfoCards
 							title="Assigned Tasks"
 							value={assignedTasks}
@@ -248,7 +248,7 @@ export default function MemberDashboard({ user, data }: MemberDashboardProps) {
 
 				{/* Right Sidebar Column */}
 				<div className="w-full lg:w-[320px] shrink-0">
-					<OverviewCalender />
+					<OverviewCalender deadlines={upcomingDeadlines} />
 
 					{/* Upcoming Deadlines */}
 					<div className="mt-[15px] rounded-[20px] px-[20px] py-[20px] bg-[#969696]">

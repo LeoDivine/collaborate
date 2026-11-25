@@ -8,7 +8,7 @@ export default async function CreateWorkspace() {
 	const user = session?.user;
 
 	if (!session) {
-		redirect("sign-up");
+		redirect("/sign-up");
 	}
 
 	return (

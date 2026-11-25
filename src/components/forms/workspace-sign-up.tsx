@@ -8,7 +8,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { INDUSTRY_TYPES, TEAM_SIZE } from "@/lib/const";
+import { TEAM_SIZE } from "@/lib/const";
 import { signUpSchema } from "@/lib/schemas/auth";
 import { workspaceCreateSchema } from "@/lib/schemas/workspace";
 import { workspaceSignUp } from "@/lib/services/auth.services";
@@ -38,7 +38,8 @@ export default function WorkspaceSignUp({
 }: {
 	initialTab: string;
 }) {
-	const [password, setPassword] = useState(false);
+	const [showPassword, setShowPassword] = useState(false);
+	const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 	const [loading, setLoading] = useState(false);
 
 	const { update } = useSession();
@@ -48,7 +49,6 @@ export default function WorkspaceSignUp({
 
 	const workspaceForm = useForm<WorkspaceCreateValues>({
 		defaultValues: {
-			industryType: "",
 			name: "",
 			teamSize: "",
 			slug: "",
@@ -73,10 +73,6 @@ export default function WorkspaceSignUp({
 		const params = new URLSearchParams(searchParams.toString());
 		params.set("tab", value);
 		router.push(`?${params.toString()}`, { scroll: false });
-	};
-
-	const handlePassword = () => {
-		setPassword(!password);
 	};
 	const name = workspaceForm.getValues("name");
 
@@ -109,6 +105,7 @@ export default function WorkspaceSignUp({
 				currentWorkspaceMode: res.workspace?.mode,
 				currentWorkspaceRole: res.member?.role,
 				currentWorkspaceName: res.workspace?.name,
+				currentMemberId: res.member?.id,
 			});
 			ownerForm.reset();
 			workspaceForm.reset();
@@ -152,7 +149,7 @@ export default function WorkspaceSignUp({
 												disabled={loading}
 												{...field}
 												placeholder="Enter your full name"
-												className=" text-primary py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
+												className=" text-primary py-[20px] rounded-[10px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
 											/>
 											<FormMessage />
 										</FormItem>
@@ -170,7 +167,7 @@ export default function WorkspaceSignUp({
 												disabled={loading}
 												{...field}
 												placeholder="Enter your email address"
-												className=" text-primary py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
+												className=" text-primary py-[20px] rounded-[10px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
 											/>
 											<FormMessage />
 										</FormItem>
@@ -189,17 +186,17 @@ export default function WorkspaceSignUp({
 													disabled={loading}
 													{...field}
 													type={
-														!password ? "password"
+														!showPassword ? "password"
 														:	"text"
 													}
 													placeholder="Enter your password"
-													className=" text-primary  py-[20px] text-[10px] border-t-0 border-l-0 border-r-0 rounded-[10px] outline-0 focus-visible:ring-0 bg-white  border-b-[4px] border-primary"
+													className=" text-primary  py-[20px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 rounded-[10px] outline-0 focus-visible:ring-0 bg-white  border-b-[4px] border-primary"
 												/>
 												<div
-													onClick={handlePassword}
+													onClick={() => setShowPassword(!showPassword)}
 													className=" cursor-pointer"
 												>
-													{password ?
+													{showPassword ?
 														<MdOutlineRemoveRedEye className=" absolute right-0 top-1/2 w-[20px] h-[20px] -translate-y-1 mr-[10px] text-primary" />
 													:	<FaRegEyeSlash className="  absolute right-0 top-1/2 w-[20px] h-[20px] -translate-y-1 mr-[10px] text-primary" />
 													}
@@ -223,18 +220,18 @@ export default function WorkspaceSignUp({
 														disabled={loading}
 														{...field}
 														type={
-															!password ?
+															!showConfirmPassword ?
 																"password"
 															:	"text"
 														}
 														placeholder="Confirm your password"
-														className=" text-primary  py-[20px] text-[10px] border-t-0 border-l-0 border-r-0 rounded-[10px] outline-0 focus-visible:ring-0 bg-white  border-b-[4px] border-primary"
+														className=" text-primary  py-[20px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 rounded-[10px] outline-0 focus-visible:ring-0 bg-white  border-b-[4px] border-primary"
 													/>
 													<div
-														onClick={handlePassword}
+														onClick={() => setShowConfirmPassword(!showConfirmPassword)}
 														className=" cursor-pointer"
 													>
-														{password ?
+														{showConfirmPassword ?
 															<MdOutlineRemoveRedEye className=" absolute right-0 top-1/2 w-[20px] h-[20px] -translate-y-1 mr-[10px] text-primary" />
 														:	<FaRegEyeSlash className="  absolute right-0 top-1/2 w-[20px] h-[20px] -translate-y-1 mr-[10px] text-primary" />
 														}
@@ -249,7 +246,7 @@ export default function WorkspaceSignUp({
 										Already have an account?{" "}
 										<Link
 											className=" underline"
-											href={"/sign-in/individual-auth"}
+											href={"/sign-in"}
 										>
 											Login
 										</Link>
@@ -260,10 +257,13 @@ export default function WorkspaceSignUp({
 								<Button
 									disabled={loading}
 									type="button"
-									onClick={() => {
-										router.push(
-											"/sign-up/workspace-auth?tab=workspace",
-										);
+									onClick={async () => {
+										const isValid = await ownerForm.trigger();
+										if (isValid) {
+											router.push(
+												"/sign-up/workspace-auth?tab=workspace",
+											);
+										}
 									}}
 									className="py-[20px] w-full md:w-[40%] rounded-full text-secondary"
 								>
@@ -289,7 +289,7 @@ export default function WorkspaceSignUp({
 												disabled={loading}
 												{...field}
 												placeholder="Enter your workspace name"
-												className=" text-primary py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
+												className=" text-primary py-[20px] rounded-[10px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
 											/>
 											<FormMessage />
 										</FormItem>
@@ -308,7 +308,7 @@ export default function WorkspaceSignUp({
 													disabled
 													{...field}
 													placeholder="Generate slug"
-													className=" text-primary py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
+													className=" text-primary py-[20px] rounded-[10px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
 												/>
 												<Button
 													onClick={() => {
@@ -332,42 +332,6 @@ export default function WorkspaceSignUp({
 												</Button>
 											</div>
 											<FormMessage />
-										</FormItem>
-									)}
-								/>
-								<FormField
-									name="industryType"
-									control={workspaceForm.control}
-									render={({ field }) => (
-										<FormItem className=" flex flex-col gap-2">
-											<Label className=" text-primary">
-												Industry Type
-											</Label>
-											<Select
-												onValueChange={field.onChange}
-												defaultValue={field.value}
-											>
-												<SelectTrigger className=" w-full text-primary py-[20px] rounded-[10px]  border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary">
-													<SelectValue
-														className=""
-														placeholder="Select industry type"
-													/>
-												</SelectTrigger>
-												<SelectContent>
-													<SelectGroup>
-														{INDUSTRY_TYPES.map(
-															(i, k) => (
-																<SelectItem
-																	key={k}
-																	value={i}
-																>
-																	{i}
-																</SelectItem>
-															),
-														)}
-													</SelectGroup>
-												</SelectContent>
-											</Select>
 										</FormItem>
 									)}
 								/>

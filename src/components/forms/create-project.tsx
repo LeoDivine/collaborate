@@ -39,7 +39,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { PriorityLevel, ProjectVisibility } from "../../../generated/prisma/enums";
+import {
+	PriorityLevel,
+	ProjectVisibility,
+} from "../../../generated/prisma/enums";
 import { formatLabel } from "@/lib/utils";
 import { Button } from "../ui/button";
 import { Calendar } from "../ui/calendar";
@@ -153,7 +156,11 @@ export default function CreateProject({
 
 	const removeLabel = (label: string) => {
 		const target = formatLabel(label);
-		setLabels((prev) => prev.filter((item) => formatLabel(item) !== target && item !== label));
+		setLabels((prev) =>
+			prev.filter(
+				(item) => formatLabel(item) !== target && item !== label,
+			),
+		);
 	};
 
 	const removeResource = (name: string) => {
@@ -383,34 +390,39 @@ export default function CreateProject({
 								disabled={isSubmitting}
 								className={`bg-accent text-[13px] hover:bg-accent text-primary rounded-full ${triggerOpacity(true)}`}
 							>
-								{visibility === "PUBLIC" ? (
+								{visibility === "PUBLIC" ?
 									<>
 										<Globe className="w-4 h-4" />
 										<span className="md:inline hidden">
 											Public
 										</span>
 									</>
-								) : (
-									<>
+								:	<>
 										<Lock className="w-4 h-4 text-amber-500" />
 										<span className="md:inline hidden text-amber-500 font-medium">
 											Private
 										</span>
 									</>
-								)}
+								}
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent className="w-[190px] flex flex-col gap-1 border-0 bg-accent p-1.5">
 							<div
-								onClick={() => setVisibility("PUBLIC" as ProjectVisibility)}
+								onClick={() =>
+									setVisibility("PUBLIC" as ProjectVisibility)
+								}
 								className={`${visibility === "PUBLIC" ? "bg-primary text-accent" : "bg-accent text-primary"} py-[6px] cursor-pointer transition-all rounded-[10px] px-[10px] hover:bg-primary hover:text-accent items-center justify-between flex`}
 							>
 								<div className="flex flex-col">
 									<div className="items-center gap-1.5 flex">
 										<Globe className="w-3.5 h-3.5" />
-										<p className="text-[13px] font-medium">Public</p>
+										<p className="text-[13px] font-medium">
+											Public
+										</p>
 									</div>
-									<p className={`text-[11px] ${visibility === "PUBLIC" ? "text-accent/80" : "text-primary/60"}`}>
+									<p
+										className={`text-[11px] ${visibility === "PUBLIC" ? "text-accent/80" : "text-primary/60"}`}
+									>
 										Visible to workspace
 									</p>
 								</div>
@@ -419,15 +431,23 @@ export default function CreateProject({
 								)}
 							</div>
 							<div
-								onClick={() => setVisibility("PRIVATE" as ProjectVisibility)}
+								onClick={() =>
+									setVisibility(
+										"PRIVATE" as ProjectVisibility,
+									)
+								}
 								className={`${visibility === "PRIVATE" ? "bg-primary text-accent" : "bg-accent text-primary"} py-[6px] cursor-pointer transition-all rounded-[10px] px-[10px] hover:bg-primary hover:text-accent items-center justify-between flex`}
 							>
 								<div className="flex flex-col">
 									<div className="items-center gap-1.5 flex">
 										<Lock className="w-3.5 h-3.5" />
-										<p className="text-[13px] font-medium">Private</p>
+										<p className="text-[13px] font-medium">
+											Private
+										</p>
 									</div>
-									<p className={`text-[11px] ${visibility === "PRIVATE" ? "text-accent/80" : "text-primary/60"}`}>
+									<p
+										className={`text-[11px] ${visibility === "PRIVATE" ? "text-accent/80" : "text-primary/60"}`}
+									>
 										Assigned members only
 									</p>
 								</div>
@@ -625,21 +645,16 @@ export default function CreateProject({
 								</p>
 							</Button>
 						</PopoverTrigger>
-						<PopoverContent className="rounded-[20px] bg-accent text-primary border-0">
+						<PopoverContent
+							className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden"
+							align="start"
+						>
 							<Calendar
 								mode="single"
 								selected={startDate}
 								onSelect={setStartDate}
 								disabled={{ before: today }}
-								className="bg-primary text-secondary"
-								classNames={{
-									root: "w-full",
-									month: "text-primary",
-									weekday: "w-full font-normal",
-									nav: "text-primary flex items-center gap-1 w-full absolute top-0 inset-x-0 justify-between",
-									day_button:
-										"text-primary data-[selected-single=true]:text-secondary data-[selected-single=true]:font-semibold",
-								}}
+								className="rounded-[20px] bg-primary text-secondary"
 							/>
 						</PopoverContent>
 					</Popover>
@@ -658,21 +673,16 @@ export default function CreateProject({
 								</p>
 							</Button>
 						</PopoverTrigger>
-						<PopoverContent className="rounded-[20px] bg-accent text-primary border-0">
+						<PopoverContent
+							className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden"
+							align="start"
+						>
 							<Calendar
 								mode="single"
 								selected={dueDate}
 								onSelect={setDueDate}
 								disabled={{ before: minDueDate }}
-								className="bg-primary text-secondary"
-								classNames={{
-									root: "w-full",
-									month: "text-primary",
-									weekday: "w-full font-normal",
-									nav: "text-primary flex items-center gap-1 w-full absolute top-0 inset-x-0 justify-between",
-									day_button:
-										"text-primary data-[selected-single=true]:text-secondary data-[selected-single=true]:font-semibold",
-								}}
+								className="rounded-[20px] bg-primary text-secondary"
 							/>
 						</PopoverContent>
 					</Popover>

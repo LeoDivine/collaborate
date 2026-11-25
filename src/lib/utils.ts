@@ -71,9 +71,15 @@ export const renderNavigationByRole = (
 export const renderRequestStatusBadge = (status: RequestStatus) => {
 	switch (status) {
 		case "ACCEPTED":
-			return " bg-success";
+			return " bg-success text-white";
 		case "PENDING":
-			return " bg-destructive";
+			return " bg-destructive text-white";
+		case "REJECTED":
+			return " bg-muted-foreground/60 text-white";
+		case "CANCELLED":
+			return " bg-accent text-primary";
+		default:
+			return " bg-destructive text-white";
 	}
 };
 
@@ -97,6 +103,13 @@ export const renderMemberStatusBadge = (status: MemberStatus) => {
 	}
 };
 
+export const renderPresenceBadge = (isOnline: boolean) => {
+	return isOnline
+		? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+		: "border-secondary/20 bg-secondary/5 text-secondary/60";
+};
+
+
 export const renderMonthByNumber = (value: number) => {
 	const month = MONTH[value - 1];
 	return month;
@@ -107,7 +120,7 @@ export const renderPriority = (level: PriorityLevel) => {
 		case "HIGH":
 			return "bg-[#AD3D3D]";
 		case "MEDIUM":
-			return "bg-[#B1AD44]";
+			return "bg-[#B1AD44] text-primary";
 		case "LOW":
 			return "bg-[#339D3A]";
 		case "NO_PRIORITY":
@@ -124,7 +137,7 @@ export const renderPriorityLight = (level: PriorityLevel) => {
 		case "HIGH":
 			return "bg-[#AD3D3D]/20";
 		case "MEDIUM":
-			return "bg-[#B1AD44]/20";
+			return "bg-[#B1AD44]/20 text-primary";
 		case "LOW":
 			return "bg-[#339D3A]/20";
 		case "NO_PRIORITY":

@@ -608,12 +608,13 @@ export default function CalendarView({
 			</div>
 
 			{/* Accessibility & Swipe Container */}
+			<div className="w-full overflow-x-auto custom-scrollbar pb-2 -mx-1 px-1 sm:mx-0 sm:px-0">
 			<div
 				role="grid"
 				aria-label={`${renderMonthByNumber(currentMonthNumber)} ${currentYear} calendar`}
 				onTouchStart={handleTouchStart}
 				onTouchEnd={handleTouchEnd}
-				className="border-l border-t border-primary"
+				className="min-w-[680px] sm:min-w-0 border-l border-t border-primary"
 			>
 				{/* Week days header */}
 				<div role="row" className="grid grid-cols-7">
@@ -657,6 +658,8 @@ export default function CalendarView({
 						</div>
 					);
 				})}
+			</div>
+
 			</div>
 
 			{/* Empty State when filters yield 0 tasks */}

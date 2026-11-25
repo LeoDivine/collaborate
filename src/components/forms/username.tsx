@@ -43,9 +43,15 @@ export default function UsernameForm({
 	});
 
 	const handleSubmit = async (value: UsernameValue) => {
+		if (!user?.id) {
+			toast.error("User session not found. Please sign in.");
+			router.push("/sign-in");
+			return;
+		}
+
 		setLoading(true);
 		try {
-			const res = await updateUserName(value.username, user?.id!);
+			const res = await updateUserName(value.username, user.id);
 			console.log({ res });
 			if (!res.success) {
 				toast.error(res.message);
@@ -84,7 +90,7 @@ export default function UsernameForm({
 										maxLength={20}
 										disabled={loading}
 										placeholder="john_doe"
-										className=" lowercase px-[60px]  text-primary py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
+										className=" lowercase px-[60px]  text-primary py-[20px] rounded-[10px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
 									/>
 									<AtSign className=" absolute -translate-y-1/2 top-1/2 ml-[20px] text-primary" />
 								</div>
@@ -97,7 +103,7 @@ export default function UsernameForm({
 					Already have an account?{" "}
 					<Link
 						className=" underline"
-						href={"/sign-in/individual-auth"}
+						href={"/sign-in"}
 					>
 						Login
 					</Link>

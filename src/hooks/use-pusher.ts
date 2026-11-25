@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { usePusher } from "@/components/providers/pusher-provider";
 import {
 	PUSHER_CHANNELS,
@@ -12,8 +12,11 @@ import {
 	MilestoneEventPayload,
 	ResourceEventPayload,
 	MembersEventPayload,
+	RequestReceivedEventPayload,
+	RequestUpdatedEventPayload,
+	MemberStatusUpdatedEventPayload,
 } from "@/lib/pusher/events";
-import { Channel } from "pusher-js";
+import { Channel, PresenceChannel } from "pusher-js";
 
 export { usePusher };
 
@@ -233,6 +236,14 @@ export function useWorkspaceRealtime(
 		onProjectUpdated?: (data: ProjectEventPayload) => void;
 		onProjectDeleted?: (data: { projectId: string }) => void;
 		onMemberJoined?: (data: unknown) => void;
+		onRequestReceived?: (data: RequestReceivedEventPayload) => void;
+		onRequestUpdated?: (data: RequestUpdatedEventPayload) => void;
+		onMemberStatusUpdated?: (data: MemberStatusUpdatedEventPayload) => void;
+		onTeamCreated?: (data: any) => void;
+		onTeamUpdated?: (data: any) => void;
+		onTeamDeleted?: (data: any) => void;
+		onTeamLeadsUpdated?: (data: any) => void;
+		onTeamMembersChanged?: (data: any) => void;
 	}
 ) {
 	const channelName = workspaceId ? PUSHER_CHANNELS.getWorkspaceChannel(workspaceId) : null;
@@ -268,4 +279,129 @@ export function useWorkspaceRealtime(
 	usePusherEvent(channelName, PUSHER_EVENTS.WORKSPACE_MEMBER_JOINED, (data) => {
 		callbacks?.onMemberJoined?.(data);
 	});
+
+	usePusherEvent<RequestReceivedEventPayload>(channelName, PUSHER_EVENTS.WORKSPACE_REQUEST_RECEIVED, (data) => {
+		callbacks?.onRequestReceived?.(data);
+	});
+
+	usePusherEvent<RequestUpdatedEventPayload>(channelName, PUSHER_EVENTS.WORKSPACE_REQUEST_UPDATED, (data) => {
+		callbacks?.onRequestUpdated?.(data);
+	});
+
+	usePusherEvent<MemberStatusUpdatedEventPayload>(channelName, PUSHER_EVENTS.WORKSPACE_MEMBER_STATUS_UPDATED, (data) => {
+		callbacks?.onMemberStatusUpdated?.(data);
+	});
+
+	usePusherEvent(channelName, PUSHER_EVENTS.TEAM_CREATED, (data) => {
+		callbacks?.onTeamCreated?.(data);
+	});
+
+	usePusherEvent(channelName, PUSHER_EVENTS.TEAM_UPDATED, (data) => {
+		callbacks?.onTeamUpdated?.(data);
+	});
+
+	usePusherEvent(channelName, PUSHER_EVENTS.TEAM_DELETED, (data) => {
+		callbacks?.onTeamDeleted?.(data);
+	});
+
+	usePusherEvent(channelName, PUSHER_EVENTS.TEAM_LEADS_UPDATED, (data) => {
+		callbacks?.onTeamLeadsUpdated?.(data);
+	});
+
+	usePusherEvent(channelName, PUSHER_EVENTS.TEAM_MEMBERS_CHANGED, (data) => {
+		callbacks?.onTeamMembersChanged?.(data);
+	});
 }
+
+/**
+ * Hook to track real-time online presence of workspace members via Pusher Presence channel.
+ */
+export function useWorkspacePresence(workspaceId?: string | null | undefined) {
+	const context = usePusher();
+
+	const isMatchingContextWorkspace =
+		!workspaceId || workspaceId === context.user?.currentWorkspaceId;
+
+	const [customOnlineUserIds, setCustomOnlineUserIds] = useState<Set<string>>(new Set());
+
+	useEffect(() => {
+		if (isMatchingContextWorkspace) return;
+		if (!context.pusher || !workspaceId) return;
+
+		const channelName = PUSHER_CHANNELS.getPresenceWorkspaceChannel(workspaceId);
+		const channel = context.pusher.subscribe(channelName) as PresenceChannel;
+
+		// When subscription succeeds, load existing presence members
+		const handleSubscriptionSucceeded = (members: any) => {
+			const ids = new Set<string>();
+			if (members?.each && typeof members.each === "function") {
+				members.each((member: any) => {
+					if (member?.id) ids.add(String(member.id));
+				});
+			} else if (members?.members) {
+				Object.keys(members.members).forEach((id) => ids.add(String(id)));
+			}
+			setCustomOnlineUserIds(ids);
+		};
+
+		// When a new member connects
+		const handleMemberAdded = (member: any) => {
+			if (member?.id) {
+				setCustomOnlineUserIds((prev) => {
+					const next = new Set(prev);
+					next.add(String(member.id));
+					return next;
+				});
+			}
+		};
+
+		// When a member disconnects
+		const handleMemberRemoved = (member: any) => {
+			if (member?.id) {
+				setCustomOnlineUserIds((prev) => {
+					const next = new Set(prev);
+					next.delete(String(member.id));
+					return next;
+				});
+			}
+		};
+
+		channel.bind("pusher:subscription_succeeded", handleSubscriptionSucceeded);
+		channel.bind("pusher:member_added", handleMemberAdded);
+		channel.bind("pusher:member_removed", handleMemberRemoved);
+
+		return () => {
+			channel.unbind("pusher:subscription_succeeded", handleSubscriptionSucceeded);
+			channel.unbind("pusher:member_added", handleMemberAdded);
+			channel.unbind("pusher:member_removed", handleMemberRemoved);
+			context.pusher?.unsubscribe(channelName);
+		};
+	}, [context.pusher, workspaceId, isMatchingContextWorkspace]);
+
+	const isUserOnline = useCallback(
+		(userId: string | null | undefined): boolean => {
+			if (!userId) return false;
+			if (isMatchingContextWorkspace) {
+				return context.isUserOnline(userId);
+			}
+			if (context.user?.id && String(userId) === String(context.user.id)) return true;
+			return customOnlineUserIds.has(String(userId));
+		},
+		[context, isMatchingContextWorkspace, customOnlineUserIds]
+	);
+
+	if (isMatchingContextWorkspace) {
+		return {
+			onlineUserIds: context.onlineUserIds,
+			isUserOnline: context.isUserOnline,
+			onlineCount: context.onlineCount,
+		};
+	}
+
+	return {
+		onlineUserIds: customOnlineUserIds,
+		isUserOnline,
+		onlineCount: customOnlineUserIds.size,
+	};
+}
+

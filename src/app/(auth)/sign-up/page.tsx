@@ -5,7 +5,7 @@ import { HiOutlineArrowNarrowRight } from "react-icons/hi";
 
 export default function SignUp() {
 	return (
-		<div className=" bg-primary flex justify-center gap-10  flex-col items-center  h-screen w-full">
+		<div className="bg-primary flex justify-center gap-8 sm:gap-10 flex-col items-center min-h-screen py-8 px-4 w-full overflow-y-auto">
 			<Image
 				className=" md:w-[15%] w-[40%] object-cover"
 				src={"/resources/logo.png"}

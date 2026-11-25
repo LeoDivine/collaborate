@@ -7,18 +7,22 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
 	DeskMode,
+	MemberStatus,
 	WorkspaceRoles,
 } from "../../../../../generated/prisma/enums";
+import { toast } from "sonner";
 
 export default function WorkspaceView({
 	mode,
 	title,
 	value = 0,
 	role,
+	status,
 	workspaceId,
 	memberId,
 }: {
 	role: WorkspaceRoles;
+	status?: MemberStatus;
 	workspaceId: string;
 	memberId: string;
 	title: string;
@@ -28,7 +32,16 @@ export default function WorkspaceView({
 	const { update } = useSession();
 	const router = useRouter();
 
+	const isDeactivated = status === "INACTIVE";
+
 	const handleSelectWorkspace = async () => {
+		if (isDeactivated) {
+			toast.error(
+				`Your membership in "${title}" has been deactivated. Please contact the workspace administrator.`,
+			);
+			return;
+		}
+
 		await update({
 			currentWorkspaceId: workspaceId,
 			currentWorkspaceMode: mode,
@@ -44,7 +57,9 @@ export default function WorkspaceView({
 			onClick={() => {
 				void handleSelectWorkspace();
 			}}
-			className="group cursor-pointer text-primary px-4 py-3 sm:px-5 sm:py-4 rounded-2xl bg-[#969696] hover:bg-[#8c8c8c] border border-primary/10 transition-all duration-200 w-full"
+			className={`group cursor-pointer text-primary px-4 py-3 sm:px-5 sm:py-4 rounded-2xl bg-[#969696] hover:bg-[#8c8c8c] border border-primary/10 transition-all duration-200 w-full ${
+				isDeactivated ? "opacity-75" : ""
+			}`}
 		>
 			<div className="flex items-center justify-between gap-3">
 				<div className="flex items-center gap-3.5 min-w-0">
@@ -63,9 +78,18 @@ export default function WorkspaceView({
 									{role}
 								</Badge>
 							)}
+							{isDeactivated && (
+								<Badge
+									className="text-[10px] uppercase tracking-wider px-1.5 py-0 bg-destructive text-white border-none font-medium shrink-0"
+								>
+									Deactivated
+								</Badge>
+							)}
 						</div>
 						<p className="text-xs text-primary/70 mt-0.5">
-							{mode === "INDIVIDUAL"
+							{isDeactivated
+								? "Access deactivated by admin"
+								: mode === "INDIVIDUAL"
 								? `${value} project${value === 1 ? "" : "s"}`
 								: `${value} member${value === 1 ? "" : "s"}`}
 						</p>

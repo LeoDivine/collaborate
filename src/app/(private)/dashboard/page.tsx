@@ -8,9 +8,11 @@ import {
 	getOwnerDashboardData,
 	getAdminDashboardData,
 	getMemberDashboardData,
+	getPersonalDashboardData,
 	OwnerDashboardData,
 	AdminDashboardData,
 	MemberDashboardData,
+	PersonalDashboardData,
 } from "@/lib/services/dashboard.services";
 
 import DashboardRealtimeWrapper from "@/components/pages/dashboard/dashboard-realtime-wrapper";
@@ -27,8 +29,14 @@ export default async function Dashboard() {
 	let ownerDashboardData: OwnerDashboardData | undefined;
 	let adminDashboardData: AdminDashboardData | undefined;
 	let memberDashboardData: MemberDashboardData | undefined;
+	let personalDashboardData: PersonalDashboardData | undefined;
 
-	if (workspaceMode !== "INDIVIDUAL" && workspaceId) {
+	if (workspaceMode === "INDIVIDUAL" && workspaceId) {
+		const res = await getPersonalDashboardData(workspaceId);
+		if (res.success && res.data) {
+			personalDashboardData = res.data;
+		}
+	} else if (workspaceMode !== "INDIVIDUAL" && workspaceId) {
 		if (workspaceRole === "OWNER") {
 			const res = await getOwnerDashboardData(workspaceId, memberId, userId);
 			if (res.success && res.data) {
@@ -49,7 +57,7 @@ export default async function Dashboard() {
 
 	const renderDashboard = () => {
 		if (workspaceMode === "INDIVIDUAL") {
-			return <PersonalDashboard />;
+			return <PersonalDashboard user={user!} data={personalDashboardData} />;
 		} else {
 			switch (workspaceRole) {
 				case "ADMIN":

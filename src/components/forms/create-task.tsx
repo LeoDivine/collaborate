@@ -697,9 +697,12 @@ export default function CreateTask({
 								</p>
 							</Button>
 						</PopoverTrigger>
-						<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-3">
+						<PopoverContent
+							className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden"
+							align="start"
+						>
 							{projectStartDate && projectEndDate && (
-								<div className="text-[11px] font-medium text-primary/70 text-center pb-2 mb-1 border-b border-primary/10">
+								<div className="text-[11px] font-medium text-secondary/70 text-center pt-3 pb-2 px-4 border-b border-secondary/10">
 									Project: {formatStartDate(projectStartDate)} – {formatStartDate(projectEndDate)}
 								</div>
 							)}
@@ -712,15 +715,7 @@ export default function CreateTask({
 								}}
 								defaultMonth={startDate || projectStartDate || today}
 								disabled={startDateDisabled}
-								className="bg-primary text-secondary"
-								classNames={{
-									root: "w-full",
-									month: "text-primary",
-									weekday: "w-full font-normal",
-									nav: "text-primary flex items-center gap-1 w-full absolute top-0 inset-x-0 justify-between",
-									day_button:
-										"text-primary data-[selected-single=true]:text-secondary data-[selected-single=true]:font-semibold",
-								}}
+								className="rounded-[20px] bg-primary text-secondary"
 							/>
 						</PopoverContent>
 					</Popover>
@@ -740,9 +735,12 @@ export default function CreateTask({
 								</p>
 							</Button>
 						</PopoverTrigger>
-						<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-3">
+						<PopoverContent
+							className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden"
+							align="start"
+						>
 							{projectStartDate && projectEndDate && (
-								<div className="text-[11px] font-medium text-primary/70 text-center pb-2 mb-1 border-b border-primary/10">
+								<div className="text-[11px] font-medium text-secondary/70 text-center pt-3 pb-2 px-4 border-b border-secondary/10">
 									Project: {formatStartDate(projectStartDate)} – {formatStartDate(projectEndDate)}
 								</div>
 							)}
@@ -752,15 +750,7 @@ export default function CreateTask({
 								onSelect={setDueDate}
 								defaultMonth={dueDate || startDate || projectStartDate || today}
 								disabled={dueDateDisabled}
-								className="bg-primary text-secondary"
-								classNames={{
-									root: "w-full",
-									month: "text-primary",
-									weekday: "w-full font-normal",
-									nav: "text-primary flex items-center gap-1 w-full absolute top-0 inset-x-0 justify-between",
-									day_button:
-										"text-primary data-[selected-single=true]:text-secondary data-[selected-single=true]:font-semibold",
-								}}
+								className="rounded-[20px] bg-primary text-secondary"
 							/>
 						</PopoverContent>
 					</Popover>
@@ -988,9 +978,12 @@ export default function CreateTask({
 										}
 									</Button>
 								</PopoverTrigger>
-								<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2 z-[99999]">
+								<PopoverContent
+									className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden z-[99999]"
+									align="start"
+								>
 									{startDate && dueDate && (
-										<div className="text-[11px] font-medium text-primary/70 text-center pb-2 mb-1 border-b border-primary/10">
+										<div className="text-[11px] font-medium text-secondary/70 text-center pt-3 pb-2 px-4 border-b border-secondary/10">
 											Task: {formatStartDate(startDate)} – {formatStartDate(dueDate)}
 										</div>
 									)}
@@ -1006,7 +999,7 @@ export default function CreateTask({
 										defaultMonth={milestoneField.dueDate || startDate || projectStartDate || today}
 										disabled={milestoneDateDisabled}
 										initialFocus
-										className="bg-primary text-secondary"
+										className="rounded-[20px] bg-primary text-secondary"
 									/>
 								</PopoverContent>
 							</Popover>

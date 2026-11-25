@@ -12,18 +12,22 @@ It features workspace onboarding, flexible authentication (credentials supportin
 
 - **Modern Web Foundation**: Built with **Next.js 16 (App Router with Turbopack)**, **React 19**, and **TypeScript** with a fast `pnpm`-based workflow.
 - **Database & Data Layer**: **Prisma 7 (PostgreSQL)** with the native PostgreSQL adapter (`@prisma/adapter-pg`) and typed Prisma Client in `generated/prisma`.
-- **Authentication (NextAuth v5 / Auth.js)**:
-  - Credentials sign-in supporting either **Username or Email**
-  - Google OAuth & GitHub OAuth integration
-  - Workspace-aware session enrichment (current workspace ID, desk mode, workspace role, workspace name)
+- **Authentication & Session Lifecycle (NextAuth v5 / Auth.js)**:
+  - Credentials sign-in supporting either **Username or Email** with bcrypt validation
+  - Google OAuth & GitHub OAuth integration with automatic email account linking
+  - Context-enriched JWT session persistence (active workspace ID, desk mode, workspace role, member ID)
+  - Password recovery workflow with cryptographically secure single-use tokens and Resend email delivery
+  - Detailed architecture guide in [`docs/session-and-authentication.md`](docs/session-and-authentication.md).
 - **Hierarchical Role-Based Access Control (RBAC)**:
-  - Multi-tiered access model across 4 distinct layers: Desk Mode (`INDIVIDUAL` vs `WORKSPACE`), Workspace Roles (`OWNER`, `ADMIN`, `MEMBER`), Project Roles (`PROJECT_LEAD`, `CONTRIBUTOR`, `VIEWER`), and Task Relations (`CREATOR`, `ASSIGNEE`).
-  - Downward authority inheritance / elevation (Owners & Admins manage all projects and tasks; Project Leads manage all child tasks).
+  - Multi-tiered access model across Desk Mode (`INDIVIDUAL` vs `WORKSPACE`), Workspace Roles (`OWNER`, `ADMIN`, `MEMBER`), Team Roles (`Team Lead` vs `Member`), Project Roles (`PROJECT_LEAD`, `CONTRIBUTOR`, `VIEWER`), and Task Relations (`CREATOR`, `ASSIGNEE`).
+  - Downward authority inheritance / elevation (Owners & Admins manage all teams, projects, and tasks; Team Leads manage and can delete their assigned teams while non-lead team members cannot; Project Leads manage all child tasks).
   - Detailed architecture guide in [`docs/rbac.md`](docs/rbac.md).
-- **End-to-End Real-Time Collaboration (Pusher Channels)**:
+- **End-to-End Real-Time Collaboration & Presence (Pusher Channels)**:
   - WebSocket synchronization for tasks, projects, milestones, comments, resources, activities, and notifications.
-  - Multi-tier channel topology: `workspace-{id}`, `project-{id}`, `task-{id}`, and `user-{id}`.
-  - React real-time hooks: `useWorkspaceRealtime`, `useProjectRealtime`, and `useTaskRealtime`.
+  - Multi-tier channel topology: `workspace-{id}`, `project-{id}`, `task-{id}`, `user-{id}`, and `presence-workspace-{id}`.
+  - Workspace-wide real-time member online/offline presence tracking via Pusher presence channels.
+  - Real-time online presence status indicators integrated into the protected navbar user avatar, Workspace Members table (with live Online/Offline status pills & filtering), project member avatars, task assignment sheets, and activity/comment feeds.
+  - React real-time hooks: `useWorkspaceRealtime`, `useProjectRealtime`, `useTaskRealtime`, and `useWorkspacePresence`.
   - Zero-latency optimistic UI updates paired with resilient server reconciliation and error rollback.
   - Detailed architecture and sequence diagrams in [`docs/realtime-update-flow.md`](docs/realtime-update-flow.md).
 - **Automated Lifecycle & Progress Synchronization**:
@@ -31,11 +35,14 @@ It features workspace onboarding, flexible authentication (credentials supportin
   - **Task $\rightarrow$ Milestones Cascading**: Marking a task `COMPLETED` automatically sets all child milestones to `DONE` and attributes completion to the acting user. Marking a task `IN_PROGRESS` or `TODO` resets all child milestones to `NOT_STARTED` ("to do").
   - Automated project progress and task milestone progress calculations.
   - Detailed documentation in [`docs/status-and-progress-updates.md`](docs/status-and-progress-updates.md).
-- **Workspace Onboarding & Multi-Tenancy**:
-  - Dual desk modes: `INDIVIDUAL` (personal desk) and `WORKSPACE` (team collaboration)
-  - Multi-step sign-up flows for individual and team workspaces
-  - Auto-generated workspace slugs and multi-workspace switcher (`/sign-in/my-workspaces`)
-  - Workspace join requests, invite codes, and admin approval workflows
+- **Workspace Access, Tenancy & Persistence**:
+  - Dual desk modes: `INDIVIDUAL` (personal desk with single-desk constraint) and `WORKSPACE` (multi-member team collaboration)
+  - Session-embedded active workspace persistence across client and server components
+  - Multi-step sign-up flows for individual and team workspaces with collision-resistant slug generation
+  - Multi-workspace switcher in navbar and dedicated selector portal (`/sign-in/my-workspaces`)
+  - Real-time member deactivation and immediate session eviction via Pusher WebSockets
+  - Workspace invite-code onboarding, join requests, and admin approval workflows
+  - Detailed architecture guide in [`docs/workspace-access-and-persistence.md`](docs/workspace-access-and-persistence.md).
 - **Project & Task Management**:
   - Comprehensive Project listing with grid and tabular views (`@tanstack/react-table`), priority/status badges, and member assignment
   - Single Project detail pages (`/projects/[id]`) and slide-over Project Peek Sheets
@@ -80,6 +87,8 @@ It features workspace onboarding, flexible authentication (credentials supportin
 Comprehensive documentation for core platform systems is available in the [`docs/`](docs/) directory:
 
 - [**Role-Based Access Control (RBAC) Architecture**](docs/rbac.md): Hierarchy, desk modes, role definitions, permissions matrix, and containment rules.
+- [**Session & Authentication Architecture**](docs/session-and-authentication.md): NextAuth v5 stateless JWT strategy, multi-provider credentials & OAuth, registration onboarding pathways, session mutation, password recovery, and proxy middleware routing guards.
+- [**Workspace Access & Persistence Architecture**](docs/workspace-access-and-persistence.md): Multi-tenancy model, active workspace session context embedding, modal and portal switcher protocols, multi-layer defense-in-depth access enforcement, and real-time member status eviction via Pusher.
 - [**Status & Progress Lifecycle**](docs/status-and-progress-updates.md): Manual updates, automated status cascading (Project $\rightarrow$ Task $\rightarrow$ Milestone), and progress bar calculations.
 - [**Real-Time Update Flow & Architecture**](docs/realtime-update-flow.md): Pusher WebSocket architecture, channel topologies, event schemas, React hooks, optimistic UI patterns, and sequence diagrams.
 
@@ -92,7 +101,9 @@ collaborate/
 ├── docs/                   # Architecture and technical documentation
 │   ├── rbac.md
 │   ├── realtime-update-flow.md
-│   └── status-and-progress-updates.md
+│   ├── session-and-authentication.md
+│   ├── status-and-progress-updates.md
+│   └── workspace-access-and-persistence.md
 ├── prisma/                 # Prisma schema definition & migrations
 │   └── schema.prisma
 ├── generated/prisma/       # Generated Prisma Client
@@ -221,8 +232,9 @@ pnpm dlx prisma studio   # Open Prisma Studio to inspect the database
   - `/calendar` — Task scheduling and calendar view
   - `/activity` — Real-time workspace audit and activity feed
   - `/members` — Team member management & role assignment
+  - `/invite-codes` — Workspace invite code generation (OPEN & RESERVED) and expiration management
   - `/requests` — Workspace join request approvals
-  - `/teams` — Workspace teams breakdown
+  - `/teams` & `/teams/[id]` — Workspace teams directory, analytics, and single team hub
   - `/notifications` — User notifications center
   - `/settings` — Workspace and user profile settings
 

@@ -19,7 +19,16 @@ import {
 	ProjectComment,
 	Projects,
 } from "@/lib/types";
-import { cn, formatLabel, formatPriority, formatStatus, getInitials, renderPriority, renderStatus, STATUS_OPTIONS } from "@/lib/utils";
+import {
+	cn,
+	formatLabel,
+	formatPriority,
+	formatStatus,
+	getInitials,
+	renderPriority,
+	renderStatus,
+	STATUS_OPTIONS,
+} from "@/lib/utils";
 import { format, formatDistanceToNowStrict } from "date-fns";
 
 function formatRelativeTime(date: Date | string): string {
@@ -58,6 +67,7 @@ import {
 	Diamond,
 	Flag,
 	Globe,
+	Group,
 	Loader2,
 	LoaderCircle,
 	Lock,
@@ -149,6 +159,8 @@ import {
 	updateProjectResource,
 } from "@/lib/services/project.services";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import PresenceIndicator from "@/components/shared/presence-indicator";
+import { PresenceAvatar } from "@/components/shared/presence-avatar";
 import { useProjectRealtime } from "@/hooks/use-pusher";
 
 export default function SingleProjectView({
@@ -170,8 +182,12 @@ export default function SingleProjectView({
 
 	const currentMember =
 		members.find((m) => m.userId === user?.id) ||
-		(project.projectMembers || []).find((pm) => pm.member?.userId === user?.id)?.member ||
-		(project.createdBy?.userId === user?.id ? project.createdBy : undefined);
+		(project.projectMembers || []).find(
+			(pm) => pm.member?.userId === user?.id,
+		)?.member ||
+		(project.createdBy?.userId === user?.id ?
+			project.createdBy
+		:	undefined);
 	const currentMemberId = currentMember?.id || "";
 	const availableProjects = projects.length > 0 ? projects : [project];
 
@@ -179,7 +195,7 @@ export default function SingleProjectView({
 	const isAdmin = currentMember?.role === "ADMIN";
 	const isCreator = Boolean(
 		(currentMemberId && project.createdById === currentMemberId) ||
-		(user?.id && project.createdBy?.userId === user.id)
+		(user?.id && project.createdBy?.userId === user.id),
 	);
 
 	const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
@@ -207,7 +223,9 @@ export default function SingleProjectView({
 	const [dueDate, setDueDate] = useState<Date>(new Date(project.endPeriod));
 	const [isSavingDueDate, setIsSavingDueDate] = useState(false);
 
-	const [labels, setLabels] = useState<string[]>((project.labels || []).map(formatLabel));
+	const [labels, setLabels] = useState<string[]>(
+		(project.labels || []).map(formatLabel),
+	);
 	const [labelInput, setLabelInput] = useState("");
 	const [isSavingLabels, setIsSavingLabels] = useState(false);
 	const [tasks, setTasks] = useState(project.tasks || []);
@@ -218,7 +236,9 @@ export default function SingleProjectView({
 		(e) => e.projectRole === ("PROJECT_LEAD" as ProjectAccess),
 	)?.memberId;
 
-	const initialMemberIds = (project.projectMembers || []).map((e) => e.memberId);
+	const initialMemberIds = (project.projectMembers || []).map(
+		(e) => e.memberId,
+	);
 
 	const [selectedMembers, setSelectedMembers] =
 		useState<string[]>(initialMemberIds);
@@ -464,11 +484,20 @@ export default function SingleProjectView({
 								:	"hover:bg-primary/10 text-primary"
 							}`}
 						>
-							<Avatar className="w-5 h-5 shrink-0">
-								<AvatarFallback className="w-full h-full text-[9px] bg-primary text-secondary font-bold">
-									{getInitials(displayName)}
-								</AvatarFallback>
-							</Avatar>
+							<div className="relative inline-flex shrink-0">
+								<Avatar className="w-5 h-5 shrink-0">
+									<AvatarFallback className="w-full h-full text-[9px] bg-primary text-secondary font-bold">
+										{getInitials(displayName)}
+									</AvatarFallback>
+								</Avatar>
+								<span className="absolute -bottom-0.5 -right-0.5 leading-none">
+									<PresenceIndicator
+										userId={m.userId || m.user?.id}
+										size="xs"
+										ringColor="ring-primary"
+									/>
+								</span>
+							</div>
 							<div className="flex flex-col min-w-0">
 								<span className="font-semibold truncate leading-tight">
 									{displayName}
@@ -520,8 +549,20 @@ export default function SingleProjectView({
 							</HoverCardTrigger>
 							<HoverCardContent className="flex w-full bg-accent border-accent text-primary flex-col gap-0.5 z-[99999]">
 								<div className="items-center flex gap-4">
-									<div className="flex text-accent w-[50px] h-[50px] font-extrabold text-[20px] items-center justify-center rounded-full bg-primary shrink-0">
-										{getInitials(displayName)}
+									<div className="relative inline-flex shrink-0">
+										<div className="flex text-accent w-[50px] h-[50px] font-extrabold text-[20px] items-center justify-center rounded-full bg-primary shrink-0">
+											{getInitials(displayName)}
+										</div>
+										<span className="absolute bottom-0 right-0 leading-none">
+											<PresenceIndicator
+												userId={
+													user.id ||
+													matchedMember.userId
+												}
+												size="sm"
+												ringColor="ring-accent"
+											/>
+										</span>
 									</div>
 									<div>
 										{user.userName && (
@@ -570,13 +611,17 @@ export default function SingleProjectView({
 		onActivityCreated: ({ activity }) => {
 			setActivities((prev) => {
 				if (prev.some((a) => a.id === activity.id)) return prev;
-				return [activity as unknown as ProjectActivity, ...prev].slice(0, 20);
+				return [activity as unknown as ProjectActivity, ...prev].slice(
+					0,
+					20,
+				);
 			});
 		},
 		onProjectUpdated: (data: any) => {
 			const updates = data?.updates;
 			if (updates?.title !== undefined) setTitle(updates.title as string);
-			if (updates?.description !== undefined) setDescription(updates.description as string);
+			if (updates?.description !== undefined)
+				setDescription(updates.description as string);
 			if (updates?.status !== undefined) {
 				const nextStatus = updates.status as Status;
 				setStatus(nextStatus);
@@ -593,7 +638,10 @@ export default function SingleProjectView({
 							})),
 						})),
 					);
-				} else if (nextStatus === Status.TODO || nextStatus === Status.IN_PROGRESS) {
+				} else if (
+					nextStatus === Status.TODO ||
+					nextStatus === Status.IN_PROGRESS
+				) {
 					setTasks((prev) =>
 						prev.map((t) => ({
 							...t,
@@ -606,10 +654,14 @@ export default function SingleProjectView({
 					);
 				}
 			}
-			if (updates?.priority !== undefined) setPriority(updates.priority as PriorityLevel);
-			if (updates?.startDate !== undefined) setStartDate(new Date(updates.startDate as string | Date));
-			if (updates?.dueDate !== undefined) setDueDate(new Date(updates.dueDate as string | Date));
-			if (updates?.labels !== undefined) setLabels((updates.labels as string[]).map(formatLabel));
+			if (updates?.priority !== undefined)
+				setPriority(updates.priority as PriorityLevel);
+			if (updates?.startDate !== undefined)
+				setStartDate(new Date(updates.startDate as string | Date));
+			if (updates?.dueDate !== undefined)
+				setDueDate(new Date(updates.dueDate as string | Date));
+			if (updates?.labels !== undefined)
+				setLabels((updates.labels as string[]).map(formatLabel));
 		},
 		onCommentCreated: ({ comment }) => {
 			setComments((prev) => {
@@ -621,20 +673,26 @@ export default function SingleProjectView({
 			setComments((prev) =>
 				prev.map((c) =>
 					c.id === commentId ?
-						((comment as unknown as ProjectComment) || { ...c, message })
+						(comment as unknown as ProjectComment) || {
+							...c,
+							message,
+						}
 					:	c,
 				),
 			);
 		},
 		onCommentDeleted: ({ commentId }) => {
 			setComments((prev) =>
-				prev.filter((c) => c.id !== commentId && c.replyCommentId !== commentId),
+				prev.filter(
+					(c) => c.id !== commentId && c.replyCommentId !== commentId,
+				),
 			);
 		},
 		onResourceAdded: ({ resource }) => {
 			if (resource) {
 				setResources((prev: any[]) => {
-					if (prev.some((r) => r.id === (resource as any).id)) return prev;
+					if (prev.some((r) => r.id === (resource as any).id))
+						return prev;
 					return [...prev, resource];
 				});
 			}
@@ -642,13 +700,17 @@ export default function SingleProjectView({
 		onResourceUpdated: ({ resource }) => {
 			if (resource) {
 				setResources((prev: any[]) =>
-					prev.map((r) => (r.id === (resource as any).id ? resource : r)),
+					prev.map((r) =>
+						r.id === (resource as any).id ? resource : r,
+					),
 				);
 			}
 		},
 		onResourceDeleted: ({ resourceId }) => {
 			if (resourceId) {
-				setResources((prev: any[]) => prev.filter((r) => r.id !== resourceId));
+				setResources((prev: any[]) =>
+					prev.filter((r) => r.id !== resourceId),
+				);
 			}
 		},
 		onMembersUpdated: ({ memberIds, leadId }) => {
@@ -690,7 +752,9 @@ export default function SingleProjectView({
 		onTaskDeleted: (data: any) => {
 			const taskId = data?.taskId || data?.id;
 			if (taskId) {
-				setTasks((prev: any[]) => prev.filter((t: any) => t.id !== taskId));
+				setTasks((prev: any[]) =>
+					prev.filter((t: any) => t.id !== taskId),
+				);
 			}
 		},
 	});
@@ -763,7 +827,9 @@ export default function SingleProjectView({
 			(e) => e.projectRole === ("PROJECT_LEAD" as ProjectAccess),
 		)?.memberId;
 		setSelectedLeadId(lead);
-		setSelectedMembers((project.projectMembers || []).map((e) => e.memberId));
+		setSelectedMembers(
+			(project.projectMembers || []).map((e) => e.memberId),
+		);
 		setActivities((project.activities || []).slice(0, 20));
 	}, [project]);
 
@@ -869,7 +935,10 @@ export default function SingleProjectView({
 					})),
 				})),
 			);
-		} else if (newStatus === Status.TODO || newStatus === Status.IN_PROGRESS) {
+		} else if (
+			newStatus === Status.TODO ||
+			newStatus === Status.IN_PROGRESS
+		) {
 			setTasks((prev) =>
 				prev.map((t) => ({
 					...t,
@@ -888,9 +957,7 @@ export default function SingleProjectView({
 				values: { status: newStatus },
 			});
 			if (res.success) {
-				toast.success(
-					`Status set to ${formatStatus(newStatus)}`,
-				);
+				toast.success(`Status set to ${formatStatus(newStatus)}`);
 				if (res.activity) {
 					setActivities((prev) =>
 						[
@@ -1063,13 +1130,17 @@ export default function SingleProjectView({
 			.map((v) => formatLabel(v))
 			.filter((v) => v.length > 1);
 		if (normalized.length === 0) return;
-		const nextSet = Array.from(new Set([...labels.map(formatLabel), ...normalized]));
+		const nextSet = Array.from(
+			new Set([...labels.map(formatLabel), ...normalized]),
+		);
 		handleSaveLabels(nextSet);
 	};
 
 	const removeLabel = (labelToRemove: string) => {
 		const target = formatLabel(labelToRemove);
-		const updated = labels.filter((l) => formatLabel(l) !== target && l !== labelToRemove);
+		const updated = labels.filter(
+			(l) => formatLabel(l) !== target && l !== labelToRemove,
+		);
 		handleSaveLabels(updated);
 	};
 
@@ -1173,7 +1244,8 @@ export default function SingleProjectView({
 				);
 				if (res.activity) {
 					setActivities((prev) => {
-						if (prev.some((a) => a.id === (res.activity as any).id)) return prev;
+						if (prev.some((a) => a.id === (res.activity as any).id))
+							return prev;
 						return [
 							res.activity as unknown as ProjectActivity,
 							...prev,
@@ -1203,12 +1275,14 @@ export default function SingleProjectView({
 			if (res.success && res.resource) {
 				toast.success(res.message);
 				setResources((prev) => {
-					if (prev.some((r) => r.id === res.resource!.id)) return prev;
+					if (prev.some((r) => r.id === res.resource!.id))
+						return prev;
 					return [...prev, res.resource];
 				});
 				if (res.activity) {
 					setActivities((prev) => {
-						if (prev.some((a) => a.id === (res.activity as any).id)) return prev;
+						if (prev.some((a) => a.id === (res.activity as any).id))
+							return prev;
 						return [
 							res.activity as unknown as ProjectActivity,
 							...prev,
@@ -1245,7 +1319,8 @@ export default function SingleProjectView({
 				});
 				if (res.activity) {
 					setActivities((prev) => {
-						if (prev.some((a) => a.id === (res.activity as any).id)) return prev;
+						if (prev.some((a) => a.id === (res.activity as any).id))
+							return prev;
 						return [
 							res.activity as unknown as ProjectActivity,
 							...prev,
@@ -1273,7 +1348,8 @@ export default function SingleProjectView({
 				setComments((prev) => prev.filter((c) => c.id !== commentId));
 				if (res.activity) {
 					setActivities((prev) => {
-						if (prev.some((a) => a.id === (res.activity as any).id)) return prev;
+						if (prev.some((a) => a.id === (res.activity as any).id))
+							return prev;
 						return [
 							res.activity as unknown as ProjectActivity,
 							...prev,
@@ -1356,14 +1432,22 @@ export default function SingleProjectView({
 		}
 	};
 
-	const projectLeadName = (() => {
-		const leadMember = project.projectMembers.find(
+	const selectedLeadMember = selectedLeadId ?
+		members.find((m) => m.id === selectedLeadId) ||
+		(project.projectMembers || []).find((pm) => pm.memberId === selectedLeadId)?.member
+	: (project.projectMembers || []).find(
 			(e) => e.projectRole === ("PROJECT_LEAD" as ProjectAccess),
-		);
-		if (!leadMember) return "Unassigned";
-		return leadMember.member.user.id === user?.id ?
-				"YOU"
-			:	leadMember.member.user.fullName;
+	  )?.member;
+
+	const projectLeadUserId =
+		selectedLeadMember?.userId || selectedLeadMember?.user?.id;
+
+	const projectLeadName = (() => {
+		if (!selectedLeadMember) return "Unassigned";
+		const isYou =
+			selectedLeadMember.userId === user?.id ||
+			selectedLeadMember.user?.id === user?.id;
+		return isYou ? "YOU" : selectedLeadMember.user?.fullName || "Unassigned";
 	})();
 
 	const creatorName = (() => {
@@ -1376,12 +1460,12 @@ export default function SingleProjectView({
 					(project.createdById === currentMemberId ||
 						project.createdBy?.id === currentMemberId))
 			:	false;
-		return isCreatorYou ?
-				"YOU"
-			:	creatorUser?.fullName ||
+		return isCreatorYou ? "YOU" : (
+				creatorUser?.fullName ||
 					creatorUser?.userName ||
 					creatorUser?.email ||
-					"Creator";
+					"Creator"
+			);
 	})();
 
 	const contributors = project.projectMembers.filter(
@@ -1408,24 +1492,48 @@ export default function SingleProjectView({
 	return (
 		<div className="flex flex-col lg:flex-row gap-4 w-full items-start">
 			<div className="w-full lg:w-[75%] grow flex flex-col gap-4">
-				<div className="flex flex-wrap gap-3 justify-between items-center">
-					<div className="gap-2 sm:gap-3 items-center flex min-w-0 flex-1">
+				{/* Top Bar: Responsive 2-tier header preventing buttons from blocking project title */}
+				<div className="flex flex-col gap-3 w-full">
+					{/* Actions & Navigation Row */}
+					<div className="flex items-center justify-between gap-2.5 w-full">
 						<Link
-							href={"/projects"}
-							className="py-2 px-3.5 rounded-full flex gap-2 items-center justify-center bg-primary shrink-0 text-secondary"
+							href="/projects"
+							className="py-2 px-3.5 rounded-full flex gap-2 items-center justify-center bg-primary shrink-0 text-secondary hover:bg-primary/90 transition-colors shadow-sm"
 						>
 							<MoveLeft className="w-4 h-4" />
-							<p className="text-[14px]">Back</p>
+							<span className="text-[14px]">Back</span>
 						</Link>
 
+						{canEditProject && (
+							<Button
+								size="sm"
+								onClick={() =>
+									setIsEditingDescription(!isEditingDescription)
+								}
+								className="rounded-full flex items-center gap-2 h-9 px-3.5 text-xs font-semibold"
+							>
+								<PenLine className="w-3.5 h-3.5" />
+								<span>
+									{isEditingDescription ?
+										"Close Editor"
+									:	"Edit Description"}
+								</span>
+							</Button>
+						)}
+					</div>
+
+					{/* Project Title & Visibility Row */}
+					<div className="flex items-center gap-2.5 flex-wrap min-w-0">
 						{canEditProject ?
 							isEditingTitle ?
-								<div className="flex items-center gap-2 flex-1 max-w-lg">
+								<div className="flex items-center gap-2 flex-1 max-w-lg min-w-[200px]">
 									<Input
 										autoFocus
 										disabled={isSavingTitle}
 										value={title}
-										onChange={(e) => setTitle(e.target.value)}
+										onChange={(e) =>
+											setTitle(e.target.value)
+										}
 										onKeyDown={(e) => {
 											if (e.key === "Enter")
 												handleSaveTitle();
@@ -1436,52 +1544,38 @@ export default function SingleProjectView({
 										}}
 										onBlur={handleSaveTitle}
 										placeholder="Project title"
-										className="text-primary text-xl sm:text-2xl font-bold bg-accent rounded-xl border-primary/20 placeholder:text-primary/50"
+										className="text-primary text-xl sm:text-2xl md:text-3xl font-bold bg-accent rounded-xl border-primary/20 placeholder:text-primary/50"
 									/>
 									{isSavingTitle && (
-										<Loader2 className="w-4 h-4 animate-spin text-primary" />
+										<Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
 									)}
 								</div>
 							:	<div
 									onClick={() => setIsEditingTitle(true)}
-									className="group flex items-center gap-2 cursor-pointer min-w-0"
+									className="group flex items-center gap-2 cursor-pointer min-w-0 max-w-full"
 								>
-									<p className="text-primary text-xl sm:text-2xl font-bold truncate hover:opacity-80">
+									<h1 className="text-primary text-xl sm:text-2xl md:text-3xl font-bold break-words leading-tight hover:opacity-80">
 										{title}
-									</p>
+									</h1>
 									<PenLine className="w-4 h-4 text-primary/50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
 								</div>
-						:	<p className="text-primary text-xl sm:text-2xl font-bold truncate">
+
+						:	<h1 className="text-primary text-xl sm:text-2xl md:text-3xl font-bold break-words leading-tight">
 								{title}
-							</p>
+							</h1>
 						}
 
-						{(project as any)?.visibility === "PRIVATE" ? (
+						{(project as any)?.visibility === "PRIVATE" ?
 							<Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-0 flex items-center gap-1 text-[11px] py-0.5 px-2 rounded-full shrink-0">
 								<Lock className="w-3 h-3" />
 								Private
 							</Badge>
-						) : (
-							<Badge className="bg-primary/10 text-primary/70 border-0 flex items-center gap-1 text-[11px] py-0.5 px-2 rounded-full shrink-0">
+						:	<Badge className="bg-primary/10 text-primary/70 border-0 flex items-center gap-1 text-[11px] py-0.5 px-2 rounded-full shrink-0">
 								<Globe className="w-3 h-3" />
 								Public
 							</Badge>
-						)}
+						}
 					</div>
-
-					{canEditProject && (
-						<Button
-							onClick={() =>
-								setIsEditingDescription(!isEditingDescription)
-							}
-							className="rounded-full flex items-center gap-2"
-						>
-							<PenLine className="w-4 h-4" />
-							{isEditingDescription ?
-								"Close Editor"
-							:	"Edit Description"}
-						</Button>
-					)}
 				</div>
 
 				<div>
@@ -1562,12 +1656,15 @@ export default function SingleProjectView({
 								<DropdownMenuContent className="w-[160px] flex flex-col gap-1 border-0 bg-accent p-1">
 									{PRIORITY_LEVEL.map((item, idx) => {
 										const Icon: LucideIcon = item.icon;
-										const isSelected = item.value === priority;
+										const isSelected =
+											item.value === priority;
 										return (
 											<div
 												key={idx}
 												onClick={() =>
-													handleUpdatePriority(item.value)
+													handleUpdatePriority(
+														item.value,
+													)
 												}
 												className={`${isSelected ? "bg-primary text-secondary" : "bg-accent text-primary"} py-[4px] cursor-pointer transition-all rounded-[12px] px-[10px] hover:bg-primary hover:text-secondary items-center justify-between flex`}
 											>
@@ -1604,12 +1701,15 @@ export default function SingleProjectView({
 												{format(startDate, "LLL d")}
 											</span>
 										</PopoverTrigger>
-										<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
+										<PopoverContent
+											className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden"
+											align="start"
+										>
 											<Calendar
 												mode="single"
 												selected={startDate}
 												onSelect={handleUpdateStartDate}
-												className="bg-primary text-secondary"
+												className="rounded-[20px] bg-primary text-secondary"
 											/>
 										</PopoverContent>
 									</Popover>
@@ -1622,13 +1722,16 @@ export default function SingleProjectView({
 												{format(dueDate, "LLL d")}
 											</span>
 										</PopoverTrigger>
-										<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
+										<PopoverContent
+											className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden"
+											align="start"
+										>
 											<Calendar
 												mode="single"
 												selected={dueDate}
 												onSelect={handleUpdateDueDate}
 												disabled={{ before: startDate }}
-												className="bg-primary text-secondary"
+												className="rounded-[20px] bg-primary text-secondary"
 											/>
 										</PopoverContent>
 									</Popover>
@@ -1648,15 +1751,15 @@ export default function SingleProjectView({
 						<Badge className="py-[5px] px-[10px]">
 							<Diamond className="w-3.5 h-3.5 mr-1" />
 							<p>
-								{status === Status.COMPLETED
-									? `${tasks.length} out of ${tasks.length} tasks done`
-									: `${
-											tasks.filter(
-												(t) =>
-													t.status ===
-													Status.COMPLETED,
-											).length
-									  } out of ${tasks.length} tasks done`}
+								{status === Status.COMPLETED ?
+									`${tasks.length} out of ${tasks.length} tasks done`
+								:	`${
+										tasks.filter(
+											(t) =>
+												t.status === Status.COMPLETED,
+										).length
+									} out of ${tasks.length} tasks done`
+								}
 							</p>
 						</Badge>
 						<Badge className="py-[5px] px-[10px]">
@@ -1705,7 +1808,10 @@ export default function SingleProjectView({
 													<PopoverContent className="rounded-[20px] bg-accent max-w-[200px] text-primary p-3 border-0">
 														<EditResourcePopoverContent
 															resource={i}
-															onSave={(name, url) =>
+															onSave={(
+																name,
+																url,
+															) =>
 																handleUpdateResourceItem(
 																	i.id,
 																	name,
@@ -1718,14 +1824,22 @@ export default function SingleProjectView({
 
 												<button
 													type="button"
-													disabled={deletingResourceId === i.id}
-													onClick={() =>
-														handleDeleteResource(i.id)
+													disabled={
+														deletingResourceId ===
+														i.id
 													}
-													className="p-0.5 hover:bg-secondary/20 rounded-full transition-colors text-secondary/70 hover:text-secondary disabled:opacity-50"
+													onClick={() =>
+														handleDeleteResource(
+															i.id,
+														)
+													}
+													className="p-0.5 hover:bg-destructive/10 rounded-full transition-colors text-secondary/70 hover:text-destructive disabled:opacity-50"
 													title="Delete resource"
 												>
-													{deletingResourceId === i.id ?
+													{(
+														deletingResourceId ===
+														i.id
+													) ?
 														<LoaderCircle className="w-3 h-3 animate-spin" />
 													:	<X className="w-3 h-3" />}
 												</button>
@@ -1748,7 +1862,9 @@ export default function SingleProjectView({
 										className="flex items-center gap-1.5 hover:underline font-medium truncate max-w-[160px]"
 									>
 										<Paperclip className="w-3.5 h-3.5 shrink-0" />
-										<span className="truncate">{tr.name}</span>
+										<span className="truncate">
+											{tr.name}
+										</span>
 									</Link>
 									<Link
 										href={`/tasks/${t.id}`}
@@ -1779,10 +1895,13 @@ export default function SingleProjectView({
 												placeholder="Resource name"
 												value={resourceField.name}
 												onChange={(e) =>
-													setResourceField((prev) => ({
-														...prev,
-														name: e.target.value,
-													}))
+													setResourceField(
+														(prev) => ({
+															...prev,
+															name: e.target
+																.value,
+														}),
+													)
 												}
 												onKeyDown={(e) => {
 													if (e.key === "Enter")
@@ -1795,10 +1914,12 @@ export default function SingleProjectView({
 												placeholder="Link"
 												value={resourceField.url}
 												onChange={(e) =>
-													setResourceField((prev) => ({
-														...prev,
-														url: e.target.value,
-													}))
+													setResourceField(
+														(prev) => ({
+															...prev,
+															url: e.target.value,
+														}),
+													)
 												}
 												onKeyDown={(e) => {
 													if (e.key === "Enter")
@@ -1836,44 +1957,41 @@ export default function SingleProjectView({
 							</p>
 						</div>
 						<p className="text-xs text-primary/70 font-medium">
-							{status === Status.COMPLETED
-								? `${tasks.length} of ${tasks.length} tasks done (100%)`
-								: `${
-										tasks.filter(
-											(t) =>
-												t.status ===
-												Status.COMPLETED,
-										).length
-								  } of ${tasks.length} tasks done (${
-										tasks.length > 0
-											? Math.round(
-													(tasks.filter(
-														(t) =>
-															t.status ===
-															Status.COMPLETED,
-													).length /
-														tasks.length) *
-														100,
-											  )
-											: 0
-								  }%)`}
+							{status === Status.COMPLETED ?
+								`${tasks.length} of ${tasks.length} tasks done (100%)`
+							:	`${
+									tasks.filter(
+										(t) => t.status === Status.COMPLETED,
+									).length
+								} of ${tasks.length} tasks done (${
+									tasks.length > 0 ?
+										Math.round(
+											(tasks.filter(
+												(t) =>
+													t.status ===
+													Status.COMPLETED,
+											).length /
+												tasks.length) *
+												100,
+										)
+									:	0
+								}%)`
+							}
 						</p>
 					</div>
 					<div
 						role="progressbar"
 						aria-valuenow={
-							status === Status.COMPLETED
-								? 100
-								: tasks.length > 0
-								? Math.round(
-										(tasks.filter(
-											(t) =>
-												t.status === Status.COMPLETED,
-										).length /
-											tasks.length) *
-											100,
-								  )
-								: 0
+							status === Status.COMPLETED ? 100
+							: tasks.length > 0 ?
+								Math.round(
+									(tasks.filter(
+										(t) => t.status === Status.COMPLETED,
+									).length /
+										tasks.length) *
+										100,
+								)
+							:	0
 						}
 						aria-valuemin={0}
 						aria-valuemax={100}
@@ -1883,19 +2001,18 @@ export default function SingleProjectView({
 							className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
 							style={{
 								width: `${
-									status === Status.COMPLETED
-										? 100
-										: tasks.length > 0
-										? Math.round(
-												(tasks.filter(
-													(t) =>
-														t.status ===
-														Status.COMPLETED,
-												).length /
-													tasks.length) *
-													100,
-										  )
-										: 0
+									status === Status.COMPLETED ? 100
+									: tasks.length > 0 ?
+										Math.round(
+											(tasks.filter(
+												(t) =>
+													t.status ===
+													Status.COMPLETED,
+											).length /
+												tasks.length) *
+												100,
+										)
+									:	0
 								}%`,
 							}}
 						/>
@@ -1903,448 +2020,1112 @@ export default function SingleProjectView({
 				</div>
 
 				<Tabs defaultValue="tasks" className="w-full">
-					<TabsList className="bg-primary/10 dark:bg-accent/40 p-1 rounded-full mb-3 flex-wrap h-auto">
+					<TabsList className="bg-primary/10 dark:bg-accent/40 p-1 rounded-full mb-3 max-w-full overflow-x-auto custom-scrollbar flex-nowrap sm:flex-wrap h-auto">
 						<TabsTrigger
 							value="tasks"
-							className="text-xs rounded-full px-4 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5"
+							title={`Tasks (${tasks.length})`}
+							className="group text-xs rounded-full px-2.5 py-1.5 data-[state=active]:px-4 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5 transition-all duration-200"
 						>
-							<Diamond className="w-3.5 h-3.5" />
-							Tasks ({tasks.length})
+							<Diamond className="w-3.5 h-3.5 shrink-0" />
+							<span className="hidden group-data-[state=active]:inline whitespace-nowrap">
+								Tasks ({tasks.length})
+							</span>
 						</TabsTrigger>
 						<TabsTrigger
 							value="activity"
-							className="text-xs rounded-full px-4 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5"
+							title={`Activity (${activities.length})`}
+							className="group text-xs rounded-full px-2.5 py-1.5 data-[state=active]:px-4 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5 transition-all duration-200"
 						>
-							<Workflow className="w-3.5 h-3.5" />
-							Activity ({activities.length})
+							<Workflow className="w-3.5 h-3.5 shrink-0" />
+							<span className="hidden group-data-[state=active]:inline whitespace-nowrap">
+								Activity ({activities.length})
+							</span>
 						</TabsTrigger>
 						<TabsTrigger
 							value="comments"
-							className="text-xs rounded-full px-4 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5"
+							title={`Comments (${comments.length})`}
+							className="group text-xs rounded-full px-2.5 py-1.5 data-[state=active]:px-4 data-[state=active]:bg-primary data-[state=active]:text-secondary flex items-center gap-1.5 transition-all duration-200"
 						>
-							<MessageSquare className="w-3.5 h-3.5" />
-							Comments ({comments.length})
+							<MessageSquare className="w-3.5 h-3.5 shrink-0" />
+							<span className="hidden group-data-[state=active]:inline whitespace-nowrap">
+								Comments ({comments.length})
+							</span>
 						</TabsTrigger>
 					</TabsList>
 
-					<TabsContent value="tasks" className="mt-0 focus-visible:outline-none">
-
-					<div>
-						<div className="flex items-center justify-between">
-							<p className="font-bold text-primary">
-								Tasks ({tasks.length})
-							</p>
-							{canCreateTasks && (
-								<Dialog
-									open={isCreateTaskOpen}
-									onOpenChange={setIsCreateTaskOpen}
-								>
-									<DialogTrigger asChild>
-										<Button className="rounded-full">
-											<Plus />
-											Add Task
-										</Button>
-									</DialogTrigger>
-									<DialogContent className="w-full sm:max-w-3xl lg:max-w-6xl rounded-[20px] border-0 bg-primary">
-										<DialogHeader>
-											<DialogTitle className="text-secondary flex items-center gap-3">
-												<Diamond />
-												New Task
-											</DialogTitle>
-											<CreateTask
-												projects={availableProjects}
-												members={members}
-												workspaceId={
-													workspaceId || project.workspaceId
-												}
-												currentMemberId={currentMemberId}
-												initialTotal={initialTotal}
-												defaultProjectId={project.id}
-												onSuccess={(newTask, newActivity) => {
-													if (newTask) {
-														setTasks((prev: any[]) => {
-															if (prev.some((t: any) => t.id === newTask.id)) return prev;
-															return [newTask, ...prev];
-														});
+					<TabsContent
+						value="tasks"
+						className="mt-0 focus-visible:outline-none"
+					>
+						<div>
+							<div className="flex items-center justify-between">
+								<p className="font-bold text-primary">
+									Tasks ({tasks.length})
+								</p>
+								{canCreateTasks && (
+									<Dialog
+										open={isCreateTaskOpen}
+										onOpenChange={setIsCreateTaskOpen}
+									>
+										<DialogTrigger asChild>
+											<Button className="rounded-full">
+												<Plus />
+												Add Task
+											</Button>
+										</DialogTrigger>
+										<DialogContent className="w-full sm:max-w-3xl lg:max-w-6xl rounded-[20px] border-0 bg-primary">
+											<DialogHeader>
+												<DialogTitle className="text-secondary flex items-center gap-3">
+													<Diamond />
+													New Task
+												</DialogTitle>
+												<CreateTask
+													projects={availableProjects}
+													members={members}
+													workspaceId={
+														workspaceId ||
+														project.workspaceId
 													}
-													if (newActivity) {
-														setActivities((prev) => {
-															if (prev.some((a: any) => a.id === newActivity.id)) return prev;
-															return [newActivity as unknown as ProjectActivity, ...prev].slice(0, 20);
-														});
+													currentMemberId={
+														currentMemberId
 													}
-													setIsCreateTaskOpen(false);
-												}}
-											/>
-										</DialogHeader>
-									</DialogContent>
-								</Dialog>
-							)}
-						</div>
-						<div className="mt-[10px]">
-							<div className="flex flex-col gap-3">
-								<Input
-									placeholder="Search by task title..."
-									value={taskSearch}
-									onChange={(e) =>
-										setTaskSearch(e.target.value)
-									}
-									className="bg-primary rounded-[15px] border-0 text-secondary placeholder:text-secondary/70"
-								/>
-								{(() => {
-									const filteredTasks = tasks.filter((t) =>
-										taskSearch.trim() ?
-											t.title
-												.toLowerCase()
-												.includes(
-													taskSearch.toLowerCase(),
-												)
-										:	true,
-									);
-
-									if (filteredTasks.length === 0) {
-										return (
-											<div className="bg-primary flex justify-center py-[20px] px-[20px] flex-col items-center rounded-[15px]">
-												<div className="bg-accent text-primary py-[10px] px-[10px] rounded-full">
-													{taskSearch.trim() ?
-														<Search className="w-4 h-4" />
-													:	<Diamond className="w-4 h-4" />
+													initialTotal={initialTotal}
+													defaultProjectId={
+														project.id
 													}
-												</div>
-												<p className="text-xs font-semibold text-secondary mt-[10px]">
-													{taskSearch.trim() ?
-														"No Matching Tasks"
-													:	"No Tasks Available"}
-												</p>
-												<p className="text-[11px] text-center text-secondary/60">
-													{taskSearch.trim() ?
-														"No tasks match your search query"
-													:	"No tasks found yet in this project"
-													}
-												</p>
-											</div>
+													onSuccess={(
+														newTask,
+														newActivity,
+													) => {
+														if (newTask) {
+															setTasks(
+																(
+																	prev: any[],
+																) => {
+																	if (
+																		prev.some(
+																			(
+																				t: any,
+																			) =>
+																				t.id ===
+																				newTask.id,
+																		)
+																	)
+																		return prev;
+																	return [
+																		newTask,
+																		...prev,
+																	];
+																},
+															);
+														}
+														if (newActivity) {
+															setActivities(
+																(prev) => {
+																	if (
+																		prev.some(
+																			(
+																				a: any,
+																			) =>
+																				a.id ===
+																				newActivity.id,
+																		)
+																	)
+																		return prev;
+																	return [
+																		newActivity as unknown as ProjectActivity,
+																		...prev,
+																	].slice(
+																		0,
+																		20,
+																	);
+																},
+															);
+														}
+														setIsCreateTaskOpen(
+															false,
+														);
+													}}
+												/>
+											</DialogHeader>
+										</DialogContent>
+									</Dialog>
+								)}
+							</div>
+							<div className="mt-[10px]">
+								<div className="flex flex-col gap-3">
+									<Input
+										placeholder="Search by task title..."
+										value={taskSearch}
+										onChange={(e) =>
+											setTaskSearch(e.target.value)
+										}
+										className="bg-primary rounded-[15px] border-0 text-secondary placeholder:text-secondary/70"
+									/>
+									{(() => {
+										const filteredTasks = tasks.filter(
+											(t) =>
+												taskSearch.trim() ?
+													t.title
+														.toLowerCase()
+														.includes(
+															taskSearch.toLowerCase(),
+														)
+												:	true,
 										);
-									}
 
-									return (
-										<div className="overflow-x-auto custom-scrollbar">
-											<Table className="min-w-[600px]">
-												<TableHeader>
-													<TableRow>
-														<TableHead>
-															Task
-														</TableHead>
-														<TableHead>
-															Created By
-														</TableHead>
-														<TableHead>
-															Due Date
-														</TableHead>
-														<TableHead>
-															Priority
-														</TableHead>
-														<TableHead>
-															Status
-														</TableHead>
-													</TableRow>
-												</TableHeader>
-												<TableBody>
-													{filteredTasks.map((t) => {
-														const activeUserId = user?.id;
-														const rawCreatedBy = (t as any).createdBy;
-														const directUser = rawCreatedBy?.user;
+										const sortedTasks = [
+											...filteredTasks,
+										].sort((a, b) => {
+											const isACompleted =
+												a.status === Status.COMPLETED;
+											const isBCompleted =
+												b.status === Status.COMPLETED;
 
-														let taskCreatorName = "";
+											if (isACompleted !== isBCompleted) {
+												return isACompleted ? 1 : -1;
+											}
+											return 0;
+										});
 
-														// 1. Direct createdBy object with user relation
-														if (directUser) {
-															if (activeUserId && (directUser.id === activeUserId || rawCreatedBy?.userId === activeUserId)) {
-																taskCreatorName = "YOU";
-															} else if (directUser.fullName?.trim()) {
-																taskCreatorName = directUser.fullName.trim();
-															} else if (directUser.userName?.trim()) {
-																taskCreatorName = `@${directUser.userName.trim()}`;
-															} else if (directUser.email?.trim()) {
-																taskCreatorName = directUser.email.trim();
-															}
+										if (filteredTasks.length === 0) {
+											return (
+												<div className="bg-primary flex justify-center py-[20px] px-[20px] flex-col items-center rounded-[15px]">
+													<div className="bg-accent text-primary py-[10px] px-[10px] rounded-full">
+														{taskSearch.trim() ?
+															<Search className="w-4 h-4" />
+														:	<Diamond className="w-4 h-4" />
 														}
-
-														// 2. Direct createdBy without user object
-														if (!taskCreatorName && rawCreatedBy) {
-															if (activeUserId && (rawCreatedBy.userId === activeUserId || rawCreatedBy.id === activeUserId)) {
-																taskCreatorName = "YOU";
-															} else if (rawCreatedBy.fullName?.trim()) {
-																taskCreatorName = rawCreatedBy.fullName.trim();
-															} else if (rawCreatedBy.userName?.trim()) {
-																taskCreatorName = `@${rawCreatedBy.userName.trim()}`;
-															}
+													</div>
+													<p className="text-xs font-semibold text-secondary mt-[10px]">
+														{taskSearch.trim() ?
+															"No Matching Tasks"
+														:	"No Tasks Available"}
+													</p>
+													<p className="text-[11px] text-center text-secondary/60">
+														{taskSearch.trim() ?
+															"No tasks match your search query"
+														:	"No tasks found yet in this project"
 														}
+													</p>
+												</div>
+											);
+										}
 
-														// 3. Look up createdById in workspace members
-														if (!taskCreatorName && t.createdById) {
-															if (activeUserId && (t.createdById === activeUserId || (currentMemberId && t.createdById === currentMemberId))) {
-																taskCreatorName = "YOU";
-															} else {
-																const foundMember = members?.find(
-																	(m: any) => m.id === t.createdById || m.userId === t.createdById,
-																);
-																if (foundMember) {
-																	if (activeUserId && foundMember.userId === activeUserId) {
-																		taskCreatorName = "YOU";
-																	} else {
+										return (
+											<div className="overflow-x-auto custom-scrollbar">
+												<Table className="min-w-[600px]">
+													<TableHeader>
+														<TableRow>
+															<TableHead>
+																Task
+															</TableHead>
+															<TableHead>
+																Team
+															</TableHead>
+															<TableHead>
+																Created By
+															</TableHead>
+															<TableHead>
+																Due Date
+															</TableHead>
+															<TableHead>
+																Priority
+															</TableHead>
+															<TableHead>
+																Status
+															</TableHead>
+														</TableRow>
+													</TableHeader>
+													<TableBody>
+														{sortedTasks.map(
+															(t) => {
+																const activeUserId =
+																	user?.id;
+																const rawCreatedBy =
+																	(t as any)
+																		.createdBy;
+																const directUser =
+																	rawCreatedBy?.user;
+
+																let taskCreatorName =
+																	"";
+
+																// 1. Direct createdBy object with user relation
+																if (
+																	directUser
+																) {
+																	if (
+																		activeUserId &&
+																		(directUser.id ===
+																			activeUserId ||
+																			rawCreatedBy?.userId ===
+																				activeUserId)
+																	) {
 																		taskCreatorName =
-																			foundMember.user?.fullName?.trim() ||
-																			(foundMember.user?.userName?.trim() ? `@${foundMember.user.userName.trim()}` : "") ||
-																			foundMember.user?.email?.trim() ||
-																			"";
+																			"YOU";
+																	} else if (
+																		directUser.fullName?.trim()
+																	) {
+																		taskCreatorName =
+																			directUser.fullName.trim();
+																	} else if (
+																		directUser.userName?.trim()
+																	) {
+																		taskCreatorName = `@${directUser.userName.trim()}`;
+																	} else if (
+																		directUser.email?.trim()
+																	) {
+																		taskCreatorName =
+																			directUser.email.trim();
 																	}
 																}
-															}
-														}
 
-														// 4. Look up createdById in project members
-														if (!taskCreatorName && t.createdById && project?.projectMembers) {
-															const foundPm = project.projectMembers.find(
-																(pm: any) =>
-																	pm.memberId === t.createdById ||
-																	pm.member?.id === t.createdById ||
-																	pm.member?.userId === t.createdById,
-															);
-															if (foundPm?.member) {
-																if (activeUserId && foundPm.member.userId === activeUserId) {
-																	taskCreatorName = "YOU";
-																} else {
-																	taskCreatorName =
-																		foundPm.member.user?.fullName?.trim() ||
-																		(foundPm.member.user?.userName?.trim() ? `@${foundPm.member.user.userName.trim()}` : "") ||
-																		foundPm.member.user?.email?.trim() ||
-																		"";
+																// 2. Direct createdBy without user object
+																if (
+																	!taskCreatorName &&
+																	rawCreatedBy
+																) {
+																	if (
+																		activeUserId &&
+																		(rawCreatedBy.userId ===
+																			activeUserId ||
+																			rawCreatedBy.id ===
+																				activeUserId)
+																	) {
+																		taskCreatorName =
+																			"YOU";
+																	} else if (
+																		rawCreatedBy.fullName?.trim()
+																	) {
+																		taskCreatorName =
+																			rawCreatedBy.fullName.trim();
+																	} else if (
+																		rawCreatedBy.userName?.trim()
+																	) {
+																		taskCreatorName = `@${rawCreatedBy.userName.trim()}`;
+																	}
 																}
-															}
-														}
 
-														// 5. Fallback if current user created it or default to Unassigned
-														if (!taskCreatorName) {
-															if (activeUserId && (t.createdById === currentMemberId || t.createdById === activeUserId)) {
-																taskCreatorName = "YOU";
-															} else {
-																taskCreatorName = "Unassigned";
-															}
-														}
+																// 3. Look up createdById in workspace members
+																if (
+																	!taskCreatorName &&
+																	t.createdById
+																) {
+																	if (
+																		activeUserId &&
+																		(t.createdById ===
+																			activeUserId ||
+																			(currentMemberId &&
+																				t.createdById ===
+																					currentMemberId))
+																	) {
+																		taskCreatorName =
+																			"YOU";
+																	} else {
+																		const foundMember =
+																			members?.find(
+																				(
+																					m: any,
+																				) =>
+																					m.id ===
+																						t.createdById ||
+																					m.userId ===
+																						t.createdById,
+																			);
+																		if (
+																			foundMember
+																		) {
+																			if (
+																				activeUserId &&
+																				foundMember.userId ===
+																					activeUserId
+																			) {
+																				taskCreatorName =
+																					"YOU";
+																			} else {
+																				taskCreatorName =
+																					foundMember.user?.fullName?.trim() ||
+																					((
+																						foundMember.user?.userName?.trim()
+																					) ?
+																						`@${foundMember.user.userName.trim()}`
+																					:	"") ||
+																					foundMember.user?.email?.trim() ||
+																					"";
+																			}
+																		}
+																	}
+																}
 
-														return (
-															<TableRow key={t.id}>
-																<TableCell className="font-medium">
-																	<Link
-																		href={`/tasks/${t.id}`}
-																		className="hover:underline hover:opacity-85 transition-opacity"
+																// 4. Look up createdById in project members
+																if (
+																	!taskCreatorName &&
+																	t.createdById &&
+																	project?.projectMembers
+																) {
+																	const foundPm =
+																		project.projectMembers.find(
+																			(
+																				pm: any,
+																			) =>
+																				pm.memberId ===
+																					t.createdById ||
+																				pm
+																					.member
+																					?.id ===
+																					t.createdById ||
+																				pm
+																					.member
+																					?.userId ===
+																					t.createdById,
+																		);
+																	if (
+																		foundPm?.member
+																	) {
+																		if (
+																			activeUserId &&
+																			foundPm
+																				.member
+																				.userId ===
+																				activeUserId
+																		) {
+																			taskCreatorName =
+																				"YOU";
+																		} else {
+																			taskCreatorName =
+																				foundPm.member.user?.fullName?.trim() ||
+																				((
+																					foundPm.member.user?.userName?.trim()
+																				) ?
+																					`@${foundPm.member.user.userName.trim()}`
+																				:	"") ||
+																				foundPm.member.user?.email?.trim() ||
+																				"";
+																		}
+																	}
+																}
+
+																// 5. Fallback if current user created it or default to Unassigned
+																if (
+																	!taskCreatorName
+																) {
+																	if (
+																		activeUserId &&
+																		(t.createdById ===
+																			currentMemberId ||
+																			t.createdById ===
+																				activeUserId)
+																	) {
+																		taskCreatorName =
+																			"YOU";
+																	} else {
+																		taskCreatorName =
+																			"Unassigned";
+																	}
+																}
+
+																return (
+																	<TableRow
+																		key={
+																			t.id
+																		}
 																	>
-																		{t.title}
-																	</Link>
-																</TableCell>
-																<TableCell>
-																	<span className="text-[12px] font-medium text-secondary">
-																		{taskCreatorName}
-																	</span>
-																</TableCell>
-																<TableCell>
-																	{t.endPeriod ?
-																		format(
-																			new Date(
-																				t.endPeriod,
-																			),
-																			"PPP",
-																		)
-																	:	"No due date"}
-																</TableCell>
-																<TableCell>
-																	<Badge
-																		className={`${renderPriority(t.priority)} text-primary`}
-																	>
-																		{formatPriority(t.priority)}
-																	</Badge>
-																</TableCell>
-																<TableCell>
-																	<Badge
-																		className={`${renderStatus(t.status)}`}
-																	>
-																		<div className="flex items-center gap-1">
-																			{t.status ===
-																				Status.COMPLETED && (
-																				<CircleCheck className="w-3 h-3" />
+																		<TableCell className="font-medium">
+																			<Link
+																				href={`/tasks/${t.id}`}
+																				className="hover:underline hover:opacity-85 transition-opacity"
+																			>
+																				{
+																					t.title
+																				}
+																			</Link>
+																		</TableCell>
+																		<TableCell>
+																			{(t as any).team?.name ? (
+																				<Badge
+																					variant="outline"
+																					className="bg-primary/20 text-secondary border border-secondary/20 flex items-center gap-1 font-semibold text-[11px] w-fit"
+																				>
+																					<Group className="w-3 h-3 text-accent shrink-0" />
+																					<span className="truncate max-w-[130px]">
+																						{(t as any).team.name}
+																					</span>
+																				</Badge>
+																			) : (
+																				<span className="text-[11px] text-secondary/40 italic">
+																					—
+																				</span>
 																			)}
-																			{t.status ===
-																				Status.CANCELLED && (
-																				<CircleX className="w-3 h-3" />
-																			)}
-																			<span>
-																				{formatStatus(t.status)}
+																		</TableCell>
+																		<TableCell>
+																			<span className="text-[12px] font-medium text-secondary">
+																				{
+																					taskCreatorName
+																				}
 																			</span>
-																		</div>
-																	</Badge>
-																</TableCell>
-															</TableRow>
-														);
-													})}
-												</TableBody>
-											</Table>
-										</div>
-									);
-								})()}
+																		</TableCell>
+																		<TableCell>
+																			{(
+																				t.endPeriod
+																			) ?
+																				format(
+																					new Date(
+																						t.endPeriod,
+																					),
+																					"PPP",
+																				)
+																			:	"No due date"
+																			}
+																		</TableCell>
+																		<TableCell>
+																			<Badge
+																				className={`${renderPriority(t.priority)} text-primary`}
+																			>
+																				{formatPriority(
+																					t.priority,
+																				)}
+																			</Badge>
+																		</TableCell>
+																		<TableCell>
+																			<Badge
+																				className={`${renderStatus(t.status)}`}
+																			>
+																				<div className="flex items-center gap-1">
+																					{t.status ===
+																						Status.COMPLETED && (
+																						<CircleCheck className="w-3 h-3" />
+																					)}
+																					{t.status ===
+																						Status.CANCELLED && (
+																						<CircleX className="w-3 h-3" />
+																					)}
+																					<span>
+																						{formatStatus(
+																							t.status,
+																						)}
+																					</span>
+																				</div>
+																			</Badge>
+																		</TableCell>
+																	</TableRow>
+																);
+															},
+														)}
+													</TableBody>
+												</Table>
+											</div>
+										);
+									})()}
+								</div>
 							</div>
 						</div>
-					</div>
-				</TabsContent>
+					</TabsContent>
 
 					{/* Activity Section */}
-					<TabsContent value="activity" className="mt-0 focus-visible:outline-none">
+					<TabsContent
+						value="activity"
+						className="mt-0 focus-visible:outline-none"
+					>
 						<div className="bg-accent/30 dark:bg-accent/15 border border-primary/10 rounded-2xl p-4 sm:p-5">
 							<p className="font-bold text-primary mb-3 text-sm sm:text-base">
 								Activity
 							</p>
-						<div>
-							{activities && activities.length > 0 ?
-								<div className="flex flex-col gap-2">
-									{activities.slice(0, 20).map((act) => {
-										const user = act.member?.user;
-										const actor =
-											user?.userName ||
-											user?.fullName ||
-											"User";
-										const displayName =
-											user?.fullName ||
-											user?.userName ||
-											user?.email ||
-											"User";
-										const text =
-											act.description || act.title;
-										const timeAgo = formatRelativeTime(
-											act.createdAt,
-										);
-
-										const projectMember =
-											project.projectMembers?.find(
-												(pm) =>
-													pm.memberId ===
-														act.memberId ||
-													(act.member &&
-														pm.memberId ===
-															act.member.id) ||
-													(pm.member?.userId &&
-														act.member?.user?.id &&
-														pm.member.userId ===
-															act.member.user.id),
+							<div>
+								{activities && activities.length > 0 ?
+									<div className="flex flex-col gap-2">
+										{activities.slice(0, 20).map((act) => {
+											const user = act.member?.user;
+											const actor =
+												user?.userName ||
+												user?.fullName ||
+												"User";
+											const displayName =
+												user?.fullName ||
+												user?.userName ||
+												user?.email ||
+												"User";
+											const text =
+												act.description || act.title;
+											const timeAgo = formatRelativeTime(
+												act.createdAt,
 											);
-										const projectRole =
-											projectMember?.projectRole;
 
-										return (
-											<div
-												key={act.id}
-												className="text-xs text-primary/80 flex items-center gap-1.5 flex-wrap"
-											>
-												{user ?
-													<HoverCard
-														openDelay={10}
-														closeDelay={100}
-													>
-														<HoverCardTrigger
-															asChild
+											const projectMember =
+												project.projectMembers?.find(
+													(pm) =>
+														pm.memberId ===
+															act.memberId ||
+														(act.member &&
+															pm.memberId ===
+																act.member
+																	.id) ||
+														(pm.member?.userId &&
+															act.member?.user
+																?.id &&
+															pm.member.userId ===
+																act.member.user
+																	.id),
+												);
+											const projectRole =
+												projectMember?.projectRole;
+
+											return (
+												<div
+													key={act.id}
+													className="text-xs text-primary/80 flex items-center gap-1.5 flex-wrap"
+												>
+													{user ?
+														<HoverCard
+															openDelay={10}
+															closeDelay={100}
 														>
-															<span className="font-medium text-primary cursor-pointer hover:underline">
-																{actor}
-															</span>
-														</HoverCardTrigger>
-														<HoverCardContent className="flex w-full bg-accent border-accent text-primary flex-col gap-0.5">
-															<div className="items-center flex gap-4">
-																<div className="flex text-accent w-[50px] h-[50px] font-extrabold text-[20px] items-center justify-center rounded-full bg-primary shrink-0">
-																	{getInitials(
-																		displayName,
-																	)}
-																</div>
-																<div>
-																	{user.userName && (
-																		<p className="font-semibold text-[13px]">
-																			@
+															<HoverCardTrigger
+																asChild
+															>
+																<span className="font-medium text-primary cursor-pointer hover:underline">
+																	{actor}
+																</span>
+															</HoverCardTrigger>
+															<HoverCardContent className="flex w-full bg-accent border-accent text-primary flex-col gap-0.5">
+																<div className="items-center flex gap-4">
+																	<div className="relative inline-flex shrink-0">
+																		<div className="flex text-accent w-[50px] h-[50px] font-extrabold text-[20px] items-center justify-center rounded-full bg-primary shrink-0">
+																			{getInitials(
+																				displayName,
+																			)}
+																		</div>
+																		<span className="absolute bottom-0 right-0 leading-none">
+																			<PresenceIndicator
+																				userId={
+																					user.id ||
+																					act
+																						.member
+																						?.userId
+																				}
+																				size="sm"
+																				ringColor="ring-accent"
+																			/>
+																		</span>
+																	</div>
+																	<div>
+																		{user.userName && (
+																			<p className="font-semibold text-[13px]">
+																				@
+																				{
+																					user.userName
+																				}
+																			</p>
+																		)}
+																		<p className="font-semibold">
 																			{
-																				user.userName
+																				displayName
 																			}
 																		</p>
-																	)}
-																	<p className="font-semibold">
-																		{
-																			displayName
-																		}
-																	</p>
-																	{user.email && (
-																		<p className="text-[13px]">
-																			{
-																				user.email
-																			}
-																		</p>
-																	)}
+																		{user.email && (
+																			<p className="text-[13px]">
+																				{
+																					user.email
+																				}
+																			</p>
+																		)}
+																	</div>
 																</div>
-															</div>
-															{projectRole ?
-																<Badge className="mt-[10px] text-[10px] w-fit">
-																	{projectRole.replace(
-																		/_/g,
-																		" ",
-																	)}
-																</Badge>
-															: act.member?.role ?
-																<Badge className="mt-[10px] text-[10px] w-fit">
-																	{act.member.role.replace(
-																		/_/g,
-																		" ",
-																	)}
-																</Badge>
-															:	null}
-														</HoverCardContent>
-													</HoverCard>
-												:	<span className="font-medium text-primary">
-														{actor}
+																{projectRole ?
+																	<Badge className="mt-[10px] text-[10px] w-fit">
+																		{projectRole.replace(
+																			/_/g,
+																			" ",
+																		)}
+																	</Badge>
+																: (
+																	act.member
+																		?.role
+																) ?
+																	<Badge className="mt-[10px] text-[10px] w-fit">
+																		{act.member.role.replace(
+																			/_/g,
+																			" ",
+																		)}
+																	</Badge>
+																:	null}
+															</HoverCardContent>
+														</HoverCard>
+													:	<span className="font-medium text-primary">
+															{actor}
+														</span>
+													}
+													{renderActivityText(act)}
+													<span className="text-primary/40 font-normal">
+														· {timeAgo}
 													</span>
-												}
-												{renderActivityText(act)}
-												<span className="text-primary/40 font-normal">
-													· {timeAgo}
-												</span>
-											</div>
-										);
-									})}
-								</div>
-							:	<p className="text-xs text-primary/50">
-									No recent activity recorded
-								</p>
-							}
-						</div>
+												</div>
+											);
+										})}
+									</div>
+								:	<p className="text-xs text-primary/50">
+										No recent activity recorded
+									</p>
+								}
+							</div>
 						</div>
 					</TabsContent>
 
 					{/* Comments Section */}
-					<TabsContent value="comments" className="mt-0 focus-visible:outline-none">
+					<TabsContent
+						value="comments"
+						className="mt-0 focus-visible:outline-none"
+					>
 						<div className="bg-primary py-4 sm:py-5 rounded-2xl px-3 sm:px-5">
 							<p className="font-bold text-secondary">Comments</p>
-						<div className="flex flex-col gap-4 mt-3">
-							{" "}
-							{comments && comments.length > 0 ?
-								<div className="flex flex-col gap-4 max-h-[350px] overflow-y-auto custom-scrollbar pr-1">
-									{(() => {
-										const renderCommentItem = (
-											comment: ProjectComment,
-											depth: number = 0,
-										) => {
-											const isOwner =
-												comment.member?.userId ===
-													user?.id ||
-												comment.member?.user?.id ===
-													user?.id;
-											const replies = comments
+							<div className="flex flex-col gap-4 mt-3">
+								{" "}
+								{comments && comments.length > 0 ?
+									<div className="flex flex-col gap-4 max-h-[350px] overflow-y-auto custom-scrollbar pr-1">
+										{(() => {
+											const renderCommentItem = (
+												comment: ProjectComment,
+												depth: number = 0,
+											) => {
+												const isOwner =
+													comment.member?.userId ===
+														user?.id ||
+													comment.member?.user?.id ===
+														user?.id;
+												const replies = comments
+													.filter(
+														(c) =>
+															c.replyCommentId ===
+															comment.id,
+													)
+													.sort(
+														(a, b) =>
+															new Date(
+																b.createdAt,
+															).getTime() -
+															new Date(
+																a.createdAt,
+															).getTime(),
+													);
+
+												return (
+													<div
+														key={comment.id}
+														className={`text-secondary flex flex-col gap-1 ${
+															depth > 0 ?
+																"pl-3 border-l-2 border-secondary/30 mt-2"
+															:	""
+														}`}
+													>
+														<div className="flex items-center justify-between">
+															<div className="flex items-center gap-2.5">
+																<div className="relative inline-flex shrink-0">
+																	<Avatar
+																		className={
+																			(
+																				depth >
+																				0
+																			) ?
+																				"w-6 h-6"
+																			:	"w-8 h-8"
+																		}
+																	>
+																		<AvatarFallback
+																			className={`w-full border border-primary bg-accent text-primary font-bold ${
+																				(
+																					depth >
+																					0
+																				) ?
+																					"text-[10px]"
+																				:	"text-xs"
+																			}`}
+																		>
+																			{getInitials(
+																				comment
+																					.member
+																					?.user
+																					?.fullName ||
+																					"User",
+																			)}
+																		</AvatarFallback>
+																	</Avatar>
+																	<span className="absolute -bottom-0.5 -right-0.5 leading-none">
+																		<PresenceIndicator
+																			userId={
+																				comment
+																					.member
+																					?.userId ||
+																				comment
+																					.member
+																					?.user
+																					?.id
+																			}
+																			size="xs"
+																			ringColor="ring-primary"
+																		/>
+																	</span>
+																</div>
+																<div className="text-[12px]">
+																	<p className="font-bold leading-tight">
+																		{comment
+																			.member
+																			?.user
+																			?.fullName ||
+																			"Member"}
+																	</p>
+																	<p className="text-[10px] opacity-70">
+																		@
+																		{comment
+																			.member
+																			?.user
+																			?.userName ||
+																			"user"}
+																	</p>
+																</div>
+															</div>
+
+															{isOwner && (
+																<DropdownMenu>
+																	<DropdownMenuTrigger
+																		asChild
+																	>
+																		<button
+																			type="button"
+																			className="p-1 hover:bg-secondary/20 rounded-full transition-colors text-secondary/70 hover:text-secondary"
+																		>
+																			<MoreHorizontal
+																				className={
+																					(
+																						depth >
+																						0
+																					) ?
+																						"w-3.5 h-3.5"
+																					:	"w-4 h-4"
+																				}
+																			/>
+																		</button>
+																	</DropdownMenuTrigger>
+																	<DropdownMenuContent className="w-[130px] bg-accent text-primary border-0 p-1 rounded-[12px]">
+																		<DropdownMenuItem
+																			onClick={() =>
+																				handleEditComment(
+																					comment.id,
+																					comment.message,
+																				)
+																			}
+																			className="cursor-pointer flex items-center gap-2 text-xs py-1.5 px-2 rounded-[8px] hover:bg-primary/10 text-primary"
+																		>
+																			<Pencil className="w-3.5 h-3.5 text-primary shrink-0" />
+																			<span>
+																				Edit
+																			</span>
+																		</DropdownMenuItem>
+																		<DropdownMenuItem
+																			onClick={() =>
+																				handleDeleteComment(
+																					comment.id,
+																				)
+																			}
+																			disabled={
+																				deletingCommentId ===
+																				comment.id
+																			}
+																			variant="destructive"
+																			className="cursor-pointer flex items-center gap-2 text-xs py-1.5 px-2 rounded-[8px] text-destructive hover:bg-destructive/10"
+																		>
+																			{(
+																				deletingCommentId ===
+																				comment.id
+																			) ?
+																				<Loader2 className="w-3.5 h-3.5 animate-spin text-destructive shrink-0" />
+																			:	<Trash2 className="w-3.5 h-3.5 text-destructive shrink-0" />
+																			}
+																			<span>
+																				Delete
+																			</span>
+																		</DropdownMenuItem>
+																	</DropdownMenuContent>
+																</DropdownMenu>
+															)}
+														</div>
+
+														{(
+															editingCommentId ===
+															comment.id
+														) ?
+															<div className="mt-2 flex flex-col gap-2 relative">
+																{renderMentionDropdown(
+																	`edit-${comment.id}`,
+																	editingMessage,
+																	setEditingMessage,
+																)}
+																<Textarea
+																	autoFocus
+																	disabled={
+																		isSavingComment
+																	}
+																	value={
+																		editingMessage
+																	}
+																	onChange={(
+																		e,
+																	) =>
+																		handleTextareaChange(
+																			`edit-${comment.id}`,
+																			e
+																				.target
+																				.value,
+																			e
+																				.target
+																				.selectionStart,
+																			setEditingMessage,
+																		)
+																	}
+																	onKeyDown={(
+																		e,
+																	) => {
+																		if (
+																			handleMentionKeyDown(
+																				e,
+																				`edit-${comment.id}`,
+																				editingMessage,
+																				setEditingMessage,
+																			)
+																		)
+																			return;
+																		if (
+																			e.key ===
+																				"Enter" &&
+																			!e.shiftKey
+																		) {
+																			e.preventDefault();
+																			handleSaveEditComment(
+																				comment.id,
+																			);
+																		}
+																		if (
+																			e.key ===
+																			"Escape"
+																		) {
+																			setEditingCommentId(
+																				null,
+																			);
+																			setActiveMention(
+																				null,
+																			);
+																		}
+																	}}
+																	className="bg-accent text-primary text-[12px] rounded-[15px] resize-none h-[80px] border-0 focus-visible:ring-0 outline-0 ring-0 p-3"
+																/>
+																<div className="flex items-center gap-2 justify-end">
+																	<Button
+																		size="sm"
+																		variant="ghost"
+																		onClick={() =>
+																			setEditingCommentId(
+																				null,
+																			)
+																		}
+																		className="h-7 text-xs text-secondary hover:text-secondary/80 hover:bg-secondary/10 rounded-full"
+																	>
+																		Cancel
+																	</Button>
+																	<Button
+																		size="sm"
+																		disabled={
+																			isSavingComment ||
+																			!editingMessage.trim()
+																		}
+																		onClick={() =>
+																			handleSaveEditComment(
+																				comment.id,
+																			)
+																		}
+																		className="h-7 text-xs rounded-full"
+																	>
+																		{(
+																			isSavingComment
+																		) ?
+																			<Loader2 className="w-3 h-3 animate-spin" />
+																		:	"Save"}
+																	</Button>
+																</div>
+															</div>
+														:	<div className="mt-1">
+																<p className="text-[12px] whitespace-pre-wrap break-words">
+																	{renderMessageWithMentions(
+																		comment.message,
+																	)}{" "}
+																	-{" "}
+																	<b className="text-xs">
+																		{formatRelativeTime(
+																			comment.createdAt,
+																		)}
+																	</b>
+																</p>
+
+																<button
+																	type="button"
+																	onClick={() => {
+																		setReplyingToCommentId(
+																			(
+																				replyingToCommentId ===
+																					comment.id
+																			) ?
+																				null
+																			:	comment.id,
+																		);
+																		setReplyInput(
+																			"",
+																		);
+																	}}
+																	className="flex items-center gap-1 text-[11px] font-semibold text-secondary/70 hover:text-secondary mt-1 w-fit cursor-pointer"
+																>
+																	<CornerDownRight className="w-3 h-3 text-secondary" />
+																	<span>
+																		Reply
+																	</span>
+																</button>
+															</div>
+														}
+
+														{replyingToCommentId ===
+															comment.id && (
+															<div className="mt-2.5 pl-3 border-l-2 border-secondary/30 flex flex-col gap-2 relative">
+																{renderMentionDropdown(
+																	`reply-${comment.id}`,
+																	replyInput,
+																	setReplyInput,
+																)}
+																<div className="flex items-center justify-between text-[11px] text-secondary/80">
+																	<span>
+																		Replying
+																		to{" "}
+																		<b className="text-secondary">
+																			@
+																			{comment
+																				.member
+																				?.user
+																				?.userName ||
+																				"user"}
+																		</b>
+																	</span>
+																</div>
+																<Textarea
+																	autoFocus
+																	disabled={
+																		isPostingReply
+																	}
+																	value={
+																		replyInput
+																	}
+																	onChange={(
+																		e,
+																	) =>
+																		handleTextareaChange(
+																			`reply-${comment.id}`,
+																			e
+																				.target
+																				.value,
+																			e
+																				.target
+																				.selectionStart,
+																			setReplyInput,
+																		)
+																	}
+																	onKeyDown={(
+																		e,
+																	) => {
+																		if (
+																			handleMentionKeyDown(
+																				e,
+																				`reply-${comment.id}`,
+																				replyInput,
+																				setReplyInput,
+																			)
+																		)
+																			return;
+																		if (
+																			e.key ===
+																				"Enter" &&
+																			!e.shiftKey
+																		) {
+																			e.preventDefault();
+																			handlePostReply(
+																				comment.id,
+																			);
+																		}
+																		if (
+																			e.key ===
+																			"Escape"
+																		) {
+																			setReplyingToCommentId(
+																				null,
+																			);
+																			setActiveMention(
+																				null,
+																			);
+																		}
+																	}}
+																	placeholder="Write a reply... (use @ to mention)"
+																	className="bg-accent text-primary text-[12px] rounded-[15px] resize-none h-[75px] border-0 focus-visible:ring-0 outline-0 ring-0 p-3"
+																/>
+																<div className="flex items-center justify-end gap-2">
+																	<Button
+																		size="sm"
+																		variant="ghost"
+																		onClick={() =>
+																			setReplyingToCommentId(
+																				null,
+																			)
+																		}
+																		className="h-7 text-xs text-secondary hover:text-secondary/80 hover:bg-secondary/10 rounded-full"
+																	>
+																		Cancel
+																	</Button>
+																	<Button
+																		size="sm"
+																		disabled={
+																			isPostingReply ||
+																			!replyInput.trim()
+																		}
+																		onClick={() =>
+																			handlePostReply(
+																				comment.id,
+																			)
+																		}
+																		className="h-7 text-xs rounded-full"
+																	>
+																		{(
+																			isPostingReply
+																		) ?
+																			<Loader2 className="w-3 h-3 animate-spin" />
+																		:	"Reply"
+																		}
+																	</Button>
+																</div>
+															</div>
+														)}
+
+														{replies.length > 0 && (
+															<div className="flex flex-col gap-2 mt-1">
+																{replies.map(
+																	(reply) =>
+																		renderCommentItem(
+																			reply,
+																			depth +
+																				1,
+																		),
+																)}
+															</div>
+														)}
+													</div>
+												);
+											};
+
+											return comments
 												.filter(
-													(c) =>
-														c.replyCommentId ===
-														comment.id,
+													(c) => !c.replyCommentId,
 												)
 												.sort(
 													(a, b) =>
@@ -2354,476 +3135,83 @@ export default function SingleProjectView({
 														new Date(
 															a.createdAt,
 														).getTime(),
+												)
+												.map((rootComment) =>
+													renderCommentItem(
+														rootComment,
+														0,
+													),
 												);
-
-											return (
-												<div
-													key={comment.id}
-													className={`text-secondary flex flex-col gap-1 ${
-														depth > 0 ?
-															"pl-3 border-l-2 border-secondary/30 mt-2"
-														:	""
-													}`}
-												>
-													<div className="flex items-center justify-between">
-														<div className="flex items-center gap-2.5">
-															<Avatar
-																className={
-																	depth > 0 ?
-																		"w-6 h-6"
-																	:	"w-8 h-8"
-																}
-															>
-																<AvatarFallback
-																	className={`w-full border border-primary bg-accent text-primary font-bold ${
-																		(
-																			depth >
-																			0
-																		) ?
-																			"text-[10px]"
-																		:	"text-xs"
-																	}`}
-																>
-																	{getInitials(
-																		comment
-																			.member
-																			?.user
-																			?.fullName ||
-																			"User",
-																	)}
-																</AvatarFallback>
-															</Avatar>
-															<div className="text-[12px]">
-																<p className="font-bold leading-tight">
-																	{comment
-																		.member
-																		?.user
-																		?.fullName ||
-																		"Member"}
-																</p>
-																<p className="text-[10px] opacity-70">
-																	@
-																	{comment
-																		.member
-																		?.user
-																		?.userName ||
-																		"user"}
-																</p>
-															</div>
-														</div>
-
-														{isOwner && (
-															<DropdownMenu>
-																<DropdownMenuTrigger
-																	asChild
-																>
-																	<button
-																		type="button"
-																		className="p-1 hover:bg-secondary/20 rounded-full transition-colors text-secondary/70 hover:text-secondary"
-																	>
-																		<MoreHorizontal
-																			className={
-																				(
-																					depth >
-																					0
-																				) ?
-																					"w-3.5 h-3.5"
-																				:	"w-4 h-4"
-																			}
-																		/>
-																	</button>
-																</DropdownMenuTrigger>
-																<DropdownMenuContent className="w-[130px] bg-accent text-primary border-0 p-1 rounded-[12px]">
-																	<DropdownMenuItem
-																		onClick={() =>
-																			handleEditComment(
-																				comment.id,
-																				comment.message,
-																			)
-																		}
-																		className="cursor-pointer flex items-center gap-2 text-xs py-1.5 px-2 rounded-[8px] hover:bg-primary/10 text-primary"
-																	>
-																		<Pencil className="w-3.5 h-3.5 text-primary shrink-0" />
-																		<span>
-																			Edit
-																		</span>
-																	</DropdownMenuItem>
-																	<DropdownMenuItem
-																		onClick={() =>
-																			handleDeleteComment(
-																				comment.id,
-																			)
-																		}
-																		disabled={
-																			deletingCommentId ===
-																			comment.id
-																		}
-																		className="cursor-pointer flex items-center gap-2 text-xs py-1.5 px-2 rounded-[8px] text-primary hover:bg-primary/10"
-																	>
-																		{(
-																			deletingCommentId ===
-																			comment.id
-																		) ?
-																			<Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
-																		:	<Trash2 className="w-3.5 h-3.5 text-primary shrink-0" />
-																		}
-																		<span>
-																			Delete
-																		</span>
-																	</DropdownMenuItem>
-																</DropdownMenuContent>
-															</DropdownMenu>
-														)}
-													</div>
-
-													{(
-														editingCommentId ===
-														comment.id
-													) ?
-														<div className="mt-2 flex flex-col gap-2 relative">
-															{renderMentionDropdown(
-																`edit-${comment.id}`,
-																editingMessage,
-																setEditingMessage,
-															)}
-															<Textarea
-																autoFocus
-																disabled={
-																	isSavingComment
-																}
-																value={
-																	editingMessage
-																}
-																onChange={(e) =>
-																	handleTextareaChange(
-																		`edit-${comment.id}`,
-																		e.target
-																			.value,
-																		e.target
-																			.selectionStart,
-																		setEditingMessage,
-																	)
-																}
-																onKeyDown={(
-																	e,
-																) => {
-																	if (
-																		handleMentionKeyDown(
-																			e,
-																			`edit-${comment.id}`,
-																			editingMessage,
-																			setEditingMessage,
-																		)
-																	)
-																		return;
-																	if (
-																		e.key ===
-																			"Enter" &&
-																		!e.shiftKey
-																	) {
-																		e.preventDefault();
-																		handleSaveEditComment(
-																			comment.id,
-																		);
-																	}
-																	if (
-																		e.key ===
-																		"Escape"
-																	) {
-																		setEditingCommentId(
-																			null,
-																		);
-																		setActiveMention(
-																			null,
-																		);
-																	}
-																}}
-																className="bg-accent text-primary text-[12px] rounded-[15px] resize-none h-[80px] border-0 focus-visible:ring-0 outline-0 ring-0 p-3"
-															/>
-															<div className="flex items-center gap-2 justify-end">
-																<Button
-																	size="sm"
-																	variant="ghost"
-																	onClick={() =>
-																		setEditingCommentId(
-																			null,
-																		)
-																	}
-																	className="h-7 text-xs text-secondary hover:text-secondary/80 hover:bg-secondary/10 rounded-full"
-																>
-																	Cancel
-																</Button>
-																<Button
-																	size="sm"
-																	disabled={
-																		isSavingComment ||
-																		!editingMessage.trim()
-																	}
-																	onClick={() =>
-																		handleSaveEditComment(
-																			comment.id,
-																		)
-																	}
-																	className="h-7 text-xs rounded-full"
-																>
-																	{(
-																		isSavingComment
-																	) ?
-																		<Loader2 className="w-3 h-3 animate-spin" />
-																	:	"Save"}
-																</Button>
-															</div>
-														</div>
-													:	<div className="mt-1">
-															<p className="text-[12px] whitespace-pre-wrap break-words">
-																{renderMessageWithMentions(
-																	comment.message,
-																)}{" "}
-																-{" "}
-																<b className="text-xs">
-																	{formatRelativeTime(
-																		comment.createdAt,
-																	)}
-																</b>
-															</p>
-
-															<button
-																type="button"
-																onClick={() => {
-																	setReplyingToCommentId(
-																		(
-																			replyingToCommentId ===
-																				comment.id
-																		) ?
-																			null
-																		:	comment.id,
-																	);
-																	setReplyInput(
-																		"",
-																	);
-																}}
-																className="flex items-center gap-1 text-[11px] font-semibold text-secondary/70 hover:text-secondary mt-1 w-fit cursor-pointer"
-															>
-																<CornerDownRight className="w-3 h-3 text-secondary" />
-																<span>
-																	Reply
-																</span>
-															</button>
-														</div>
-													}
-
-													{replyingToCommentId ===
-														comment.id && (
-														<div className="mt-2.5 pl-3 border-l-2 border-secondary/30 flex flex-col gap-2 relative">
-															{renderMentionDropdown(
-																`reply-${comment.id}`,
-																replyInput,
-																setReplyInput,
-															)}
-															<div className="flex items-center justify-between text-[11px] text-secondary/80">
-																<span>
-																	Replying to{" "}
-																	<b className="text-secondary">
-																		@
-																		{comment
-																			.member
-																			?.user
-																			?.userName ||
-																			"user"}
-																	</b>
-																</span>
-															</div>
-															<Textarea
-																autoFocus
-																disabled={
-																	isPostingReply
-																}
-																value={
-																	replyInput
-																}
-																onChange={(e) =>
-																	handleTextareaChange(
-																		`reply-${comment.id}`,
-																		e.target
-																			.value,
-																		e.target
-																			.selectionStart,
-																		setReplyInput,
-																	)
-																}
-																onKeyDown={(
-																	e,
-																) => {
-																	if (
-																		handleMentionKeyDown(
-																			e,
-																			`reply-${comment.id}`,
-																			replyInput,
-																			setReplyInput,
-																		)
-																	)
-																		return;
-																	if (
-																		e.key ===
-																			"Enter" &&
-																		!e.shiftKey
-																	) {
-																		e.preventDefault();
-																		handlePostReply(
-																			comment.id,
-																		);
-																	}
-																	if (
-																		e.key ===
-																		"Escape"
-																	) {
-																		setReplyingToCommentId(
-																			null,
-																		);
-																		setActiveMention(
-																			null,
-																		);
-																	}
-																}}
-																placeholder="Write a reply... (use @ to mention)"
-																className="bg-accent text-primary text-[12px] rounded-[15px] resize-none h-[75px] border-0 focus-visible:ring-0 outline-0 ring-0 p-3"
-															/>
-															<div className="flex items-center justify-end gap-2">
-																<Button
-																	size="sm"
-																	variant="ghost"
-																	onClick={() =>
-																		setReplyingToCommentId(
-																			null,
-																		)
-																	}
-																	className="h-7 text-xs text-secondary hover:text-secondary/80 hover:bg-secondary/10 rounded-full"
-																>
-																	Cancel
-																</Button>
-																<Button
-																	size="sm"
-																	disabled={
-																		isPostingReply ||
-																		!replyInput.trim()
-																	}
-																	onClick={() =>
-																		handlePostReply(
-																			comment.id,
-																		)
-																	}
-																	className="h-7 text-xs rounded-full"
-																>
-																	{(
-																		isPostingReply
-																	) ?
-																		<Loader2 className="w-3 h-3 animate-spin" />
-																	:	"Reply"}
-																</Button>
-															</div>
-														</div>
-													)}
-
-													{replies.length > 0 && (
-														<div className="flex flex-col gap-2 mt-1">
-															{replies.map(
-																(reply) =>
-																	renderCommentItem(
-																		reply,
-																		depth +
-																			1,
-																	),
-															)}
-														</div>
-													)}
-												</div>
-											);
-										};
-
-										return comments
-											.filter((c) => !c.replyCommentId)
-											.sort(
-												(a, b) =>
-													new Date(
-														b.createdAt,
-													).getTime() -
-													new Date(
-														a.createdAt,
-													).getTime(),
-											)
-											.map((rootComment) =>
-												renderCommentItem(
-													rootComment,
-													0,
-												),
-											);
-									})()}
-								</div>
-							:	<div className="flex flex-col items-center justify-center gap-1.5 py-6 text-center text-secondary/80">
-									<div className="p-2.5 rounded-full bg-secondary/10 text-secondary">
-										<MessageSquare className="w-5 h-5" />
+										})()}
 									</div>
-									<p className="text-xs font-semibold text-secondary">
-										No comments yet
-									</p>
-									<p className="text-[11px] text-secondary/60">
-										Start the conversation by posting a
-										comment below.
-									</p>
-								</div>
-							}
-							<div className="relative mt-1">
-								{renderMentionDropdown(
-									"main",
-									commentInput,
-									setCommentInput,
-								)}
-								<Textarea
-									disabled={isPostingComment}
-									value={commentInput}
-									onChange={(e) =>
-										handleTextareaChange(
-											"main",
-											e.target.value,
-											e.target.selectionStart,
-											setCommentInput,
-										)
-									}
-									onKeyDown={(e) => {
-										if (
-											handleMentionKeyDown(
-												e,
+								:	<div className="flex flex-col items-center justify-center gap-1.5 py-6 text-center text-secondary/80">
+										<div className="p-2.5 rounded-full bg-secondary/10 text-secondary">
+											<MessageSquare className="w-5 h-5" />
+										</div>
+										<p className="text-xs font-semibold text-secondary">
+											No comments yet
+										</p>
+										<p className="text-[11px] text-secondary/60">
+											Start the conversation by posting a
+											comment below.
+										</p>
+									</div>
+								}
+								<div className="relative mt-1">
+									{renderMentionDropdown(
+										"main",
+										commentInput,
+										setCommentInput,
+									)}
+									<Textarea
+										disabled={isPostingComment}
+										value={commentInput}
+										onChange={(e) =>
+											handleTextareaChange(
 												"main",
-												commentInput,
+												e.target.value,
+												e.target.selectionStart,
 												setCommentInput,
 											)
-										)
-											return;
-										if (e.key === "Enter" && !e.shiftKey) {
-											e.preventDefault();
-											handleAddComment();
 										}
-										if (e.key === "Escape") {
-											setActiveMention(null);
-										}
-									}}
-									placeholder="Start typing... (use @ to mention members)"
-									className="rounded-[20px] resize-none h-[120px] bg-accent border-0 focus-visible:ring-0 text-primary outline-0 ring-0"
-								/>
-								<div
-									onClick={handleAddComment}
-									className="w-[40px] h-[40px] rounded-full cursor-pointer flex items-center justify-center absolute bg-primary text-secondary right-0 bottom-0 mb-[15px] mr-[15px]"
-								>
-									{isPostingComment ?
-										<Loader2 className="w-4 h-4 animate-spin" />
-									:	<MoveUp className="w-4 h-4" />}
+										onKeyDown={(e) => {
+											if (
+												handleMentionKeyDown(
+													e,
+													"main",
+													commentInput,
+													setCommentInput,
+												)
+											)
+												return;
+											if (
+												e.key === "Enter" &&
+												!e.shiftKey
+											) {
+												e.preventDefault();
+												handleAddComment();
+											}
+											if (e.key === "Escape") {
+												setActiveMention(null);
+											}
+										}}
+										placeholder="Start typing... (use @ to mention members)"
+										className="rounded-[20px] resize-none h-[120px] bg-accent border-0 focus-visible:ring-0 text-primary outline-0 ring-0"
+									/>
+									<div
+										onClick={handleAddComment}
+										className="w-[40px] h-[40px] rounded-full cursor-pointer flex items-center justify-center absolute bg-primary text-secondary right-0 bottom-0 mb-[15px] mr-[15px]"
+									>
+										{isPostingComment ?
+											<Loader2 className="w-4 h-4 animate-spin" />
+										:	<MoveUp className="w-4 h-4" />}
+									</div>
 								</div>
 							</div>
 						</div>
-					</div>
-				</TabsContent>
-			</Tabs>
-		</div>
+					</TabsContent>
+				</Tabs>
+			</div>
 
 			{/* Sidebar with Interactive Auto-Saving Controls */}
 			<div className="bg-[#969696] px-3 sm:px-[20px] py-[15px] sm:py-[20px] lg:h-[calc(100vh-30px)] overflow-y-auto custom-scrollbar w-full lg:w-[25%] rounded-[20px] sm:rounded-[30px] lg:sticky lg:top-0 lg:self-start">
@@ -2847,24 +3235,35 @@ export default function SingleProjectView({
 										<button
 											key={item.value}
 											type="button"
-											disabled={!canEditProject || isSavingStatus}
+											disabled={
+												!canEditProject ||
+												isSavingStatus
+											}
 											onClick={() => {
-												if (canEditProject && !isSavingStatus) {
-													handleUpdateStatus(item.value);
+												if (
+													canEditProject &&
+													!isSavingStatus
+												) {
+													handleUpdateStatus(
+														item.value,
+													);
 												}
 											}}
 											title={
-												!canEditProject
-													? "You do not have permission to edit this project's status"
-													: undefined
+												!canEditProject ?
+													"You do not have permission to edit this project's status"
+												:	undefined
 											}
 											className={cn(
 												"flex items-center gap-3.5 text-left transition-all text-primary focus-visible:outline-none w-fit",
-												canEditProject && !isSavingStatus
-													? "cursor-pointer hover:opacity-80"
-													: isSavingStatus
-														? "cursor-wait opacity-70"
-														: "cursor-not-allowed opacity-60 select-none",
+												(
+													canEditProject &&
+														!isSavingStatus
+												) ?
+													"cursor-pointer hover:opacity-80"
+												: isSavingStatus ?
+													"cursor-wait opacity-70"
+												:	"cursor-not-allowed opacity-60 select-none",
 											)}
 										>
 											<div className="size-6 rounded-full bg-[#c5bebe] flex items-center justify-center shrink-0 transition-all">
@@ -2896,8 +3295,15 @@ export default function SingleProjectView({
 							{canManageMembers ?
 								<DropdownMenu>
 									<DropdownMenuTrigger asChild>
-										<div className="mt-[10px] w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] cursor-pointer hover:opacity-80 transition-opacity">
-											{projectLeadName}
+										<div className="mt-[10px] w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1.5">
+											{projectLeadUserId && (
+												<PresenceIndicator
+													userId={projectLeadUserId}
+													size="xs"
+													ringColor="ring-primary"
+												/>
+											)}
+											<span>{projectLeadName}</span>
 										</div>
 									</DropdownMenuTrigger>
 									<DropdownMenuContent className="w-[220px] border-0 bg-accent p-2">
@@ -2906,7 +3312,9 @@ export default function SingleProjectView({
 											<input
 												value={memberSearch}
 												onChange={(e) =>
-													setMemberSearch(e.target.value)
+													setMemberSearch(
+														e.target.value,
+													)
 												}
 												placeholder="Search members..."
 												className="flex-1 outline-none bg-transparent text-sm placeholder:text-primary/30"
@@ -2927,16 +3335,28 @@ export default function SingleProjectView({
 																member.id,
 															)
 														}
-														className="cursor-pointer flex items-center gap-3 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors"
+														className="cursor-pointer flex items-center gap-2.5 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors"
 													>
-														<div>
-															<p className="font-semibold text-[13px]">
+														<PresenceAvatar
+															userId={
+																member.userId ||
+																member.user?.id
+															}
+															name={
+																member.user
+																	.fullName
+															}
+															size="xs"
+															ringColor="ring-primary"
+														/>
+														<div className="min-w-0 flex-1">
+															<p className="font-semibold text-[13px] truncate">
 																{
 																	member.user
 																		.fullName
 																}
 															</p>
-															<p className="text-[13px] text-primary/60">
+															<p className="text-[11px] text-primary/60 truncate">
 																@
 																{
 																	member.user
@@ -2954,8 +3374,15 @@ export default function SingleProjectView({
 										</div>
 									</DropdownMenuContent>
 								</DropdownMenu>
-							:	<div className="mt-[10px] w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px]">
-									{projectLeadName}
+							:	<div className="mt-[10px] w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] flex items-center gap-1.5">
+									{projectLeadUserId && (
+										<PresenceIndicator
+											userId={projectLeadUserId}
+											size="xs"
+											ringColor="ring-primary"
+										/>
+									)}
+									<span>{projectLeadName}</span>
 								</div>
 							}
 						</div>
@@ -2975,13 +3402,22 @@ export default function SingleProjectView({
 										i.member.userId === user?.id ?
 											"YOU"
 										:	i.member.user.fullName;
+									const contributorUserId =
+										i.member.userId || i.member.user?.id;
 									return (
-										<p
+										<div
 											key={i.memberId}
-											className="w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px]"
+											className="w-fit px-[10px] py-[5px] rounded-[9px] bg-primary text-secondary text-[10px] flex items-center gap-1.5"
 										>
-											{fullName}
-										</p>
+											{contributorUserId && (
+												<PresenceIndicator
+													userId={contributorUserId}
+													size="xs"
+													ringColor="ring-primary"
+												/>
+											)}
+											<span>{fullName}</span>
+										</div>
 									);
 								})}
 
@@ -3016,21 +3452,33 @@ export default function SingleProjectView({
 														onClick={() =>
 															toggleMember(i.id)
 														}
-														className="cursor-pointer flex items-center gap-3 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors"
+														className="cursor-pointer flex items-center gap-2.5 rounded-[10px] px-2 py-1.5 hover:bg-primary/10 transition-colors"
 													>
 														<Checkbox
 															checked={selectedMembers.includes(
 																i.id,
 															)}
 														/>
-														<div>
-															<p className="font-semibold text-[13px]">
+														<PresenceAvatar
+															userId={
+																i.userId ||
+																i.user?.id
+															}
+															name={
+																i.user
+																	.fullName
+															}
+															size="xs"
+															ringColor="ring-primary"
+														/>
+														<div className="min-w-0 flex-1">
+															<p className="font-semibold text-[13px] truncate">
 																{
 																	i.user
 																		.fullName
 																}
 															</p>
-															<p className="text-[13px] text-primary/60">
+															<p className="text-[11px] text-primary/60 truncate">
 																@
 																{
 																	i.user
@@ -3060,13 +3508,16 @@ export default function SingleProjectView({
 											{format(dueDate, "PPP")}
 										</p>
 									</PopoverTrigger>
-									<PopoverContent className="rounded-[20px] bg-accent text-primary border-0 p-2">
+									<PopoverContent
+										className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden"
+										align="start"
+									>
 										<Calendar
 											mode="single"
 											selected={dueDate}
 											onSelect={handleUpdateDueDate}
 											disabled={{ before: startDate }}
-											className="bg-primary text-secondary"
+											className="rounded-[20px] bg-primary text-secondary"
 										/>
 									</PopoverContent>
 								</Popover>
@@ -3190,12 +3641,13 @@ export default function SingleProjectView({
 								Delete Project
 							</AlertDialogTitle>
 							<AlertDialogDescription className="text-[13px] text-secondary/80 mt-2 leading-relaxed">
-								This action cannot be undone. This will permanently
-								delete the project{" "}
+								This action cannot be undone. This will
+								permanently delete the project{" "}
 								<strong className="text-secondary font-semibold">
 									{title || project.title}
 								</strong>{" "}
-								and all associated tasks, comments, and resources.
+								and all associated tasks, comments, and
+								resources.
 							</AlertDialogDescription>
 						</AlertDialogHeader>
 

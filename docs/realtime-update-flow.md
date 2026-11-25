@@ -78,6 +78,7 @@ All event names are defined in the `PUSHER_EVENTS` dictionary in `src/lib/pusher
 | `WORKSPACE_MEMBER_JOINED` | Workspace | A new member joins the workspace | `{ memberId, member: MemberWithUser }` |
 | `WORKSPACE_MEMBER_LEFT` | Workspace | A member is removed or leaves the workspace | `{ memberId }` |
 | `WORKSPACE_MEMBER_ROLE_UPDATED` | Workspace | A member's workspace role is changed (`OWNER`, `ADMIN`, `MEMBER`) | `{ memberId, role: WorkspaceRoles }` |
+| `WORKSPACE_MEMBER_STATUS_UPDATED` | Workspace & User | A member's status is updated (`ACTIVE` &harr; `INACTIVE`) | `{ memberId, userId, userEmail?, workspaceId, workspaceName?, status, reason? }` |
 
 ### B. Project Events
 
@@ -193,9 +194,10 @@ graph TD
 ```
 
 ### 1. `PusherProvider` (`pusher-provider.tsx`)
-Initializes the client connection once at the root layout and automatically handles user and workspace channel subscriptions:
+Initializes the client connection once at the root layout and automatically handles user, workspace, and presence channel subscriptions:
 - Automatically subscribes to `user-{userId}` for personal alerts.
 - Automatically subscribes to `workspace-{currentWorkspaceId}` for workspace events.
+- Automatically subscribes to `presence-workspace-{currentWorkspaceId}` to track real-time member online/offline status, exposing `onlineUserIds`, `isUserOnline(userId)`, and `onlineCount`.
 - Cleans up subscriptions on workspace change or user sign-out.
 
 ### 2. `usePusherEvent<T>` (Base Hook)
@@ -231,6 +233,8 @@ Listens on `workspace-{workspaceId}` for:
 - `onTaskCreated`, `onTaskUpdated`, `onTaskDeleted`
 - `onProjectCreated`, `onProjectUpdated`, `onProjectDeleted`
 - `onMemberJoined`
+- `onRequestReceived`, `onRequestUpdated`
+- `onMemberStatusUpdated` (instant active/inactive toggle & deactivation handling)
 
 #### B. `useProjectRealtime(projectId, callbacks)`
 Listens on `project-{projectId}` for:
@@ -247,6 +251,29 @@ Listens on `task-{taskId}` for:
 - `onMilestoneCreated`, `onMilestoneUpdated`, `onMilestoneDeleted`
 - `onResourceAdded`, `onResourceUpdated`, `onResourceDeleted`
 - `onMembersUpdated`
+
+#### D. `useWorkspacePresence(workspaceId)`
+Subscribes to `presence-workspace-{workspaceId}` to track online/offline status across the workspace:
+- Returns `{ onlineUserIds, isUserOnline(userId), onlineCount, isConnected }`.
+- Integrates seamlessly with `PusherProvider` context, sharing subscription across all components.
+- Listens for `pusher:subscription_succeeded`, `pusher:member_added`, and `pusher:member_removed`.
+
+### 4. UI Presence Indicator System
+
+Collaborate includes dedicated UI components for rendering real-time presence indicators:
+
+- **`PresenceIndicator` (`src/components/shared/presence-indicator.tsx`)**:
+  - Automatically queries presence status via `useWorkspacePresence()` or accepts an explicit `isOnline` boolean.
+  - Supports sizes: `xs` (6px), `sm` (8px), `md` (10px), `lg` (12px).
+  - Customizable border ring color (e.g., `ring-primary`, `ring-secondary`, `ring-accent`) and custom tooltip formatting.
+  - Displays an emerald green dot for online users and a neutral gray dot for offline users.
+- **`PresenceAvatar` (`src/components/shared/presence-avatar.tsx`)**:
+  - Wraps user initials and profile images with a pinned presence indicator badge.
+- **Surface Integrations**:
+  - **Protected Navbar**: Shows live presence dot on the current logged-in user avatar circle (desktop & mobile).
+  - **Members Table (`/members`)**: Member row avatars include presence dots, a dedicated Status column with `Online` / `Offline` pills, and category filter tabs (`All`, `Online`, `Offline`).
+  - **Projects (`/projects`, `/projects/[id]`, Project Peek Sheet)**: Member selection dropdowns, assigned member badges, comment authors, activity logs, and `@mention` user items.
+  - **Tasks (`/tasks`, `/tasks/[id]`, Task Peek Sheet)**: Popover selectors, assigned member badges, comment authors, and activity feeds. Assignee avatar groups remain uncluttered while detailed hovercards display live presence.
 
 ---
 
@@ -334,6 +361,45 @@ sequenceDiagram
 
     Pusher-->>W_View: Updates tasks table & progress bars in real-time
     Pusher-->>P_View: Updates project status, child task list, and 100% progress
+```
+
+### Flow 4: Real-Time Member Deactivation & Join Restriction
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Workspace Admin
+    participant M_View as MembersView (Admin)
+    participant Server as member.services.ts
+    participant DB as Prisma (Database)
+    participant Resend as Resend Email Service
+    participant Pusher as Pusher Server
+    actor Member as Deactivated Member (User B)
+    participant Client_Dash as Dashboard / Project View (User B)
+    participant Client_Join as /join-workspace (User B)
+
+    Admin->>M_View: Opens "Deactivate Member" dialog, types optional reason, clicks confirm
+    M_View->>Server: updateMemberStatus(memberId, "INACTIVE", reason)
+    Server->>DB: Member.update({ status: INACTIVE })
+    Server->>Resend: send(MemberDeactivatedEmail)
+    Server->>Pusher: trigger(user-{userBId}, WORKSPACE_MEMBER_STATUS_UPDATED, payload)
+    Server->>Pusher: trigger(workspace-{workspaceId}, WORKSPACE_MEMBER_STATUS_UPDATED, payload)
+    Server-->>M_View: Returns { success: true }
+
+    par Real-Time Dashboard Intercept
+        Pusher-->>Client_Dash: user-{userBId} event received
+        Client_Dash->>Client_Dash: PusherProvider detects status = INACTIVE for active workspace
+        Client_Dash->>Member: Shows toast error with administrator reason
+        Client_Dash->>Client_Dash: Immediately redirects router to /sign-in/my-workspaces
+    and Real-Time Join Workspace Intercept
+        Pusher-->>Client_Join: workspace-{workspaceId} event received
+        Client_Join->>Client_Join: JoinWorkspaceForm matches email / user ID
+        Client_Join->>Member: Displays prominent "Membership Deactivated" alert banner
+        Client_Join->>Client_Join: Disables fast-track & locks join button
+    and Real-Time Members Directory Sync
+        Pusher-->>M_View: workspace-{workspaceId} event received
+        M_View->>M_View: useWorkspaceRealtime updates status badge to INACTIVE
+    end
 ```
 
 ---

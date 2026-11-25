@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { getInitials, renderNavigationByRole } from "@/lib/utils";
+import PresenceIndicator from "@/components/shared/presence-indicator";
 import { Check, FlipHorizontal2, LogOut, Plus } from "lucide-react";
 import { User } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
@@ -31,6 +32,7 @@ import { FaBell } from "react-icons/fa";
 import type { Workspace } from "../../../../../generated/prisma/client";
 import {
 	DeskMode,
+	MemberStatus,
 	WorkspaceRoles,
 } from "../../../../../generated/prisma/enums";
 import { toast } from "sonner";
@@ -43,31 +45,40 @@ export default function ProtectedNavbar({
 	workspaces: any[];
 }) {
 	const pathName = usePathname();
-	const { update } = useSession();
+	const { data: session, update } = useSession();
+	const currentUser = session?.user ?? user;
 	const router = useRouter();
 	const [open, setOpen] = useState(false);
 	const [activeWorkspaceId, setActiveWorkspaceId] = useState(
-		user.currentWorkspaceId,
+		currentUser.currentWorkspaceId,
 	);
 
 	useEffect(() => {
-		setActiveWorkspaceId(user.currentWorkspaceId);
-	}, [user.currentWorkspaceId]);
+		setActiveWorkspaceId(currentUser.currentWorkspaceId);
+	}, [currentUser.currentWorkspaceId]);
 
-	// console.log({ workspaces });
 	async function handleWorkspaceSwitch({
 		id,
 		mode,
 		role,
 		name,
 		memberId,
+		status,
 	}: {
 		id: string;
 		mode: DeskMode;
 		role: WorkspaceRoles;
 		name: string;
 		memberId: string;
+		status?: MemberStatus;
 	}) {
+		if (status === "INACTIVE") {
+			toast.error(
+				`Your membership in "${name}" has been deactivated. Please contact the workspace administrator.`,
+			);
+			return;
+		}
+
 		if (id === activeWorkspaceId) {
 			setOpen(false);
 			return;
@@ -88,171 +99,97 @@ export default function ProtectedNavbar({
 
 		setActiveWorkspaceId(updatedSession?.user?.currentWorkspaceId ?? id);
 		router.push("/dashboard");
+		router.refresh();
 	}
 
-	// console.log({ activeWorkspaceId });
-
-	// console.log({ user });
 	return (
-		<div className=" md:w-[calc(100%-20px)] text-secondary flex justify-between items-center py-[10px] px-[10px] md:px-[30px] rounded-[20px] bg-primary">
-			<div className="">
-				<div className=" items-center flex gap-3">
+		<div className="w-full text-secondary flex justify-between items-center py-2.5 px-3.5 sm:px-5 md:px-7 rounded-[20px] bg-primary shadow-sm">
+			{/* Left side: Logo on mobile, Workspace badges on desktop */}
+			<div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+				{/* Mobile Brand Logo */}
+				<Link
+					href="/dashboard"
+					className="flex items-center md:hidden focus:outline-none shrink-0"
+					aria-label="Dashboard"
+				>
+					<Image
+						src="/resources/logo.png"
+						alt="Collaborate Logo"
+						width={110}
+						height={26}
+						priority
+						className="h-6 w-auto object-contain"
+					/>
+				</Link>
+
+				{/* Desktop Workspace Info Badges */}
+				<Badge
+					variant="secondary"
+					className="py-1 px-3 hidden md:inline-flex text-xs font-semibold max-w-[180px] truncate"
+				>
+					{currentUser.currentWorkspaceName}
+				</Badge>
+				<Badge
+					variant="secondary"
+					className="py-1 px-2.5 hidden md:inline-flex text-xs"
+				>
+					{currentUser.currentWorkspaceMode}
+				</Badge>
+				{currentUser.currentWorkspaceMode === ("WORKSPACE" as DeskMode) && (
 					<Badge
-						variant={"secondary"}
-						className=" py-[5px] hidden md:inline "
+						variant="secondary"
+						className="py-1 px-2.5 hidden md:inline-flex text-xs"
 					>
-						{user.currentWorkspaceName}
+						{currentUser.currentWorkspaceRole}
 					</Badge>
-					<Badge
-						variant={"secondary"}
-						className=" py-[5px] hidden md:inline "
-					>
-						{user.currentWorkspaceMode}
-					</Badge>
-					{user.currentWorkspaceMode ===
-						("WORKSPACE" as DeskMode) && (
-						<Badge
-							variant={"secondary"}
-							className="  py-[5px] hidden md:inline "
-						>
-							{user.currentWorkspaceRole}
-						</Badge>
-					)}
+				)}
 
-					<Dialog open={open} onOpenChange={setOpen}>
-						<DialogTrigger className=" " asChild>
-							<Badge
-								className=" md:flex items-center hidden cursor-pointer py-[5px]"
-								variant={"secondary"}
-							>
-								<FlipHorizontal2 className=" w-5 h-5" />
-								<p>Switch workspace</p>
-							</Badge>
-						</DialogTrigger>
-						<DialogContent className="rounded-[20px]  border-0 bg-primary">
-							<DialogHeader>
-								<DialogTitle className=" text-accent">
-									Switch Workspace
-								</DialogTitle>
-								<div className=""></div>
-								<DialogDescription>
-									Switch to another workspace you belong to
-									and view your projects and tasks
-								</DialogDescription>
-							</DialogHeader>
-
-							<Button
-								asChild
-								className="w-full rounded-full bg-secondary text-primary hover:bg-secondary/90"
-							>
-								<Link
-									href="/create-workspace"
-									onClick={() => setOpen(false)}
-								>
-									<Plus className="w-4 h-4" />
-									<span>Create workspace</span>
-								</Link>
-							</Button>
-
-							<div>
-								<ScrollArea className="  max-h-[200px] h-full ">
-									<div className=" cursor-pointer flex gap-3 flex-col">
-										{workspaces.map((i) => {
-											const memberWorkspace =
-												i.workspace as Workspace;
-											return (
-												<div
-													key={i.id}
-													onClick={() => {
-														handleWorkspaceSwitch({
-															id: memberWorkspace.id,
-															mode: memberWorkspace.mode,
-															name: memberWorkspace.name,
-															role: i.role,
-															memberId: i.id,
-														});
-													}}
-													className={` ${activeWorkspaceId === memberWorkspace.id ? " bg-accent text-primary" : " bg-transparent text-accent"} hover:bg-accent hover:text-primary transition-all  flex items-center justify-between px-[20px] rounded-[10px] py-[10px]`}
-												>
-													<div className="">
-														<p className=" text-[15px] line-clamp-1">
-															{
-																memberWorkspace.name
-															}
-														</p>
-														<Badge>
-															{
-																memberWorkspace.mode
-															}
-														</Badge>
-													</div>
-													{activeWorkspaceId ===
-														memberWorkspace.id && (
-														<div className=" flex gap-4 items-center">
-															<Check />
-														</div>
-													)}
-												</div>
-											);
-										})}
-									</div>
-									<ScrollBar orientation="vertical" />
-								</ScrollArea>
-							</div>
-						</DialogContent>
-					</Dialog>
-				</div>
-				<Image
-					src={"/resources/logo.png"}
-					alt="logo"
-					width={"1000"}
-					height={"1000"}
-					className=" inline md:hidden w-[50%]"
-				/>
-			</div>
-			<div className=" flex items-center gap-4">
+				{/* Unified Switch Workspace Dialog */}
 				<Dialog open={open} onOpenChange={setOpen}>
-					<DialogTrigger
-						className=" flex items-center justify-center md:hidden"
-						asChild
-					>
-						<Button
-							size={"icon"}
-							className=" bg-secondary text-primary rounded-full"
+					{/* Desktop Trigger */}
+					<DialogTrigger asChild>
+						<Badge
+							className="md:inline-flex items-center gap-1.5 hidden cursor-pointer py-1 px-3 text-xs font-medium hover:bg-secondary/90 transition-colors"
+							variant="secondary"
 						>
-							<FlipHorizontal2 className=" w-5 h-5" />
-						</Button>
+							<FlipHorizontal2 className="w-3.5 h-3.5 text-primary" />
+							<span>Switch workspace</span>
+						</Badge>
 					</DialogTrigger>
-					<DialogContent className=" rounded-[20px] border-0 bg-primary">
+
+					{/* Dialog Content */}
+					<DialogContent className="rounded-[20px] border-0 bg-primary text-secondary sm:max-w-md">
 						<DialogHeader>
-							<DialogTitle className=" text-accent">
+							<DialogTitle className="text-accent text-lg">
 								Switch Workspace
 							</DialogTitle>
-							<DialogDescription>
-								Switch to another workspace you belong to and
-								view your projects and tasks
+							<DialogDescription className="text-secondary/70 text-xs">
+								Switch to another workspace you belong to and view your
+								projects and tasks
 							</DialogDescription>
 						</DialogHeader>
 
 						<Button
 							asChild
-							className="w-full rounded-full bg-secondary text-primary hover:bg-secondary/90"
+							className="w-full rounded-full bg-secondary text-primary hover:bg-secondary/90 text-xs h-9 font-semibold"
 						>
 							<Link
 								href="/create-workspace"
 								onClick={() => setOpen(false)}
 							>
-								<Plus className="w-4 h-4" />
+								<Plus className="w-4 h-4 mr-1.5" />
 								<span>Create workspace</span>
 							</Link>
 						</Button>
 
 						<div>
-							<ScrollArea className="  max-h-[200px] h-full ">
-								<div className=" cursor-pointer flex gap-3 flex-col">
+							<ScrollArea className="max-h-[240px] h-full">
+								<div className="cursor-pointer flex gap-2 flex-col pr-2">
 									{workspaces.map((i) => {
 										const memberWorkspace =
 											i.workspace as Workspace;
+										const isSelected =
+											activeWorkspaceId === memberWorkspace.id;
 										return (
 											<div
 												key={i.id}
@@ -263,23 +200,42 @@ export default function ProtectedNavbar({
 														name: memberWorkspace.name,
 														role: i.role,
 														memberId: i.id,
+														status: i.status,
 													});
 												}}
-												className={` ${activeWorkspaceId === memberWorkspace.id ? " bg-accent text-primary" : " bg-transparent text-accent"} hover:bg-accent hover:text-primary transition-all  flex items-center justify-between px-[20px] rounded-[10px] py-[10px]`}
+												className={`${
+													isSelected
+														? "bg-accent text-primary font-semibold"
+														: "bg-secondary/10 text-secondary hover:bg-secondary/20"
+												} ${
+													i.status === "INACTIVE"
+														? "opacity-60 cursor-not-allowed"
+														: "cursor-pointer"
+												} transition-all flex items-center justify-between px-3.5 py-2.5 rounded-xl`}
 											>
-												<div className="">
-													<p className=" text-[15px] line-clamp-1">
-														{memberWorkspace.name}
-													</p>
-													<Badge variant={"default"}>
-														{memberWorkspace.mode}
-													</Badge>
-												</div>
-												{activeWorkspaceId ===
-													memberWorkspace.id && (
-													<div className=" flex gap-4 items-center">
-														<Check />
+												<div className="min-w-0 flex-1 pr-2">
+													<div className="flex items-center gap-1.5">
+														<p className="text-[13px] truncate">
+															{memberWorkspace.name}
+														</p>
+														{i.status === "INACTIVE" && (
+															<Badge className="bg-destructive text-white text-[9px] px-1 py-0">
+																Deactivated
+															</Badge>
+														)}
 													</div>
+													<p
+														className={`text-[10px] ${
+															isSelected
+																? "text-primary/70"
+																: "text-secondary/60"
+														}`}
+													>
+														{memberWorkspace.mode} • {i.role}
+													</p>
+												</div>
+												{isSelected && (
+													<Check className="w-4 h-4 shrink-0 text-primary" />
 												)}
 											</div>
 										);
@@ -290,70 +246,148 @@ export default function ProtectedNavbar({
 						</div>
 					</DialogContent>
 				</Dialog>
+			</div>
 
-				<FaBell className=" w-6 h-6 text-secondary" />
-				<div className=" md:flex bg-secondary cursor-pointer  hidden w-[50px] h-[50px]  font-extrabold text-[20px] items-center justify-center  rounded-full text-primary">
-					{getInitials(user.fullName)}
+			{/* Right side: Actions, Notifications, and Profile */}
+			<div className="flex items-center gap-2 sm:gap-3">
+				{/* Mobile Switch Workspace Trigger */}
+				<button
+					type="button"
+					onClick={() => setOpen(true)}
+					title="Switch workspace"
+					aria-label="Switch workspace"
+					className="md:hidden flex items-center justify-center p-2 rounded-full bg-secondary/10 hover:bg-secondary/20 text-secondary transition-colors"
+				>
+					<FlipHorizontal2 className="w-4 h-4 text-accent" />
+				</button>
+
+				{/* Notifications Bell - Accessible Link */}
+				<Link
+					href="/notifications"
+					title="Notifications"
+					aria-label="View notifications"
+					className={`p-2 rounded-full transition-colors ${
+						pathName === "/notifications"
+							? "bg-secondary/20 text-accent"
+							: "text-secondary/80 hover:text-secondary hover:bg-secondary/10"
+					}`}
+				>
+					<FaBell className="w-4 h-4" />
+				</Link>
+
+				{/* Desktop Avatar with Presence */}
+				<div className="relative md:inline-flex hidden shrink-0">
+					<div
+						tabIndex={0}
+						className="bg-secondary cursor-pointer w-10 h-10 font-bold text-sm flex items-center justify-center rounded-full text-primary shadow-sm"
+					>
+						{getInitials(user.fullName)}
+					</div>
+					<span className="absolute bottom-0 right-0 leading-none">
+						<PresenceIndicator
+							userId={user.id}
+							size="md"
+							ringColor="ring-primary"
+						/>
+					</span>
 				</div>
+
+				{/* Mobile Avatar with Dropdown */}
 				<DropdownMenu>
-					<DropdownMenuTrigger className=" " asChild>
-						<div className=" md:hidden flex bg-secondary w-[50px] h-[50px]  font-extrabold text-[20px] items-center justify-center  rounded-full text-primary">
-							{getInitials(user.fullName)}
+					<DropdownMenuTrigger asChild>
+						<div
+							role="button"
+							tabIndex={0}
+							aria-label="User profile menu"
+							className="relative md:hidden inline-flex shrink-0 cursor-pointer"
+						>
+							<div className="bg-secondary w-9 h-9 font-bold text-xs flex items-center justify-center rounded-full text-primary shadow-sm">
+								{getInitials(user.fullName)}
+							</div>
+							<span className="absolute bottom-0 right-0 leading-none">
+								<PresenceIndicator
+									userId={user.id}
+									size="sm"
+									ringColor="ring-primary"
+								/>
+							</span>
 						</div>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent className=" border-secondary shadow bg-primary  mr-[20px] w-[300px]">
-						<DropdownMenuGroup className=" px-[5px] flex-wrap flex gap-3 py-[4px] ">
-							<Badge variant={"secondary"}>
-								{user.currentWorkspaceName}
-							</Badge>
-							<Badge variant={"secondary"}>
-								{user.currentWorkspaceMode}
-							</Badge>
-							{user.currentWorkspaceMode ===
-								("WORKSPACE" as DeskMode) && (
-								<Badge variant={"secondary"}>
-									{user.currentWorkspaceRole}
+					<DropdownMenuContent
+						align="end"
+						className="border-secondary/20 shadow-xl bg-primary text-secondary w-[260px] rounded-2xl p-2"
+					>
+						<div className="px-2 py-2 flex flex-col gap-0.5">
+							<p className="text-xs font-bold text-secondary truncate">
+								{user.fullName}
+							</p>
+							<p className="text-[10px] text-secondary/60 truncate">
+								@{user.userName || "user"}
+							</p>
+							<div className="flex flex-wrap gap-1 mt-1.5">
+								<Badge
+									variant="secondary"
+									className="text-[9px] py-0 px-1.5"
+								>
+									{currentUser.currentWorkspaceName}
 								</Badge>
-							)}
-						</DropdownMenuGroup>
-						<DropdownMenuSeparator />
+								<Badge
+									variant="secondary"
+									className="text-[9px] py-0 px-1.5"
+								>
+									{currentUser.currentWorkspaceMode}
+								</Badge>
+							</div>
+						</div>
+						<DropdownMenuSeparator className="bg-secondary/15" />
 						<DropdownMenuGroup>
 							{renderNavigationByRole(
-								user.currentWorkspaceRole as WorkspaceRoles,
-								user.currentWorkspaceMode as DeskMode,
+								currentUser.currentWorkspaceRole as WorkspaceRoles,
+								currentUser.currentWorkspaceMode as DeskMode,
 							).map((i, k) => {
 								const Icon = i.icon;
+								const isActive = pathName.startsWith(i.link);
 								return (
 									<DropdownMenuItem
-										className={`${pathName.includes(i.link) ? "bg-secondary text-primary" : "text-secondary"}`}
+										className={`cursor-pointer text-xs rounded-lg py-2 ${
+											isActive
+												? "bg-secondary text-primary font-semibold"
+												: "text-secondary hover:bg-secondary/10"
+										}`}
 										asChild
 										key={k}
 									>
 										<Link href={i.link}>
-											<Icon className=" w-4 h-4" />
+											<Icon className="w-3.5 h-3.5 mr-2 shrink-0" />
 											{i.name}
 										</Link>
 									</DropdownMenuItem>
 								);
 							})}
 						</DropdownMenuGroup>
-						<DropdownMenuSeparator />
+						<DropdownMenuSeparator className="bg-secondary/15" />
 						<DropdownMenuGroup>
 							<DropdownMenuItem
-								className=" text-secondary"
+								className="text-secondary hover:text-destructive cursor-pointer text-xs rounded-lg py-2"
 								onClick={async () => {
 									await signOut({ redirectTo: "/sign-in" });
 								}}
 							>
-								<LogOut className=" w-4 h-4" />
-								<p className=" text-[13px]">Log Out</p>
+								<LogOut className="w-3.5 h-3.5 mr-2 shrink-0" />
+								<span>Log Out</span>
 							</DropdownMenuItem>
 						</DropdownMenuGroup>
 					</DropdownMenuContent>
 				</DropdownMenu>
-				<div className=" md:inline hidden">
-					<p className=" text-[14px] font-bold">{user.fullName}</p>
-					<p className=" text-[12px]">@{user.userName}</p>
+
+				{/* Desktop User Info Text */}
+				<div className="md:inline hidden min-w-0 pr-1">
+					<p className="text-xs font-bold truncate text-secondary leading-tight">
+						{user.fullName}
+					</p>
+					<p className="text-[11px] text-secondary/70 truncate">
+						@{user.userName || "user"}
+					</p>
 				</div>
 			</div>
 		</div>

@@ -11,7 +11,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { AiOutlineGoogle } from "react-icons/ai";
-import { FaRegEyeSlash } from "react-icons/fa";
+import { FaGithub, FaRegEyeSlash } from "react-icons/fa";
 import { GoChevronLeft } from "react-icons/go";
 import { MdOutlineRemoveRedEye } from "react-icons/md";
 import z from "zod";
@@ -61,10 +61,15 @@ export default function SignInForm() {
 				form.reset();
 			} else {
 				if (urlRequestWorkspaceId) {
-					await createMemberForWorkspace(
+					const memberRes = await createMemberForWorkspace(
 						res.user?.id!,
 						urlRequestWorkspaceId,
 					);
+					if (!memberRes.success && (memberRes as any).isDeactivated) {
+						toast.error(memberRes.message);
+						router.push("/sign-in/my-workspaces");
+						return;
+					}
 					toast.info(
 						"Signing in to access the workspace you requested to join",
 					);
@@ -76,6 +81,7 @@ export default function SignInForm() {
 						currentWorkspaceMode: workspace?.mode,
 						currentWorkspaceRole: "MEMBER" as WorkspaceRoles,
 						currentWorkspaceName: workspace?.name,
+						currentMemberId: memberRes.member?.id,
 					});
 				} else {
 					toast.success(res.message);
@@ -105,43 +111,43 @@ export default function SignInForm() {
 				onClick={() => {
 					router.back();
 				}}
-				className=" absolute cursor-pointer pt-[20px] left-2 text-primary flex flex-row items-center gap-2 "
+				className="absolute cursor-pointer top-6 left-6 text-primary flex flex-row items-center gap-2"
 			>
 				<GoChevronLeft />
 				<p>Go Back</p>
 			</span>
-			<div className=" px-[10px] flex flex-col items-center h-screen gap-10 justify-center">
+			<div className="px-4 sm:px-6 flex flex-col items-center min-h-screen py-12 gap-8 sm:gap-10 justify-center overflow-y-auto">
 				<Image
-					className=" md:w-[15%] w-[40%] object-cover"
+					className="md:w-[15%] w-[40%] object-cover"
 					src={"/resources/dark-logo.png"}
 					alt="logo"
 					width={"1000"}
 					height={"1000"}
 				/>
-				<div className=" w-full md:w-fit flex flex-col items-center ">
-					<p className=" text-center text-[25px] text-primary">
+				<div className="w-full max-w-[500px] flex flex-col items-center">
+					<p className="text-center text-[25px] text-primary">
 						Enter your email or username to sign in
 					</p>
 					<Form {...form}>
 						<form
-							className="  w-full"
+							className="w-full"
 							onSubmit={form.handleSubmit(handleSubmit)}
 						>
-							<div className="  justify-center  mt-[10px]  w-full flex flex-col gap-3">
+							<div className="justify-center mt-[10px] w-full flex flex-col gap-3">
 								<FormField
 									control={form.control}
 									name="identifier"
 									render={({ field }) => (
 										<FormItem>
-											<div className="flex relative w-full flex-col gap-2">
-												<Label className=" text-primary">
+											<div className="flex w-full flex-col gap-2">
+												<Label className="text-primary">
 													Email Address / Username
 												</Label>
 												<Input
 													{...field}
 													disabled={loading}
 													placeholder="Email address or username"
-													className=" text-primary w-full md:w-[500px] py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
+													className="text-primary w-full py-[20px] rounded-[10px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
 												/>
 											</div>
 											<FormMessage />
@@ -153,36 +159,43 @@ export default function SignInForm() {
 									name="password"
 									render={({ field }) => (
 										<FormItem>
-											<div className="w-full flex relative flex-col gap-2 ">
-												<div className=" flex justify-between">
-													<Label className=" text-primary">
+											<div className="w-full flex flex-col gap-2">
+												<div className="flex justify-between items-center">
+													<Label className="text-primary">
 														Password
 													</Label>
 													<Link
-														href={""}
-														className=" text-sm underline text-primary"
+														href={"/forgot-password"}
+														className="text-sm underline text-primary"
 													>
 														Reset Password
 													</Link>
 												</div>
-												<Input
-													{...field}
-													disabled={loading}
-													type={
-														!password ? "password"
-														:	"text"
-													}
-													placeholder="Enter your password"
-													className="text-primary w-full md:w-[500px] py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
-												/>
-												<div
-													onClick={handlePassword}
-													className=" cursor-pointer"
-												>
-													{password ?
-														<MdOutlineRemoveRedEye className=" absolute right-0 top-1/2 w-[20px] h-[20px] -translate-y-1 mr-[10px] text-primary" />
-													:	<FaRegEyeSlash className=" absolute right-0 top-1/2 w-[20px] h-[20px] -translate-y-1 mr-[10px] text-primary" />
-													}
+												<div className="relative w-full">
+													<Input
+														{...field}
+														disabled={loading}
+														type={
+															!password ? "password"
+															:	"text"
+														}
+														placeholder="Enter your password"
+														className="text-primary w-full py-[20px] pr-10 rounded-[10px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
+													/>
+													<button
+														type="button"
+														onClick={handlePassword}
+														className="absolute right-3 top-1/2 -translate-y-1/2 text-primary cursor-pointer focus:outline-none"
+														aria-label={
+															password ?
+																"Hide password"
+															:	"Show password"
+														}
+													>
+														{password ?
+															<MdOutlineRemoveRedEye className="w-5 h-5" />
+														:	<FaRegEyeSlash className="w-5 h-5" />}
+													</button>
 												</div>
 											</div>
 											<FormMessage />
@@ -190,41 +203,62 @@ export default function SignInForm() {
 									)}
 								/>
 
-								<div className="  w-full flex flex-row justify-start items-start">
-									<span className=" text-[15px] flex gap-2 text-primary">
+								<div className="w-full flex flex-row justify-start items-start">
+									<span className="text-[15px] flex gap-2 text-primary">
 										Don't have an account?
 										<Link
-											className=" underline"
+											className="underline"
 											href={"/sign-up"}
 										>
 											Create account
 										</Link>
 									</span>
 								</div>
-								<div className=" w-full  flex justify-center flex-col md:flex-row gap-3">
+
+								<div className="w-full flex flex-col gap-3 mt-1">
 									<Button
 										disabled={loading}
 										type="submit"
-										className=" grow  py-[20px] rounded-full text-secondary"
+										className="w-full py-[20px] rounded-full text-secondary"
 									>
 										{loading ?
-											<div className=" flex items-center gap-3">
-												<LoaderCircle className=" animate-spin" />
+											<div className="flex items-center gap-3">
+												<LoaderCircle className="animate-spin" />
 												Signing in...
 											</div>
 										:	"Sign In"}
 									</Button>
 									{!urlRequestWorkspaceId && (
-										<Button
-											onClick={() =>
-												handleOAuthUsage("google")
-											}
-											type="button"
-											className=" py-[20px] bg-[#575757] hover:bg-[#575757] rounded-full text-secondary"
-										>
-											<AiOutlineGoogle className=" w-60 h-60" />
-											Sign in with Google
-										</Button>
+										<>
+											<div className="relative flex items-center justify-center my-1 w-full">
+												<div className="border-t border-primary/20 w-full" />
+												<span className="bg-background px-3 text-xs text-primary/70 uppercase absolute">
+													or
+												</span>
+											</div>
+											<div className="w-full flex flex-col sm:flex-row gap-3">
+												<Button
+													onClick={() =>
+														handleOAuthUsage("google")
+													}
+													type="button"
+													className="flex-1 py-[20px] bg-[#575757] hover:bg-[#575757]/90 rounded-full text-secondary flex items-center justify-center gap-2"
+												>
+													<AiOutlineGoogle className="size-5 mr-1" />
+													Sign in with Google
+												</Button>
+												<Button
+													onClick={() =>
+														handleOAuthUsage("github")
+													}
+													type="button"
+													className="flex-1 py-[20px] bg-[#24292e] hover:bg-[#24292e]/90 rounded-full text-secondary flex items-center justify-center gap-2"
+												>
+													<FaGithub className="size-5 mr-1" />
+													Sign in with GitHub
+												</Button>
+											</div>
+										</>
 									)}
 								</div>
 							</div>

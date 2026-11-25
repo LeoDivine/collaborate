@@ -34,7 +34,7 @@ export default async function Calendar(props: {
 	const currentMember = allMembers.find((m) => m.userId === userId);
 
 	return (
-		<div className="overflow-x-hidden">
+		<div className="w-full">
 			<CalendarView
 				tasks={allTasks}
 				projects={allProjects}

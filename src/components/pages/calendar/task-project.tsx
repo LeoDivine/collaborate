@@ -39,6 +39,7 @@ import {
 	Flag,
 	Squircle,
 	UserCheck,
+	Users,
 } from "lucide-react";
 import TaskAssigneeOverview from "@/components/pages/tasks/task-assignee-overview";
 import { PRIORITY_LEVEL } from "@/lib/const";
@@ -105,7 +106,11 @@ export default function TaskProject({
 								className={`w-[14px] rounded-full h-[14px] cursor-pointer inline-flex items-center justify-center ${renderPriority(priority)} ${isCompleted ? "opacity-60 ring-1 ring-secondary" : ""}`}
 								title={title}
 							>
-								{isCompleted && <CheckCircle2 className="w-2.5 h-2.5 text-secondary" />}
+								{isCompleted && (
+									<CheckCircle2
+										className={`w-2.5 h-2.5 ${priority === "MEDIUM" ? "text-primary" : "text-secondary"}`}
+									/>
+								)}
 							</button>
 						</DialogTrigger>
 						<DialogContent className="max-w-md rounded-2xl p-6 bg-primary text-secondary border-primary">
@@ -149,15 +154,21 @@ export default function TaskProject({
 
 								{PriorityIcon && (
 									<PriorityIcon
-										className={`w-3 h-3 shrink-0 ${isDialogView ? "text-secondary/80" : "text-primary/70"}`}
+										className={`w-3 h-3 shrink-0 ${isDialogView && priority !== "MEDIUM" ? "text-secondary/80" : "text-primary/70"}`}
 										aria-hidden="true"
 									/>
 								)}
 								<p
-									className={`text-[12px] font-medium truncate ${isDialogView ? "text-secondary" : "text-primary"} ${isCompleted ? "line-through opacity-75 italic" : ""}`}
+									className={`text-[12px] font-medium truncate ${isDialogView && priority !== "MEDIUM" ? "text-secondary" : "text-primary"} ${isCompleted ? "line-through opacity-75 italic" : ""}`}
 								>
 									{title}
 								</p>
+								{task.team && (
+									<span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 flex items-center gap-1 ${isDialogView ? "bg-secondary/15 text-secondary" : "bg-primary/20 text-primary"}`}>
+										<Users className="w-2.5 h-2.5" />
+										{task.team.name}
+									</span>
+								)}
 							</div>
 						</div>
 					</DialogTrigger>
@@ -232,6 +243,15 @@ function TaskDialogDetail({
 							</Badge>
 						</Link>
 					)}
+					{task.team && (
+						<Badge
+							variant="outline"
+							className="py-[5px] px-[10px] text-xs flex items-center gap-1 border-secondary text-secondary"
+						>
+							<Users className="w-3.5 h-3.5 text-secondary" />
+							{task.team.name}
+						</Badge>
+					)}
 					<div className="relative">
 						<Select
 							value={currentStatus}
@@ -253,7 +273,7 @@ function TaskDialogDetail({
 					<Badge
 						className={`py-[5px] px-[10px] text-xs rounded-full text-secondary font-medium border-0 flex items-center gap-1 ${renderPriority(priority)}`}
 					>
-						{PriorityIcon && <PriorityIcon className="w-3 h-3 text-secondary" />}
+						{PriorityIcon && <PriorityIcon className="w-3 h-3 text-current" />}
 						{priorityMeta?.title || formatPriority(priority)}
 					</Badge>
 				</div>

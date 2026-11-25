@@ -42,7 +42,7 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 	return (
 		<div>
 			{/* Top Header */}
-			<div className="flex justify-between items-center">
+			<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
 				<div>
 					<p className="text-[20px] font-bold text-primary">
 						Welcome Back, {user.fullName}
@@ -64,7 +64,7 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 			{/* Stat Cards */}
 			<div className="mt-[20px] gap-4 flex flex-col lg:flex-row">
 				<div className="w-full">
-					<div className="gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 grid">
+					<div className="gap-3 sm:gap-4 grid-cols-2 grid">
 						<InfoCards
 							title="Completed Projects"
 							value={completedProjects}
@@ -246,7 +246,7 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 						{/* My Assigned Tasks Container */}
 						<div className="rounded-[20px] px-[20px] py-[20px] bg-[#969696] md:col-span-2 flex flex-col justify-between">
 							<div>
-								<div className="flex justify-between items-center">
+								<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
 									<div className="flex items-center gap-2">
 										<Diamond className="w-4 h-4 text-primary" />
 										<p className="text-primary font-semibold text-[16px]">
@@ -319,7 +319,7 @@ export default function OwnerDashboard({ user, data }: OwnerDashboardProps) {
 
 				{/* Right Sidebar Column */}
 				<div className="w-full lg:w-[320px] shrink-0">
-					<OverviewCalender />
+					<OverviewCalender deadlines={upcomingDeadlines} />
 
 					{/* Upcoming Deadlines */}
 					<div className="mt-[15px] rounded-[20px] px-[20px] py-[20px] bg-[#969696]">

@@ -4,7 +4,7 @@ import { PROTECTEDPERSONALNAVBAR } from "@/lib/const";
 import { renderNavigationByRole } from "@/lib/utils";
 import { LogOut } from "lucide-react";
 import { User } from "next-auth";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -16,7 +16,8 @@ import {
 
 export default function ProtectedSidebar({ user }: { user: User }) {
 	const pathName = usePathname();
-	console.log({ user });
+	const { data: session } = useSession();
+	const currentUser = session?.user ?? user;
 	return (
 		<div className=" hidden bg-primary text-secondary rounded-[20px] py-[20px] md:flex flex-col items-center justify-between h-[calc(100vh-30px)] w-full">
 			<div className="flex flex-col gap-11 items-start">
@@ -33,8 +34,8 @@ export default function ProtectedSidebar({ user }: { user: User }) {
 				<div className=" w-full px-[20px] ">
 					<div className=" w-full flex flex-col gap-2">
 						{renderNavigationByRole(
-							user.currentWorkspaceRole as WorkspaceRoles,
-							user.currentWorkspaceMode as DeskMode,
+							currentUser.currentWorkspaceRole as WorkspaceRoles,
+							currentUser.currentWorkspaceMode as DeskMode,
 						).map((i, k) => {
 							const Icon = i.icon;
 							return (

@@ -88,7 +88,6 @@ import {
 	ListFilter,
 	Loader2,
 	MoreHorizontal,
-	PanelRightOpen,
 	RotateCcw,
 	Search,
 	SlidersHorizontal,
@@ -101,10 +100,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import type { DateRange } from "react-day-picker";
 import { toast } from "sonner";
 import { MileStoneStatus, PriorityLevel, Status } from "../../../../generated/prisma/enums";
 import TaskAssigneeOverview from "./task-assignee-overview";
-import TaskPeekSheet from "./task-peek-sheet";
 
 const PRIORITY_LABELS: Record<PriorityLevel, string> = {
 	[PriorityLevel.URGENT]: "Urgent",
@@ -144,13 +143,14 @@ const STATUS_ORDER: Record<Status, number> = {
 	[Status.TODO]: 1,
 	[Status.IN_PROGRESS]: 2,
 	[Status.ON_HOLD]: 3,
-	[Status.COMPLETED]: 4,
-	[Status.CANCELLED]: 5,
+	[Status.CANCELLED]: 4,
+	[Status.COMPLETED]: 5,
 };
 
 type SortField =
 	| "title"
 	| "project"
+	| "team"
 	| "priority"
 	| "status"
 	| "createdAt"
@@ -159,7 +159,7 @@ type SortField =
 
 type SortDirection = "asc" | "desc" | null;
 
-type GroupByField = "none" | "status" | "priority" | "project";
+type GroupByField = "none" | "status" | "priority" | "project" | "team";
 
 interface GroupedTaskSection {
 	id: string;
@@ -171,12 +171,118 @@ interface GroupedTaskSection {
 
 interface ColumnVisibility {
 	project: boolean;
+	team: boolean;
 	assignees: boolean;
 	createdAt: boolean;
 	period: boolean;
 	priority: boolean;
 	status: boolean;
 	milestones: boolean;
+}
+
+function TaskTimelineCell({
+	task,
+	canEdit,
+	isSelected,
+	onUpdate,
+}: {
+	task: Tasks;
+	canEdit: boolean;
+	isSelected: boolean;
+	onUpdate: (taskId: string, from: Date, to: Date) => Promise<void>;
+}) {
+	const startDate = new Date(task.startPeriod);
+	const endDate = new Date(task.endPeriod);
+	const isOverdue =
+		isPast(endDate) &&
+		!isToday(endDate) &&
+		task.status !== Status.COMPLETED &&
+		task.status !== Status.CANCELLED;
+
+	const [isOpen, setIsOpen] = useState(false);
+	const [range, setRange] = useState<DateRange | undefined>({
+		from: startDate,
+		to: endDate,
+	});
+
+	React.useEffect(() => {
+		setRange({
+			from: new Date(task.startPeriod),
+			to: new Date(task.endPeriod),
+		});
+	}, [task.startPeriod, task.endPeriod]);
+
+	if (!canEdit) {
+		return (
+			<div
+				className={`flex items-center gap-1 text-xs font-medium p-1 w-fit ${
+					isOverdue
+						? "text-destructive font-semibold bg-destructive/10 px-1.5 rounded-md"
+						: isSelected
+						? "text-primary/80 dark:text-zinc-300"
+						: "text-secondary/70"
+				}`}
+			>
+				{isOverdue && (
+					<AlertCircle className="w-3 h-3 text-destructive shrink-0" />
+				)}
+				<span>{format(startDate, "MMM d")}</span>
+				<ArrowRight className="w-2.5 h-2.5 text-accent/60" />
+				<span>{format(endDate, "MMM d")}</span>
+				{isToday(endDate) && (
+					<span className="text-[9px] bg-accent text-primary px-1 rounded font-bold ml-0.5">
+						Today
+					</span>
+				)}
+			</div>
+		);
+	}
+
+	return (
+		<Popover open={isOpen} onOpenChange={setIsOpen}>
+			<PopoverTrigger asChild>
+				<button
+					className={`flex items-center gap-1 text-xs font-medium p-1 rounded-md transition-colors w-fit cursor-pointer ${
+						isOverdue
+							? "text-destructive font-semibold bg-destructive/10 px-1.5"
+							: isSelected
+							? "text-primary hover:bg-primary/10 dark:text-zinc-200"
+							: "text-secondary hover:bg-secondary/10 group-hover:text-secondary/95"
+					}`}
+				>
+					{isOverdue && (
+						<AlertCircle className="w-3 h-3 text-destructive shrink-0" />
+					)}
+					<span>{format(startDate, "MMM d")}</span>
+					<ArrowRight className="w-2.5 h-2.5 text-accent/60" />
+					<span>{format(endDate, "MMM d")}</span>
+					{isToday(endDate) && (
+						<span className="text-[9px] bg-accent text-primary px-1 rounded font-bold ml-0.5">
+							Today
+						</span>
+					)}
+				</button>
+			</PopoverTrigger>
+			<PopoverContent
+				className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[16px] shadow-2xl z-[9999] overflow-hidden"
+				align="start"
+			>
+				<Calendar
+					mode="range"
+					defaultMonth={range?.from || startDate}
+					selected={range}
+					onSelect={async (newRange) => {
+						setRange(newRange);
+						if (newRange?.from && newRange?.to) {
+							await onUpdate(task.id, newRange.from, newRange.to);
+							setIsOpen(false);
+						}
+					}}
+					className="rounded-[16px] bg-primary text-secondary"
+				/>
+			</PopoverContent>
+		</Popover>
+	);
 }
 
 export default function TaskTable({
@@ -211,11 +317,30 @@ export default function TaskTable({
 	const [selectedPriorities, setSelectedPriorities] = useState<PriorityLevel[]>([]);
 	const [selectedStatuses, setSelectedStatuses] = useState<Status[]>([]);
 	const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+	const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
 	const [projectFilterSearch, setProjectFilterSearch] = useState("");
 	const [filterAssignedToMe, setFilterAssignedToMe] = useState(true);
 	const [filterOverdue, setFilterOverdue] = useState(false);
 	const [filterHighUrgent, setFilterHighUrgent] = useState(false);
 	const [hideCompleted, setHideCompleted] = useState(false);
+
+	const availableTeams = useMemo(() => {
+		const teamMap = new Map<string, { id: string; name: string }>();
+		tasks.forEach((t) => {
+			if (t.team?.id && t.team?.name) {
+				teamMap.set(t.team.id, t.team);
+			}
+		});
+		return Array.from(teamMap.values());
+	}, [tasks]);
+
+	const toggleTeam = (teamId: string) => {
+		setSelectedTeamIds((prev) =>
+			prev.includes(teamId)
+				? prev.filter((id) => id !== teamId)
+				: [...prev, teamId]
+		);
+	};
 
 	const filteredFilterProjects = useMemo(() => {
 		if (!projectFilterSearch.trim()) return projects;
@@ -232,6 +357,7 @@ export default function TaskTable({
 	// Column Visibility state
 	const [visibleColumns, setVisibleColumns] = useState<ColumnVisibility>({
 		project: true,
+		team: true,
 		assignees: true,
 		createdAt: false,
 		period: true,
@@ -305,14 +431,6 @@ export default function TaskTable({
 		return isProjectLead || isCreator;
 	};
 
-	// Side Peek Sheet state
-	const [peekTaskId, setPeekTaskId] = useState<string | null>(null);
-	const [peekOpen, setPeekOpen] = useState(false);
-
-	const activePeekTask = useMemo(() => {
-		return tasks.find((t) => t.id === peekTaskId) || null;
-	}, [tasks, peekTaskId]);
-
 	// Counter stats for quick filter chips
 	const stats = useMemo(() => {
 		const now = new Date();
@@ -385,6 +503,7 @@ export default function TaskTable({
 		setSelectedPriorities([]);
 		setSelectedStatuses([]);
 		setSelectedProjectIds([]);
+		setSelectedTeamIds([]);
 		setFilterAssignedToMe(false);
 		setFilterOverdue(false);
 		setFilterHighUrgent(false);
@@ -398,6 +517,7 @@ export default function TaskTable({
 		selectedPriorities.length > 0 ||
 		selectedStatuses.length > 0 ||
 		selectedProjectIds.length > 0 ||
+		selectedTeamIds.length > 0 ||
 		filterAssignedToMe ||
 		filterOverdue ||
 		filterHighUrgent ||
@@ -425,7 +545,9 @@ export default function TaskTable({
 				item.title.toLowerCase().includes(query) ||
 				(item.description && item.description.toLowerCase().includes(query)) ||
 				(item.project?.title &&
-					item.project.title.toLowerCase().includes(query));
+					item.project.title.toLowerCase().includes(query)) ||
+				(item.team?.name &&
+					item.team.name.toLowerCase().includes(query));
 
 			const matchesPriority =
 				selectedPriorities.length === 0 ||
@@ -438,6 +560,10 @@ export default function TaskTable({
 			const matchesProject =
 				selectedProjectIds.length === 0 ||
 				selectedProjectIds.includes(item.projectId);
+
+			const matchesTeam =
+				selectedTeamIds.length === 0 ||
+				(item.team?.id && selectedTeamIds.includes(item.team.id));
 
 			const isAssignedToUser =
 				!filterAssignedToMe ||
@@ -471,6 +597,7 @@ export default function TaskTable({
 				matchesPriority &&
 				matchesStatus &&
 				matchesProject &&
+				matchesTeam &&
 				isAssignedToUser &&
 				isOverdueMatch &&
 				isHighUrgentMatch &&
@@ -483,6 +610,7 @@ export default function TaskTable({
 		selectedPriorities,
 		selectedStatuses,
 		selectedProjectIds,
+		selectedTeamIds,
 		filterAssignedToMe,
 		filterOverdue,
 		filterHighUrgent,
@@ -494,9 +622,16 @@ export default function TaskTable({
 
 	// Sorted tasks computation
 	const sortedTasks = useMemo(() => {
-		if (!sortField || !sortDirection) return filteredTasks;
-
 		return [...filteredTasks].sort((a, b) => {
+			const isACompleted = a.status === Status.COMPLETED;
+			const isBCompleted = b.status === Status.COMPLETED;
+
+			if (isACompleted !== isBCompleted) {
+				return isACompleted ? 1 : -1;
+			}
+
+			if (!sortField || !sortDirection) return 0;
+
 			let comparison = 0;
 
 			if (sortField === "title") {
@@ -505,6 +640,10 @@ export default function TaskTable({
 				const projA = a.project?.title || "";
 				const projB = b.project?.title || "";
 				comparison = projA.localeCompare(projB);
+			} else if (sortField === "team") {
+				const teamA = a.team?.name || "";
+				const teamB = b.team?.name || "";
+				comparison = teamA.localeCompare(teamB);
 			} else if (sortField === "priority") {
 				comparison =
 					PRIORITY_WEIGHTS[a.priority] - PRIORITY_WEIGHTS[b.priority];
@@ -562,8 +701,8 @@ export default function TaskTable({
 				[Status.TODO]: [],
 				[Status.IN_PROGRESS]: [],
 				[Status.ON_HOLD]: [],
-				[Status.COMPLETED]: [],
 				[Status.CANCELLED]: [],
+				[Status.COMPLETED]: [],
 			};
 			paginatedTasks.forEach((t) => {
 				if (groups[t.status]) groups[t.status].push(t);
@@ -604,6 +743,23 @@ export default function TaskTable({
 			paginatedTasks.forEach((t) => {
 				const key = t.projectId || "no-project";
 				const label = t.project?.title || "No Project";
+				if (!groups[key]) {
+					groups[key] = { label, tasks: [] };
+				}
+				groups[key].tasks.push(t);
+			});
+			return Object.entries(groups).map(([id, grp]) => ({
+				id,
+				label: grp.label,
+				tasks: grp.tasks,
+			}));
+		}
+
+		if (groupBy === "team") {
+			const groups: Record<string, { label: string; tasks: Tasks[] }> = {};
+			paginatedTasks.forEach((t) => {
+				const key = t.team?.id || "no-team";
+				const label = t.team?.name || "No Team / General";
 				if (!groups[key]) {
 					groups[key] = { label, tasks: [] };
 				}
@@ -863,12 +1019,6 @@ export default function TaskTable({
 		}));
 	};
 
-	// Open Side Peek Sheet
-	const openTaskPeek = (taskId: string) => {
-		setPeekTaskId(taskId);
-		setPeekOpen(true);
-	};
-
 	return (
 		<div className="flex flex-col gap-4 py-4">
 			{/* Top Controls & Search Bar */}
@@ -1009,6 +1159,12 @@ export default function TaskTable({
 								>
 									Project
 								</DropdownMenuItem>
+								<DropdownMenuItem
+									onClick={() => setGroupBy("team")}
+									className="cursor-pointer text-xs"
+								>
+									Team
+								</DropdownMenuItem>
 							</DropdownMenuContent>
 						</DropdownMenu>
 
@@ -1148,6 +1304,48 @@ export default function TaskTable({
 									</>
 								)}
 
+								{/* Filter by Team */}
+								{availableTeams.length > 0 && (
+									<>
+										<div className="flex items-center justify-between px-2 py-1.5">
+											<DropdownMenuLabel className="p-0 text-xs font-bold text-secondary/70">
+												Team
+											</DropdownMenuLabel>
+											{selectedTeamIds.length > 0 && (
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation();
+														setSelectedTeamIds([]);
+													}}
+													className="text-[11px] text-accent hover:underline cursor-pointer"
+												>
+													Clear
+												</button>
+											)}
+										</div>
+										<div className="flex flex-col gap-1 px-1 py-1 max-h-[160px] overflow-y-auto custom-scrollbar">
+											{availableTeams.map((team) => {
+												const isChecked = selectedTeamIds.includes(team.id);
+												return (
+													<label
+														key={team.id}
+														onClick={(e) => e.stopPropagation()}
+														className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-secondary/10 cursor-pointer select-none text-xs text-secondary"
+													>
+														<Checkbox
+															checked={isChecked}
+															onCheckedChange={() => toggleTeam(team.id)}
+														/>
+														<span className="truncate">{team.name}</span>
+													</label>
+												);
+											})}
+										</div>
+										<DropdownMenuSeparator className="bg-secondary/15" />
+									</>
+								)}
+
 								{/* Filter by Priority */}
 								<DropdownMenuLabel className="text-xs font-bold text-secondary/70">
 									Priority
@@ -1245,6 +1443,18 @@ export default function TaskTable({
 									className="text-xs cursor-pointer"
 								>
 									Project
+								</DropdownMenuCheckboxItem>
+								<DropdownMenuCheckboxItem
+									checked={visibleColumns.team}
+									onCheckedChange={(v) =>
+										setVisibleColumns((p) => ({
+											...p,
+											team: !!v,
+										}))
+									}
+									className="text-xs cursor-pointer"
+								>
+									Team
 								</DropdownMenuCheckboxItem>
 								<DropdownMenuCheckboxItem
 									checked={visibleColumns.assignees}
@@ -1424,20 +1634,20 @@ export default function TaskTable({
 			<div className="relative rounded-[20px] border border-secondary/15 bg-primary/40 backdrop-blur-sm overflow-hidden shadow-sm">
 				{sortedTasks.length === 0 ? (
 					/* Empty States */
-					<div className="flex justify-center py-16 px-6 flex-col items-center text-center">
-						<div className="bg-secondary/10 text-secondary p-4 rounded-full mb-3">
+					<div className="flex justify-center py-16 px-6 flex-col items-center text-center bg-[#a49f9f] text-[#222222]">
+						<div className="bg-[#8b8686] text-[#222222] p-4 rounded-full mb-3">
 							{isFilterActive ? (
-								<ListFilter className="w-6 h-6 text-accent" />
+								<ListFilter className="w-6 h-6 text-[#222222]" />
 							) : (
-								<Diamond className="w-6 h-6 text-accent" />
+								<Diamond className="w-6 h-6 text-[#222222]" />
 							)}
 						</div>
-						<h3 className="text-base font-bold text-secondary">
+						<h3 className="text-base font-bold text-[#222222]">
 							{isFilterActive
 								? "No matching tasks found"
 								: "No tasks available"}
 						</h3>
-						<p className="text-xs text-secondary/60 max-w-sm mt-1">
+						<p className="text-xs text-[#222222]/80 max-w-sm mt-1">
 							{isFilterActive
 								? "None of the tasks match your active filters or search term. Try resetting your filters."
 								: "No tasks have been created in this workspace yet. Get started by clicking New Task."}
@@ -1446,7 +1656,7 @@ export default function TaskTable({
 							<Button
 								variant="outline"
 								onClick={handleResetFilters}
-								className="mt-4 rounded-full text-xs h-8 gap-1.5 border-secondary/20 hover:bg-secondary/10 text-secondary"
+								className="mt-4 rounded-full text-xs h-8 gap-1.5 border-[#222222] bg-[#222222] hover:bg-[#222222]/90 text-white hover:text-white"
 							>
 								<RotateCcw className="w-3 h-3" />
 								Clear all filters
@@ -1484,7 +1694,6 @@ export default function TaskTable({
 										className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
 									>
 										<div className="flex items-center gap-1.5">
-											<Diamond className="w-3.5 h-3.5 text-accent shrink-0" />
 											<span>Task Title</span>
 											{sortField === "title" ? (
 												sortDirection === "asc" ? (
@@ -1507,9 +1716,31 @@ export default function TaskTable({
 											className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
 										>
 											<div className="flex items-center gap-1.5">
-												<Box className="w-3.5 h-3.5 text-accent shrink-0" />
 												<span>Project</span>
 												{sortField === "project" ? (
+													sortDirection === "asc" ? (
+														<ArrowUp className="w-3.5 h-3.5 text-accent" />
+													) : (
+														<ArrowDown className="w-3.5 h-3.5 text-accent" />
+													)
+												) : (
+													<ArrowUpDown className="w-3 h-3 text-accent/50" />
+												)}
+											</div>
+										</TableHead>
+									)}
+
+									{/* Team Header (Sortable) */}
+									{visibleColumns.team && (
+										<TableHead
+											onClick={() =>
+												handleColumnSort("team")
+											}
+											className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
+										>
+											<div className="flex items-center gap-1.5">
+												<span>Team</span>
+												{sortField === "team" ? (
 													sortDirection === "asc" ? (
 														<ArrowUp className="w-3.5 h-3.5 text-accent" />
 													) : (
@@ -1526,7 +1757,6 @@ export default function TaskTable({
 									{visibleColumns.assignees && (
 										<TableHead className="text-xs font-bold text-secondary">
 											<div className="flex items-center gap-1.5">
-												<Users className="w-3.5 h-3.5 text-accent shrink-0" />
 												<span>Assignees</span>
 											</div>
 										</TableHead>
@@ -1564,7 +1794,6 @@ export default function TaskTable({
 											className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
 										>
 											<div className="flex items-center gap-1.5">
-												<CalendarDays className="w-3.5 h-3.5 text-accent shrink-0" />
 												<span>Timeline / Due</span>
 												{sortField === "endPeriod" ? (
 													sortDirection === "asc" ? (
@@ -1634,7 +1863,6 @@ export default function TaskTable({
 											className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors w-[180px]"
 										>
 											<div className="flex items-center gap-1.5">
-												<Squircle className="w-3.5 h-3.5 text-accent shrink-0" />
 												<span>Milestones</span>
 												{sortField === "milestones" ? (
 													sortDirection === "asc" ? (
@@ -1665,7 +1893,7 @@ export default function TaskTable({
 											{groupBy !== "none" && (
 												<tr className="bg-secondary/5 border-y border-secondary/10">
 													<td
-														colSpan={10}
+														colSpan={12}
 														className="px-4 py-2"
 													>
 														<div
@@ -1776,10 +2004,10 @@ export default function TaskTable({
 														<TableRow
 															key={task.id}
 															data-state={isSelected ? "selected" : undefined}
-															className={`border-secondary/10 transition-colors ${
+															className={`group border-secondary/10 transition-colors ${
 																isSelected
 																	? "bg-secondary text-primary dark:bg-zinc-800 dark:text-zinc-100 font-medium border-primary/20"
-																	: "hover:bg-secondary/[0.04]"
+																	: "hover:bg-secondary/[0.08]"
 															}`}
 														>
 															{/* Selection Checkbox */}
@@ -1850,21 +2078,17 @@ export default function TaskTable({
 																	</button>
 
 																	<div className="flex flex-col gap-1 min-w-0">
-																		<button
-																			onClick={() =>
-																				openTaskPeek(
-																					task.id,
-																				)
-																			}
+																		<Link
+																			href={`/tasks/${task.id}`}
 																			className={`font-semibold text-xs text-left truncate hover:underline transition-colors flex items-center gap-1.5 ${
 																				task.status ===
 																				Status.COMPLETED
 																					? isSelected
 																						? "line-through text-primary/60 dark:text-zinc-400"
-																						: "line-through text-secondary/60"
+																						: "line-through text-secondary/60 hover:text-secondary/80 group-hover:text-secondary/80"
 																					: isSelected
 																						? "text-primary font-bold dark:text-white hover:text-primary/80"
-																						: "text-secondary hover:text-accent"
+																						: "text-secondary hover:text-white dark:hover:text-white group-hover:text-white/90 dark:group-hover:text-white"
 																			}`}
 																		>
 																			<span className="truncate">
@@ -1872,7 +2096,7 @@ export default function TaskTable({
 																					task.title
 																				}
 																			</span>
-																		</button>
+																		</Link>
 
 																		{isAssignedToCurrentUser && (
 																			<Badge className={`w-fit text-[9px] py-0 px-1.5 font-medium flex items-center gap-1 ${
@@ -1901,7 +2125,7 @@ export default function TaskTable({
 																				className={`flex items-center gap-1.5 py-0.5 px-2 text-xs font-medium w-fit truncate max-w-[160px] ${
 																					isSelected
 																						? "bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 dark:bg-white/10 dark:text-white dark:border-white/20"
-																						: "bg-secondary/10 text-secondary border-secondary/20 hover:bg-secondary/20"
+																						: "bg-secondary/10 text-secondary border-secondary/20 hover:bg-secondary/20 hover:text-white dark:hover:text-white"
 																				}`}
 																			>
 																				<Box
@@ -1932,6 +2156,37 @@ export default function TaskTable({
 																</TableCell>
 															)}
 
+															{/* Team Badge */}
+															{visibleColumns.team && (
+																<TableCell>
+																	{task.team ? (
+																		<Badge
+																			variant="outline"
+																			className={`flex items-center gap-1.5 py-0.5 px-2 text-xs font-medium w-fit truncate max-w-[160px] ${
+																				isSelected
+																					? "bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 dark:bg-white/10 dark:text-white dark:border-white/20"
+																					: "bg-secondary/10 text-secondary border-secondary/20 hover:bg-secondary/20 hover:text-white dark:hover:text-white"
+																			}`}
+																		>
+																			<Users
+																				className={`w-3 h-3 shrink-0 ${
+																					isSelected
+																						? "text-primary dark:text-accent"
+																						: "text-accent"
+																				}`}
+																			/>
+																			<span className="truncate">
+																				{task.team.name}
+																			</span>
+																		</Badge>
+																	) : (
+																		<span className={`text-[11px] italic ${isSelected ? "text-primary/50 dark:text-zinc-400" : "text-secondary/40"}`}>
+																			—
+																		</span>
+																	)}
+																</TableCell>
+															)}
+
 															{/* Assignees Stack */}
 															{visibleColumns.assignees && (
 																<TableCell>
@@ -1942,6 +2197,7 @@ export default function TaskTable({
 																		isSelected={
 																			isSelected
 																		}
+																		size="sm"
 																	/>
 																</TableCell>
 															)}
@@ -1961,140 +2217,32 @@ export default function TaskTable({
 															{/* Period & Due Date with Overdue Indicator */}
 															{visibleColumns.period && (
 																<TableCell>
-																	{canEdit ? (
-																		<Popover>
-																			<PopoverTrigger
-																				asChild
-																			>
-																				<button
-																					className={`flex items-center gap-1 text-xs font-medium p-1 rounded-md transition-colors w-fit ${
-																						isOverdue
-																							? "text-destructive font-semibold bg-destructive/10 px-1.5"
-																							: isSelected
-																							? "text-primary hover:bg-primary/10 dark:text-zinc-200"
-																							: "text-secondary hover:bg-secondary/10"
-																					}`}
-																				>
-																					{isOverdue && (
-																						<AlertCircle className="w-3 h-3 text-destructive shrink-0" />
-																					)}
-																					<span>
-																						{format(
-																							startDate,
-																							"MMM d",
-																						)}
-																					</span>
-																					<ArrowRight className="w-2.5 h-2.5 text-accent/60" />
-																					<span>
-																						{format(
-																							endDate,
-																							"MMM d",
-																						)}
-																					</span>
-																					{isToday(
-																						endDate,
-																					) && (
-																						<span className="text-[9px] bg-accent text-primary px-1 rounded font-bold ml-0.5">
-																							Today
-																						</span>
-																					)}
-																				</button>
-																			</PopoverTrigger>
-																			<PopoverContent
-																				className="w-auto p-0 bg-primary border border-secondary/20 text-secondary rounded-[16px] shadow-xl"
-																				align="start"
-																			>
-																				<Calendar
-																					mode="range"
-																					defaultMonth={
-																						startDate
-																					}
-																					selected={{
-																						from: startDate,
-																						to: endDate,
-																					}}
-																					onSelect={async (
-																						range,
-																					) => {
-																						if (
-																							range?.from &&
-																							range?.to
-																						) {
-																							setTasks(
-																								(
-																									prev,
-																								) =>
-																									prev.map(
-																										(
-																											t,
-																										) =>
-																											t.id ===
-																											task.id
-																												? {
-																														...t,
-																														startPeriod:
-																															range.from!,
-																														endPeriod:
-																															range.to!,
-																												  }
-																												: t,
-																									),
-																							);
-																							await updateTaskDetails(
-																								{
-																									taskId: task.id,
-																									values: {
-																										startPeriod:
-																											range.from,
-																										endPeriod:
-																											range.to,
-																									},
-																								},
-																							);
-																							toast.success(
-																								"Timeline updated",
-																							);
-																						}
-																					}}
-																					className="rounded-[16px] bg-primary text-secondary"
-																				/>
-																			</PopoverContent>
-																		</Popover>
-																	) : (
-																		<div
-																			className={`flex items-center gap-1 text-xs font-medium p-1 w-fit ${
-																				isOverdue
-																					? "text-destructive font-semibold bg-destructive/10 px-1.5 rounded-md"
-																					: isSelected
-																					? "text-primary/80 dark:text-zinc-300"
-																					: "text-secondary/70"
-																			}`}
-																		>
-																			{isOverdue && (
-																				<AlertCircle className="w-3 h-3 text-destructive shrink-0" />
-																			)}
-																			<span>
-																				{format(
-																					startDate,
-																					"MMM d",
-																				)}
-																			</span>
-																			<ArrowRight className="w-2.5 h-2.5 text-accent/60" />
-																			<span>
-																				{format(
-																					endDate,
-																					"MMM d",
-																				)}
-																			</span>
-																			{isToday(
-																				endDate,
-																			) && (
-																				<span className="text-[9px] bg-accent text-primary px-1 rounded font-bold ml-0.5">
-																					Today
-																				</span>
-																			)}
-																		</div>
-																	)}
+																	<TaskTimelineCell
+																		task={task}
+																		canEdit={canEdit}
+																		isSelected={isSelected}
+																		onUpdate={async (taskId, from, to) => {
+																			setTasks((prev) =>
+																				prev.map((t) =>
+																					t.id === taskId
+																						? {
+																								...t,
+																								startPeriod: from,
+																								endPeriod: to,
+																						  }
+																						: t,
+																				),
+																			);
+																			await updateTaskDetails({
+																				taskId,
+																				values: {
+																					startPeriod: from,
+																					endPeriod: to,
+																				},
+																			});
+																			toast.success("Timeline updated");
+																		}}
+																	/>
 																</TableCell>
 															)}
 
@@ -2291,23 +2439,6 @@ export default function TaskTable({
 															{/* Row Actions Menu */}
 															<TableCell className="text-right pr-3">
 																<div className="flex items-center justify-end gap-1">
-																	<Button
-																		variant="ghost"
-																		size="icon"
-																		onClick={() =>
-																			openTaskPeek(
-																				task.id,
-																			)
-																		}
-																		className={`h-7 w-7 rounded-full transition-colors ${
-																			isSelected
-																				? "text-primary hover:bg-primary/15 hover:text-primary dark:text-zinc-200"
-																				: "text-secondary hover:bg-secondary/10 hover:text-secondary"
-																		}`}
-																		title="Inspect Task"
-																	>
-																		<PanelRightOpen className={`w-3.5 h-3.5 ${isSelected ? "text-primary dark:text-accent" : "text-accent"}`} />
-																	</Button>
 																	<DropdownMenu>
 																		<DropdownMenuTrigger
 																			asChild
@@ -2326,42 +2457,27 @@ export default function TaskTable({
 																		</DropdownMenuTrigger>
 																		<DropdownMenuContent
 																			align="end"
-																			className="bg-primary border border-secondary/20 text-secondary rounded-[14px]"
+																			className="bg-primary border border-secondary/20 text-secondary min-w-[170px] p-1.5 rounded-xl shadow-2xl"
 																		>
 																			<DropdownMenuItem asChild>
 																				<Link
 																					href={`/tasks/${task.id}`}
-																					className="cursor-pointer text-xs flex items-center gap-2"
+																					className="cursor-pointer text-xs flex items-center gap-2.5 px-3 py-2 text-secondary hover:text-white focus:text-white hover:bg-white/10 focus:bg-white/10 rounded-lg transition-colors font-medium"
 																				>
-																					<ExternalLink className="w-3.5 h-3.5 text-accent" />
-																					Open
-																					Full
-																					Page
+																					<ExternalLink className="w-3.5 h-3.5 text-secondary shrink-0" />
+																					<span>View Task</span>
 																				</Link>
-																			</DropdownMenuItem>
-																			<DropdownMenuItem
-																				onClick={() =>
-																					openTaskPeek(
-																						task.id,
-																					)
-																				}
-																				className="cursor-pointer text-xs flex items-center gap-2"
-																			>
-																				<PanelRightOpen className="w-3.5 h-3.5 text-accent" />
-																				Inspect
-																				in
-																				Side
-																				Panel
 																			</DropdownMenuItem>
 																			{canDelete && (
 																				<>
-																					<DropdownMenuSeparator className="bg-secondary/15" />
+																					<DropdownMenuSeparator className="bg-secondary/15 my-1" />
 																					<DropdownMenuItem
+																						variant="destructive"
 																						onClick={() => setTaskToDelete(task)}
-																						className="cursor-pointer text-xs text-destructive hover:bg-destructive/10 flex items-center gap-2"
+																						className="cursor-pointer text-xs flex items-center gap-2.5 px-3 py-2 text-destructive hover:text-destructive focus:text-destructive hover:bg-destructive/15 focus:bg-destructive/15 rounded-lg transition-colors font-medium"
 																					>
-																						<Trash2 className="w-3.5 h-3.5" />
-																						Delete Task
+																						<Trash2 className="w-3.5 h-3.5 text-destructive shrink-0" />
+																						<span>Delete Task</span>
 																					</DropdownMenuItem>
 																				</>
 																			)}
@@ -2606,40 +2722,6 @@ export default function TaskTable({
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-
-			{/* Side Peek Drawer */}
-			<TaskPeekSheet
-				task={activePeekTask}
-				open={peekOpen}
-				onOpenChange={setPeekOpen}
-				workspaceMembers={members}
-				currentUserId={currentUserId}
-				canEditTask={
-					activePeekTask ? checkCanEditTask(activePeekTask) : false
-				}
-				canDeleteTask={
-					activePeekTask ? checkCanDeleteTask(activePeekTask) : false
-				}
-				onTaskUpdated={(updatedPartial) => {
-					setTasks((prev) =>
-						prev.map((t) =>
-							t.id === updatedPartial.id
-								? { ...t, ...updatedPartial }
-								: t,
-						),
-					);
-				}}
-				onTaskDeleted={(deletedTaskId) => {
-					setTasks((prev) =>
-						prev.filter((t) => t.id !== deletedTaskId),
-					);
-					setSelectedTaskIds((prev) => {
-						const next = new Set(prev);
-						next.delete(deletedTaskId);
-						return next;
-					});
-				}}
-			/>
 		</div>
 	);
 }

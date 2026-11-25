@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import type { DateRange } from "react-day-picker";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Dialog,
@@ -81,7 +82,6 @@ import {
 	Loader2,
 	Lock,
 	MoreHorizontal,
-	PanelRightOpen,
 	RotateCcw,
 	Search,
 	SlidersHorizontal,
@@ -95,7 +95,6 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { PriorityLevel, Status } from "../../../../generated/prisma/enums";
 import AssigneeOverview from "./assignee-overview";
-import ProjectPeekSheet from "./project-peek-sheet";
 
 const PRIORITY_LABELS: Record<PriorityLevel, string> = {
 	[PriorityLevel.URGENT]: "Urgent",
@@ -135,8 +134,8 @@ const STATUS_ORDER: Record<Status, number> = {
 	[Status.TODO]: 1,
 	[Status.IN_PROGRESS]: 2,
 	[Status.ON_HOLD]: 3,
-	[Status.COMPLETED]: 4,
-	[Status.CANCELLED]: 5,
+	[Status.CANCELLED]: 4,
+	[Status.COMPLETED]: 5,
 };
 
 type SortField =
@@ -189,6 +188,111 @@ export const computeProjectProgress = (p: Projects): number => {
 	}
 	return 0;
 };
+
+function ProjectTimelineCell({
+	proj,
+	canEdit,
+	isSelected,
+	onUpdate,
+}: {
+	proj: Projects;
+	canEdit: boolean;
+	isSelected: boolean;
+	onUpdate: (projectId: string, from: Date, to: Date) => Promise<void>;
+}) {
+	const startDate = new Date(proj.startPeriod);
+	const endDate = new Date(proj.endPeriod);
+	const isOverdue =
+		isPast(endDate) &&
+		!isToday(endDate) &&
+		proj.status !== Status.COMPLETED &&
+		proj.status !== Status.CANCELLED;
+
+	const [isOpen, setIsOpen] = useState(false);
+	const [range, setRange] = useState<DateRange | undefined>({
+		from: startDate,
+		to: endDate,
+	});
+
+	React.useEffect(() => {
+		setRange({
+			from: new Date(proj.startPeriod),
+			to: new Date(proj.endPeriod),
+		});
+	}, [proj.startPeriod, proj.endPeriod]);
+
+	if (!canEdit) {
+		return (
+			<div
+				className={`flex items-center gap-1 text-xs font-medium p-1 w-fit ${
+					isOverdue
+						? "text-destructive font-semibold bg-destructive/10 px-1.5 rounded-md"
+						: isSelected
+						? "text-primary/80 dark:text-zinc-300"
+						: "text-secondary/80"
+				}`}
+			>
+				{isOverdue && (
+					<AlertCircle className="w-3 h-3 text-destructive shrink-0" />
+				)}
+				<span>{format(startDate, "MMM d")}</span>
+				<ArrowRight className="w-2.5 h-2.5 text-accent/60" />
+				<span>{format(endDate, "MMM d")}</span>
+				{isToday(endDate) && (
+					<span className="text-[9px] bg-accent text-primary px-1 rounded font-bold ml-0.5">
+						Today
+					</span>
+				)}
+			</div>
+		);
+	}
+
+	return (
+		<Popover open={isOpen} onOpenChange={setIsOpen}>
+			<PopoverTrigger asChild>
+				<button
+					className={`flex items-center gap-1 text-xs font-medium p-1 rounded-md transition-colors w-fit cursor-pointer ${
+						isOverdue
+							? "text-destructive font-semibold bg-destructive/10 px-1.5"
+							: isSelected
+							? "text-primary hover:bg-primary/10 dark:text-zinc-200"
+							: "text-secondary hover:bg-secondary/10 group-hover:text-secondary/95"
+					}`}
+				>
+					{isOverdue && (
+						<AlertCircle className="w-3 h-3 text-destructive shrink-0" />
+					)}
+					<span>{format(startDate, "MMM d")}</span>
+					<ArrowRight className="w-2.5 h-2.5 text-accent/60" />
+					<span>{format(endDate, "MMM d")}</span>
+					{isToday(endDate) && (
+						<span className="text-[9px] bg-accent text-primary px-1 rounded font-bold ml-0.5">
+							Today
+						</span>
+					)}
+				</button>
+			</PopoverTrigger>
+			<PopoverContent
+				className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[16px] shadow-2xl z-[9999] overflow-hidden"
+				align="start"
+			>
+				<Calendar
+					mode="range"
+					defaultMonth={range?.from || startDate}
+					selected={range}
+					onSelect={async (newRange) => {
+						setRange(newRange);
+						if (newRange?.from && newRange?.to) {
+							await onUpdate(proj.id, newRange.from, newRange.to);
+							setIsOpen(false);
+						}
+					}}
+					className="rounded-[16px] bg-primary text-secondary"
+				/>
+			</PopoverContent>
+		</Popover>
+	);
+}
 
 export default function ProjectTable({
 	project: initialProjects = [],
@@ -282,14 +386,6 @@ export default function ProjectTable({
 	const [projectToDelete, setProjectToDelete] = useState<Projects | null>(null);
 	const [isDeletingSingleProject, setIsDeletingSingleProject] = useState(false);
 	const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
-
-	// Side Peek Sheet state
-	const [peekProjectId, setPeekProjectId] = useState<string | null>(null);
-	const [peekOpen, setPeekOpen] = useState(false);
-
-	const activePeekProject = useMemo(() => {
-		return projects.find((p) => p.id === peekProjectId) || null;
-	}, [projects, peekProjectId]);
 
 	// Counter stats for quick filter chips
 	const stats = useMemo(() => {
@@ -451,9 +547,16 @@ export default function ProjectTable({
 
 	// Sorted projects computation
 	const sortedProjects = useMemo(() => {
-		if (!sortField || !sortDirection) return filteredProjects;
-
 		return [...filteredProjects].sort((a, b) => {
+			const isACompleted = a.status === Status.COMPLETED;
+			const isBCompleted = b.status === Status.COMPLETED;
+
+			if (isACompleted !== isBCompleted) {
+				return isACompleted ? 1 : -1;
+			}
+
+			if (!sortField || !sortDirection) return 0;
+
 			let comparison = 0;
 
 			if (sortField === "title") {
@@ -513,8 +616,8 @@ export default function ProjectTable({
 				[Status.TODO]: [],
 				[Status.IN_PROGRESS]: [],
 				[Status.ON_HOLD]: [],
-				[Status.COMPLETED]: [],
 				[Status.CANCELLED]: [],
+				[Status.COMPLETED]: [],
 			};
 			paginatedProjects.forEach((p) => {
 				if (groups[p.status]) groups[p.status].push(p);
@@ -814,12 +917,6 @@ export default function ProjectTable({
 			...prev,
 			[groupId]: !prev[groupId],
 		}));
-	};
-
-	// Open Side Peek Sheet
-	const openProjectPeek = (projectId: string) => {
-		setPeekProjectId(projectId);
-		setPeekOpen(true);
 	};
 
 	return (
@@ -1287,18 +1384,18 @@ export default function ProjectTable({
 			<div className="relative rounded-[20px] border border-secondary/15 bg-primary/40 backdrop-blur-sm overflow-hidden shadow-sm">
 				{sortedProjects.length === 0 ?
 					/* Empty States */
-					<div className="flex justify-center py-16 px-6 flex-col items-center text-center">
-						<div className="bg-secondary/10 text-secondary p-4 rounded-full mb-3">
+					<div className="flex justify-center py-16 px-6 flex-col items-center text-center bg-[#a49f9f] text-[#222222]">
+						<div className="bg-[#8b8686] text-[#222222] p-4 rounded-full mb-3">
 							{isFilterActive ?
-								<ListFilter className="w-6 h-6 text-accent" />
-							:	<Box className="w-6 h-6 text-accent" />}
+								<ListFilter className="w-6 h-6 text-[#222222]" />
+							:	<Box className="w-6 h-6 text-[#222222]" />}
 						</div>
-						<h3 className="text-base font-bold text-secondary">
+						<h3 className="text-base font-bold text-[#222222]">
 							{isFilterActive ?
 								"No matching projects found"
 							:	"No projects available"}
 						</h3>
-						<p className="text-xs text-secondary/60 max-w-sm mt-1">
+						<p className="text-xs text-[#222222]/80 max-w-sm mt-1">
 							{isFilterActive ?
 								"None of the projects match your active filters or search term. Try resetting your filters."
 							:	"No projects have been created in this workspace yet. Get started by clicking New Project."
@@ -1308,7 +1405,7 @@ export default function ProjectTable({
 							<Button
 								variant="outline"
 								onClick={handleResetFilters}
-								className="mt-4 rounded-full text-xs h-8 gap-1.5 border-secondary/20 hover:bg-secondary/10 text-secondary"
+								className="mt-4 rounded-full text-xs h-8 gap-1.5 border-[#222222] bg-[#222222] hover:bg-[#222222]/90 text-white hover:text-white"
 							>
 								<RotateCcw className="w-3 h-3" />
 								Clear all filters
@@ -1356,7 +1453,6 @@ export default function ProjectTable({
 										className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
 									>
 										<div className="flex items-center gap-1.5">
-											<Box className="w-3.5 h-3.5 text-accent shrink-0" />
 											<span>Project Title</span>
 											{sortField === "title" ?
 												sortDirection === "asc" ?
@@ -1377,7 +1473,6 @@ export default function ProjectTable({
 											className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
 										>
 											<div className="flex items-center gap-1.5">
-												<Users className="w-3.5 h-3.5 text-accent shrink-0" />
 												<span>Assignees</span>
 												{sortField === "assignees" ?
 													sortDirection === "asc" ?
@@ -1420,7 +1515,6 @@ export default function ProjectTable({
 											className="cursor-pointer select-none text-xs font-bold text-secondary hover:text-accent transition-colors"
 										>
 											<div className="flex items-center gap-1.5">
-												<CalendarDays className="w-3.5 h-3.5 text-accent shrink-0" />
 												<span>Timeline / Due</span>
 												{sortField === "endPeriod" ?
 													sortDirection === "asc" ?
@@ -1617,10 +1711,10 @@ export default function ProjectTable({
 														<TableRow
 															key={proj.id}
 															data-state={isSelected ? "selected" : undefined}
-															className={`border-secondary/10 transition-colors ${
+															className={`group border-secondary/10 transition-colors ${
 																isSelected ?
 																	"bg-secondary text-primary dark:bg-zinc-800 dark:text-zinc-100 font-medium border-primary/20"
-																:	"hover:bg-secondary/[0.04]"
+																:	"hover:bg-secondary/[0.08]"
 															}`}
 														>
 															{/* Selection Checkbox */}
@@ -1711,12 +1805,8 @@ export default function ProjectTable({
 																	</button>
 
 																	<div className="flex flex-col gap-1 min-w-0">
-																		<button
-																			onClick={() =>
-																				openProjectPeek(
-																					proj.id,
-																				)
-																			}
+																		<Link
+																			href={`/projects/${proj.id}`}
 																			className={`font-semibold text-xs text-left truncate hover:underline transition-colors flex items-center gap-1.5 ${
 																				(
 																					proj.status ===
@@ -1724,10 +1814,10 @@ export default function ProjectTable({
 																				) ?
 																					isSelected
 																						? "line-through text-primary/60 dark:text-zinc-400"
-																						: "line-through text-secondary/60"
+																						: "line-through text-secondary/60 hover:text-secondary/80 group-hover:text-secondary/80"
 																				: isSelected
 																					? "text-primary font-bold dark:text-white hover:text-primary/80"
-																					: "text-secondary hover:text-accent"
+																					: "text-secondary hover:text-white dark:hover:text-white group-hover:text-white/90 dark:group-hover:text-white"
 																			}`}
 																		>
 																			<span className="truncate">
@@ -1735,7 +1825,7 @@ export default function ProjectTable({
 																					proj.title
 																				}
 																			</span>
-																		</button>
+																		</Link>
 
 																		{(
 																			proj as any
@@ -1774,6 +1864,7 @@ export default function ProjectTable({
 																		isSelected={
 																			isSelected
 																		}
+																		size="sm"
 																	/>
 																</TableCell>
 															)}
@@ -1793,146 +1884,32 @@ export default function ProjectTable({
 															{/* Period & Due Date with Overdue Indicator */}
 															{visibleColumns.period && (
 																<TableCell>
-																	{canEdit ?
-																		<Popover>
-																			<PopoverTrigger
-																				asChild
-																			>
-																				<button
-																					className={`flex items-center gap-1 text-xs font-medium p-1 rounded-md transition-colors w-fit ${
-																						(
-																							isOverdue
-																						) ?
-																							"text-destructive font-semibold bg-destructive/10 px-1.5"
-																						: isSelected
-																							? "text-primary hover:bg-primary/10 dark:text-zinc-200"
-																							: "text-secondary hover:bg-secondary/10"
-																					}`}
-																				>
-																					{isOverdue && (
-																						<AlertCircle className="w-3 h-3 text-destructive shrink-0" />
-																					)}
-																					<span>
-																						{format(
-																							startDate,
-																							"MMM d",
-																						)}
-																					</span>
-																					<ArrowRight className="w-2.5 h-2.5 text-accent/60" />
-																					<span>
-																						{format(
-																							endDate,
-																							"MMM d",
-																						)}
-																					</span>
-																					{isToday(
-																						endDate,
-																					) && (
-																						<span className="text-[9px] bg-accent text-primary px-1 rounded font-bold ml-0.5">
-																							Today
-																						</span>
-																					)}
-																				</button>
-																			</PopoverTrigger>
-																			<PopoverContent
-																				className="w-auto p-0 bg-primary border border-secondary/20 text-secondary rounded-[16px] shadow-xl"
-																				align="start"
-																			>
-																				<Calendar
-																					mode="range"
-																					defaultMonth={
-																						startDate
-																					}
-																					selected={{
-																						from: startDate,
-																						to: endDate,
-																					}}
-																					onSelect={async (
-																						range,
-																					) => {
-																						if (
-																							range?.from &&
-																							range?.to
-																						) {
-																							setProjects(
-																								(
-																									prev,
-																								) =>
-																									prev.map(
-																										(
-																											p,
-																										) =>
-																											(
-																												p.id ===
-																												proj.id
-																											) ?
-																												{
-																													...p,
-																													startPeriod:
-																														range.from!,
-																													endPeriod:
-																														range.to!,
-																												}
-																											:	p,
-																									),
-																							);
-																							await updateProjectDetails(
-																								{
-																									projectId:
-																										proj.id,
-																									values: {
-																										startDate:
-																											range.from,
-																										dueDate:
-																											range.to,
-																									},
-																								},
-																							);
-																							toast.success(
-																								"Project timeline updated",
-																							);
-																						}
-																					}}
-																					className="rounded-[16px] bg-primary text-secondary"
-																				/>
-																			</PopoverContent>
-																		</Popover>
-																	:	<div
-																			className={`flex items-center gap-1 text-xs font-medium p-1 w-fit ${
-																				(
-																					isOverdue
-																				) ?
-																					"text-destructive font-semibold bg-destructive/10 px-1.5 rounded-md"
-																				: isSelected
-																					? "text-primary/80 dark:text-zinc-300"
-																					: "text-secondary/70"
-																			}`}
-																		>
-																			{isOverdue && (
-																				<AlertCircle className="w-3 h-3 text-destructive shrink-0" />
-																			)}
-																			<span>
-																				{format(
-																					startDate,
-																					"MMM d",
-																				)}
-																			</span>
-																			<ArrowRight className="w-2.5 h-2.5 text-accent/60" />
-																			<span>
-																				{format(
-																					endDate,
-																					"MMM d",
-																				)}
-																			</span>
-																			{isToday(
-																				endDate,
-																			) && (
-																				<span className="text-[9px] bg-accent text-primary px-1 rounded font-bold ml-0.5">
-																					Today
-																				</span>
-																			)}
-																		</div>
-																	}
+																	<ProjectTimelineCell
+																		proj={proj}
+																		canEdit={canEdit}
+																		isSelected={isSelected}
+																		onUpdate={async (projectId, from, to) => {
+																			setProjects((prev) =>
+																				prev.map((p) =>
+																					p.id === projectId
+																						? {
+																								...p,
+																								startPeriod: from,
+																								endPeriod: to,
+																						  }
+																						: p,
+																				),
+																			);
+																			await updateProjectDetails({
+																				projectId,
+																				values: {
+																					startDate: from,
+																					dueDate: to,
+																				},
+																			});
+																			toast.success("Project timeline updated");
+																		}}
+																	/>
 																</TableCell>
 															)}
 
@@ -2144,23 +2121,6 @@ export default function ProjectTable({
 															{/* Row Actions Menu */}
 															<TableCell className="text-right pr-3">
 																<div className="flex items-center justify-end gap-1">
-																	<Button
-																		variant="ghost"
-																		size="icon"
-																		onClick={() =>
-																			openProjectPeek(
-																				proj.id,
-																			)
-																		}
-																		className={`h-7 w-7 rounded-full transition-colors ${
-																			isSelected
-																				? "text-primary hover:bg-primary/15 hover:text-primary dark:text-zinc-200"
-																				: "text-secondary hover:bg-secondary/10 hover:text-secondary"
-																		}`}
-																		title="Inspect Project"
-																	>
-																		<PanelRightOpen className={`w-3.5 h-3.5 ${isSelected ? "text-primary dark:text-accent" : "text-accent"}`} />
-																	</Button>
 																	<DropdownMenu>
 																		<DropdownMenuTrigger
 																			asChild
@@ -2189,24 +2149,8 @@ export default function ProjectTable({
 																					className="cursor-pointer text-xs flex items-center gap-2"
 																				>
 																					<ExternalLink className="w-3.5 h-3.5 text-accent" />
-																					Open
-																					Full
-																					Page
+																					View Project
 																				</Link>
-																			</DropdownMenuItem>
-																			<DropdownMenuItem
-																				onClick={() =>
-																					openProjectPeek(
-																						proj.id,
-																					)
-																				}
-																				className="cursor-pointer text-xs flex items-center gap-2"
-																			>
-																				<PanelRightOpen className="w-3.5 h-3.5 text-accent" />
-																				Inspect
-																				in
-																				Side
-																				Panel
 																			</DropdownMenuItem>
 																			{canEdit && (
 																				<>
@@ -2504,37 +2448,6 @@ export default function ProjectTable({
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-
-			{/* Side Peek Drawer */}
-			<ProjectPeekSheet
-				project={activePeekProject}
-				open={peekOpen}
-				onOpenChange={setPeekOpen}
-				workspaceMembers={members}
-				currentUserId={currentUserId}
-				canEditProject={
-					activePeekProject ? checkCanEdit(activePeekProject) : false
-				}
-				onProjectUpdated={(updatedPartial) => {
-					setProjects((prev) =>
-						prev.map((p) =>
-							p.id === updatedPartial.id ?
-								{ ...p, ...updatedPartial }
-							:	p,
-						),
-					);
-				}}
-				onProjectDeleted={(deletedProjectId) => {
-					setProjects((prev) =>
-						prev.filter((p) => p.id !== deletedProjectId),
-					);
-					setSelectedProjectIds((prev) => {
-						const next = new Set(prev);
-						next.delete(deletedProjectId);
-						return next;
-					});
-				}}
-			/>
 		</div>
 	);
 }

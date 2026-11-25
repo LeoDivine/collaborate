@@ -50,23 +50,6 @@ export default function RequestAcceptedEmail({
 
 				{/* Body */}
 				<div style={{ padding: "40px 40px 32px" }}>
-					{/* Badge */}
-					<div
-						style={{
-							display: "inline-block",
-							backgroundColor: "#f0fdf4",
-							color: "#16a34a",
-							fontSize: "13px",
-							fontWeight: "600",
-							padding: "4px 12px",
-							borderRadius: "999px",
-							marginBottom: "24px",
-							border: "1px solid #bbf7d0",
-						}}
-					>
-						Request Accepted
-					</div>
-
 					<h2
 						style={{
 							fontSize: "24px",

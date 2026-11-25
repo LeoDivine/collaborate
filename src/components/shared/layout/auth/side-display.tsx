@@ -30,13 +30,13 @@ export default function SideDisplay({ mode }: { mode: DeskMode }) {
 				{mode === "INDIVIDUAL" ?
 					<span className=" text-accent text-[11px] gap-2 flex ">
 						<p>Want to create a workspace account instead? </p>
-						<Link className=" underline" href={""}>
+						<Link className=" underline" href={"/sign-up/workspace-auth"}>
 							Create account
 						</Link>
 					</span>
 				:	<span className=" text-accent text-[11px] gap-2 flex ">
 						<p>Want to create an individual account instead? </p>
-						<Link className=" underline" href={""}>
+						<Link className=" underline" href={"/sign-up/individual-auth"}>
 							Create account
 						</Link>
 					</span>

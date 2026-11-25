@@ -402,6 +402,12 @@ export const getProjectById = async (id: string, workspaceId: string) => {
 						},
 					},
 					milestones: true,
+					team: {
+						select: {
+							id: true,
+							name: true,
+						},
+					},
 				},
 				orderBy: {
 					createdAt: "desc",

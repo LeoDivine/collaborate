@@ -74,7 +74,7 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 					<Button
 						asChild
 						variant="outline"
-						className="rounded-full size-sm"
+						className="rounded-full bg-[#969696] hover:bg-[#8c8c8c] text-primary border border-primary/20"
 						size="sm"
 					>
 						<Link href="/teams">
@@ -85,7 +85,7 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 					<Button
 						asChild
 						variant="outline"
-						className="rounded-full size-sm"
+						className="rounded-full bg-[#969696] hover:bg-[#8c8c8c] text-primary border border-primary/20"
 						size="sm"
 					>
 						<Link href="/members">
@@ -96,7 +96,7 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 					<Button
 						asChild
 						variant="outline"
-						className="rounded-full size-sm"
+						className="rounded-full bg-[#969696] hover:bg-[#8c8c8c] text-primary border border-primary/20"
 						size="sm"
 					>
 						<Link href="/tasks?creating=true">
@@ -104,7 +104,7 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 							New Task
 						</Link>
 					</Button>
-					<Button asChild className="rounded-full size-sm" size="sm">
+					<Button asChild className="rounded-full" size="sm">
 						<Link href="/projects">
 							<Plus className="w-3.5 h-3.5 mr-1.5" />
 							New Project
@@ -145,7 +145,7 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 			{/* Stat Cards */}
 			<div className="mt-[20px] gap-4 flex flex-col lg:flex-row">
 				<div className="w-full">
-					<div className="gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 grid">
+					<div className="gap-3 sm:gap-4 grid-cols-2 grid">
 						<InfoCards
 							title="Active Projects"
 							value={activeProjects}
@@ -511,7 +511,7 @@ export default function AdminDashboard({ user, data }: AdminDashboardProps) {
 
 				{/* Right Sidebar Column */}
 				<div className="w-full lg:w-[320px] shrink-0">
-					<OverviewCalender />
+					<OverviewCalender deadlines={upcomingDeadlines} />
 
 					{/* Upcoming Deadlines */}
 					<div className="mt-[15px] rounded-[20px] px-[20px] py-[20px] bg-[#969696]">

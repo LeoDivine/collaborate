@@ -9,15 +9,11 @@ import {
 	Resource,
 	Task,
 	TaskMember,
+	Team,
 	User,
 } from "../../generated/prisma/client";
 
 export type ExtendedUser = Pick<User, "fullName" | "email" | "id" | "userName">;
-
-export interface Quote {
-	text: string;
-	author: string;
-}
 
 export interface RequestAcceptedEmailProps {
 	fullName: string;
@@ -25,6 +21,38 @@ export interface RequestAcceptedEmailProps {
 	workspaceId: string;
 	workspaceName: string;
 	hasAccount: boolean;
+	token?: string;
+}
+
+export interface RequestRejectedEmailProps {
+	fullName: string;
+	email: string;
+	workspaceName: string;
+	reason?: string | null;
+}
+
+export interface InviteCodeEmailProps {
+	invitedEmail: string;
+	inviterName: string;
+	workspaceName: string;
+	code: string;
+	timeLimit: Date | string;
+}
+
+export interface MemberDeactivatedEmailProps {
+	fullName: string;
+	email: string;
+	workspaceName: string;
+	reason?: string | null;
+	deactivatedAt?: Date | string;
+}
+
+export interface MemberActivatedEmailProps {
+	fullName: string;
+	email: string;
+	workspaceName: string;
+	workspaceId?: string;
+	activatedAt?: Date | string;
 }
 
 export interface MembersUsers extends Member {
@@ -44,15 +72,19 @@ export interface TaskMembers extends TaskMember {
 }
 
 export interface ProjectComment extends Comment {
-	member?: (Member & {
-		user?: User;
-	}) | null;
+	member?:
+		| (Member & {
+				user?: User;
+		  })
+		| null;
 }
 
 export interface ProjectActivity extends Activity {
-	member?: (Member & {
-		user?: User;
-	}) | null;
+	member?:
+		| (Member & {
+				user?: User;
+		  })
+		| null;
 }
 
 export interface Projects extends Project {
@@ -86,6 +118,53 @@ export interface Tasks extends Task {
 	createdBy?: Member & {
 		user: User;
 	};
+	team?: {
+		id: string;
+		name: string;
+	} | null;
 }
 
+export interface TeamMemberItem extends Member {
+	user: User;
+	isLead?: boolean;
+}
 
+export interface TeamWithMembers {
+	id: string;
+	name: string;
+	description?: string | null;
+	workspaceId: string;
+	visibility?: "PUBLIC" | "PRIVATE";
+	allowSelfJoin?: boolean;
+	requireApproval?: boolean;
+	allowMemberTaskCreation?: boolean;
+	autoAssignAllMembers?: boolean;
+	allowMemberInvites?: boolean;
+	hideTasksFromNonMembers?: boolean;
+	notifyAllOnNewTask?: boolean;
+	notifyLeadsOnJoinLeave?: boolean;
+	leadIds: string[];
+	memberIds?: string[];
+	pendingMemberIds?: string[];
+	members: TeamMemberItem[];
+	leads: TeamMemberItem[];
+	pendingMembers?: TeamMemberItem[];
+	tasks?: Tasks[];
+	_count?: {
+		members: number;
+		tasks?: number;
+	};
+}
+
+export interface TeamSummaryStats {
+	totalTeams: number;
+	assignedMembersCount: number;
+	unassignedMembersCount: number;
+	totalLeadsCount: number;
+	avgTeamSize: number;
+}
+
+export interface Quote {
+	text: string;
+	author: string;
+}

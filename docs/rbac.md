@@ -57,7 +57,7 @@ Workspace roles govern administrative authority over the workspace container, me
 - **`MEMBER`**:
   - Standard collaborator within the workspace.
   - Can participate in public projects or private projects they have been assigned to.
-  - Read-only visibility into the workspace member directory; cannot access administrative routes or workspace configuration settings (restricted to personal profile settings).
+  - Read-only visibility into the workspace member directory and teams; cannot access administrative routes or workspace configuration settings (restricted to personal profile settings).
 
 ### Workspace Permissions Matrix
 
@@ -71,7 +71,10 @@ Workspace roles govern administrative authority over the workspace container, me
 | **Change Member Roles (`MEMBER` &harr; `ADMIN`)** | ✅ | ✅ *(excl. Owner)* | ❌ |
 | **Update Member Status (`ACTIVE` &harr; `INACTIVE`)** | ✅ | ✅ *(excl. Owner)* | ❌ |
 | **Remove Member from Workspace** | ✅ | ✅ *(excl. Owner)* | ❌ |
-| **Create Teams & Manage Team Assignments** | ✅ | ✅ | ❌ |
+| **Create Teams & Assign Initial Leads** | ✅ | ✅ | ❌ |
+| **Edit, Manage, or Delete Teams** | ✅ | ✅ | ✅ *(Team Leads only)* |
+| **View Teams Directory & Rosters (`/teams`)** | ✅ | ✅ | ✅ |
+| **View Team Analytics & KPI Statistics** | ✅ | ✅ | ❌ |
 | **View Audit / Activity Feeds (`/activity`)** | ✅ | ✅ | ❌ |
 | **View Workspace Member Directory (`/members`)** | ✅ | ✅ | ✅ *(View only)* |
 | **Create Projects & Tasks** | ✅ | ✅ | ✅ |
@@ -79,7 +82,57 @@ Workspace roles govern administrative authority over the workspace container, me
 ### Member Status (`MemberStatus`)
 
 - **`ACTIVE`**: Full operational access corresponding to assigned workspace role.
-- **`INACTIVE`**: Account is suspended/deactivated within the workspace; write operations and session authorizations are revoked or restricted.
+  - **Automated Activation Email**: When reactivated by an Owner or Admin, a custom notification email (`MemberActivatedEmail`) is sent via Resend informing the member that their workspace permissions and access have been restored, complete with direct links to access the workspace.
+- **`INACTIVE`**: Account is suspended/deactivated within the workspace; all privileges and entry pathways are restricted:
+  - **Automated Deactivation Email**: When deactivated by an Owner or Admin, a custom notification email (`MemberDeactivatedEmail`) is sent to the member's email address detailing the deactivation and containing any administrator note/reason.
+  - **Real-Time Pusher Session Eviction**: If the user is active on the dashboard or project pages, `PusherProvider` catches `WORKSPACE_MEMBER_STATUS_UPDATED` in real-time on `user-{userId}` or `workspace-{workspaceId}`, displays a toast with the administrator's reason, and redirects them to `/sign-in/my-workspaces`.
+  - **Real-Time Join Restrictions (`/join-workspace`)**:
+    - Deactivated members attempting to rejoin via an invite code are presented with an explanatory deactivation notice and the submission button is disabled.
+    - If a user is actively viewing `/join-workspace`, status changes (deactivation and reactivation) sync in real-time via Pusher WebSockets without requiring a page reload.
+  - **Workspace List & Switcher Guard**: In `/sign-in/my-workspaces` and the navbar switcher dialog, deactivated memberships show a distinct `Deactivated` badge and navigation into the workspace is blocked.
+
+### Team-Level Access (`Team` & `leadIds`)
+
+Within a workspace, members can be organized into functional **Teams** (`/teams` and `/teams/[id]`). Each team supports up to **2 designated Team Leads** (`team.leadIds`) and configurable **Team Settings** (`visibility`, `allowSelfJoin`, `requireApproval`).
+
+- **Elevated Team Managers (`canManageTeam` / `canDeleteTeam`)**:
+  - **Workspace Owners & Admins (`OWNER`, `ADMIN`)**: Full authority across all teams in the workspace, including creating teams, editing team details and settings, approving/declining pending team join requests, managing members and leads, and deleting teams.
+  - **Team Leads (`team.leadIds.includes(member.id)`)**: Elevated authority over their assigned team, including editing the team name, description, and settings (`visibility`, `allowSelfJoin`, `requireApproval`), approving/declining pending join requests, adding/removing team members, assigning tasks to the team, and deleting the team.
+- **Regular Team Members (Non-Leads)**:
+  - Members of a team who are **not** designated as Team Leads can view the team overview, tasks, and member roster, and can leave the team, but **cannot** edit team metadata, configure team settings, manage other members, or delete the team.
+
+#### Team Settings & Join Policies
+
+- **Join & Approval Policy (`allowSelfJoin` & `requireApproval`)**:
+  - **Open to Join (`allowSelfJoin: true`, `requireApproval: false`)**: Any workspace member who can view the team can join immediately.
+  - **Approval Required First (`allowSelfJoin: true`, `requireApproval: true`)**: Workspace members submit a join request (`pendingMemberIds`) that must be approved by a **Team Lead**, **Workspace Owner**, or **Workspace Admin** before joining.
+  - **Invite-Only (`allowSelfJoin: false`)**: Self-joining is disabled; only Team Leads, Workspace Owners, and Admins (or regular members if `allowMemberInvites` is enabled) can add members to the team.
+- **Team Visibility (`visibility`)**:
+  - **`PUBLIC`**: Visible to all active workspace members in `/teams` and `/teams/[id]`.
+  - **`PRIVATE`**: Visible only to assigned team members, Team Leads, and Workspace Owners/Admins.
+- **Member Collaboration & Task Controls**:
+  - **Allow Members to Invite Peers (`allowMemberInvites`, default `false`)**: Lets regular non-lead team members add other workspace members to the team.
+  - **Allow Members to Create Team Tasks (`allowMemberTaskCreation`, default `false`)**: Lets regular non-lead team members create and assign tasks under the team.
+  - **Auto-Assign New Tasks to All Members (`autoAssignAllMembers`, default `false`)**: Automatically selects and assigns all active team members when a new task is created for the team.
+  - **Hide Team Tasks from Non-Members (`hideTasksFromNonMembers`, default `false`)**: Keeps the team discoverable in the directory, but hides its tasks from workspace members who are not part of the team.
+- **Notification Preferences**:
+  - **Notify All Members on New Team Tasks (`notifyAllOnNewTask`, default `true`)**: Broadcasts a real-time notification to all team members whenever a new task is assigned to the team.
+  - **Notify Team Leads on Member Join or Leave (`notifyLeadsOnJoinLeave`, default `true`)**: Sends a real-time notification to Team Leads whenever someone joins, requests to join, or leaves the team.
+
+#### Team Permissions Matrix
+
+| Capability | Workspace Owner / Admin | Team Lead | Team Member *(Non-Lead)* | External Workspace Member |
+| :--- | :---: | :---: | :---: | :---: |
+| **Create New Team** | ✅ | ❌ | ❌ | ❌ |
+| **View Team Overview (`/teams/[id]`)** | ✅ | ✅ | ✅ | ✅ *(Public teams only)* |
+| **View Team Tasks (`/teams/[id]`)** | ✅ | ✅ | ✅ | ✅ *(Unless `hideTasksFromNonMembers` is enabled)* |
+| **Edit Team Name & Description** | ✅ | ✅ | ❌ | ❌ |
+| **Configure Team Settings** | ✅ | ✅ | ❌ | ❌ |
+| **Approve / Decline Team Join Requests** | ✅ | ✅ | ❌ | ❌ |
+| **Add Team Members** | ✅ | ✅ | ⚙️ *(If `allowMemberInvites` enabled)* | ❌ |
+| **Remove Team Members** | ✅ | ✅ | ❌ *(Can leave self)* | ❌ |
+| **Assign Tasks to Team** | ✅ | ✅ | ⚙️ *(If `allowMemberTaskCreation` enabled)* | ❌ |
+| **Delete Team** | ✅ | ✅ | ❌ | ❌ |
 
 ---
 
@@ -182,6 +235,7 @@ The RBAC structure is codified across the following modules:
 | **Project Permissions** | [`src/lib/permissions/project-permissions.ts`](file:///src/lib/permissions/project-permissions.ts) | Pure calculation function `computeProjectAccess` determining project authorization flags. |
 | **Task Permissions** | [`src/lib/permissions/task-permissions.ts`](file:///src/lib/permissions/task-permissions.ts) | Pure calculation function `computeTaskAccess` determining task authorization flags. |
 | **Member Management** | [`src/lib/services/member.services.ts`](file:///src/lib/services/member.services.ts) | Server actions for role mutations, status toggling, and member removals with Owner safeguards. |
+| **Team Service** | [`src/lib/services/team.services.ts`](file:///src/lib/services/team.services.ts) | Server actions for team creation, updates, member/lead management, and deletion (restricted to Workspace Owners, Admins, and Team Leads). |
 | **Project Service** | [`src/lib/services/project.services.ts`](file:///src/lib/services/project.services.ts) | Access validation middleware functions: `resolveProjectMemberAndAccess` and `checkProjectEditPermission`. |
 | **Task Service** | [`src/lib/services/task.services.ts`](file:///src/lib/services/task.services.ts) | Access validation helper `resolveTaskMemberAndAccess` ensuring task edits, comments, and deletions obey access rules. |
 | **Navigation Helpers** | [`src/lib/utils.ts`](file:///src/lib/utils.ts) & [`src/lib/const.ts`](file:///src/lib/const.ts) | `renderNavigationByRole` dynamic sidebar navigation routing based on role and desk mode. |
