@@ -1,6 +1,6 @@
 "use client";
 
-import { INDUSTRY_TYPES, TEAM_SIZE } from "@/lib/const";
+import { TEAM_SIZE } from "@/lib/const";
 import { extendedWorkspaceCreateSchema } from "@/lib/schemas/workspace";
 import { createWorkspace } from "@/lib/services/workspace.services";
 import { generateSlug } from "@/lib/utils";
@@ -47,7 +47,6 @@ export default function CreateWorkspaceForm(user: User) {
 
 	const workspaceForm = useForm<ExtendedWorkspaceCreateValues>({
 		defaultValues: {
-			industryType: "",
 			name: "",
 			teamSize: "",
 			slug: "",
@@ -103,7 +102,7 @@ export default function CreateWorkspaceForm(user: User) {
 									disabled={loading}
 									{...field}
 									placeholder="Enter your workspace name"
-									className=" text-primary py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
+									className=" text-primary py-[20px] rounded-[10px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
 								/>
 								<FormMessage />
 							</FormItem>
@@ -120,7 +119,7 @@ export default function CreateWorkspaceForm(user: User) {
 										disabled
 										{...field}
 										placeholder="Generate slug"
-										className=" text-primary py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
+										className=" text-primary py-[20px] rounded-[10px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
 									/>
 									<Button
 										onClick={() => {
@@ -176,38 +175,6 @@ export default function CreateWorkspaceForm(user: User) {
 													</SelectItem>
 												),
 											)}
-										</SelectGroup>
-									</SelectContent>
-								</Select>
-							</FormItem>
-						)}
-					/>
-					<FormField
-						name="industryType"
-						control={workspaceForm.control}
-						render={({ field }) => (
-							<FormItem className=" flex flex-col gap-2">
-								<Label className=" text-primary">
-									Industry Type
-								</Label>
-								<Select
-									disabled={loading}
-									onValueChange={field.onChange}
-									value={field.value}
-								>
-									<SelectTrigger className=" w-full text-primary py-[20px] rounded-[10px]  border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary">
-										<SelectValue
-											className=""
-											placeholder="Select industry type"
-										/>
-									</SelectTrigger>
-									<SelectContent>
-										<SelectGroup>
-											{INDUSTRY_TYPES.map((i, k) => (
-												<SelectItem key={k} value={i}>
-													{i}
-												</SelectItem>
-											))}
 										</SelectGroup>
 									</SelectContent>
 								</Select>

@@ -8,7 +8,7 @@ export default function WorkspaceSideDisplay({
 	mode: "join" | "create";
 }) {
 	return (
-		<div className=" text-a px-[40px] py-[20px] hidden md:inline rounded-xl shadow w-[30%] bg-linear-to-br from-[#222222] to-[#383838]">
+		<div className=" text-secondary px-[40px] py-[20px] hidden md:inline rounded-xl shadow w-[30%] bg-linear-to-br from-[#222222] to-[#383838]">
 			<div className=" flex justify-between flex-col items-center h-full">
 				<Image
 					className=" w-[50%] object-cover"
@@ -28,7 +28,7 @@ export default function WorkspaceSideDisplay({
 					<p>
 						{mode === "create" ?
 							"Set up your workspace to manage projects, organize your team, and keep everyone aligned in one place."
-						:	"Join an existing workspace to collaborate with your team, track tasks, and stay updated on progress."
+						:	"Enter your invite code to join your team's workspace, collaborate on projects, and stay updated on progress."
 						}
 					</p>
 				</div>
@@ -36,13 +36,13 @@ export default function WorkspaceSideDisplay({
 				{mode === "create" ?
 					<span className=" text-accent text-[11px] gap-2 flex ">
 						<p>Already have a workspace invite?</p>
-						<Link className=" underline" href="/join">
+						<Link className=" underline" href="/join-workspace">
 							Join workspace
 						</Link>
 					</span>
 				:	<span className=" text-accent text-[11px] gap-2 flex ">
 						<p>Want to create your own workspace?</p>
-						<Link className=" underline" href="/create">
+						<Link className=" underline" href="/create-workspace">
 							Create workspace
 						</Link>
 					</span>

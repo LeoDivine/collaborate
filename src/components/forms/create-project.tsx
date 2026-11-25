@@ -18,10 +18,13 @@ import {
 	CalendarRange,
 	Check,
 	CircleSlash,
+	FolderSymlink,
 	Gauge,
+	Globe,
 	Hash,
 	Loader2,
 	LoaderCircle,
+	Lock,
 	LucideIcon,
 	Search,
 	User,
@@ -29,16 +32,28 @@ import {
 	X,
 	Zap,
 } from "lucide-react";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { PriorityLevel } from "../../../generated/prisma/client";
+import {
+	PriorityLevel,
+	ProjectVisibility,
+} from "../../../generated/prisma/enums";
+import { formatLabel } from "@/lib/utils";
 import { Button } from "../ui/button";
 import { Calendar } from "../ui/calendar";
 import { Checkbox } from "../ui/checkbox";
 import { DialogClose } from "../ui/dialog";
 import { Separator } from "../ui/separator";
 import { Textarea } from "../ui/textarea";
+import WysiwygEditor from "../ui/wysiwyg-editor";
 import { useRouter } from "next/navigation";
+import { Badge } from "../ui/badge";
+import Link from "next/link";
 
 const PAGE_SIZE = 10;
 
@@ -61,6 +76,7 @@ export default function CreateProject({
 		value: PriorityLevel;
 	}>();
 
+	const [visibility, setVisibility] = useState<ProjectVisibility>("PUBLIC");
 	const [projectMembers, setProjectMembers] = useState<string[]>([]);
 	const [projectLeadId, setProjectLeadId] = useState<string | undefined>();
 	const today = new Date();
@@ -88,6 +104,16 @@ export default function CreateProject({
 	const [labels, setLabels] = useState<string[]>([]);
 	const [labelInput, setLabelInput] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [resources, setResources] = useState<
+		{
+			name: string;
+			url: string;
+		}[]
+	>([]);
+	const [resourceField, setResourceField] = useState<{
+		name?: string;
+		url?: string;
+	}>({ name: "", url: "" });
 
 	const setFetching = (val: boolean) => {
 		isFetchingRef.current = val;
@@ -96,11 +122,11 @@ export default function CreateProject({
 
 	const addLabels = (values: string[]) => {
 		const normalized = values
-			.map((value) => value.trim())
-			.filter((value) => value.startsWith("#") && value.length > 1);
+			.map((value) => formatLabel(value))
+			.filter((value) => value.length > 1);
 		if (normalized.length === 0) return;
 		setLabels((prev) => {
-			const next = new Set(prev);
+			const next = new Set(prev.map(formatLabel));
 			for (const label of normalized) {
 				next.add(label);
 			}
@@ -108,8 +134,37 @@ export default function CreateProject({
 		});
 	};
 
+	const addResources = () => {
+		if (
+			resourceField?.name === undefined ||
+			resourceField?.url === undefined ||
+			!resourceField.name.trim() ||
+			!resourceField.url.trim()
+		) {
+			return;
+		}
+
+		setResources((prev) => [
+			...prev,
+			{
+				name: resourceField.name!.trim(),
+				url: resourceField.url!.trim(),
+			},
+		]);
+		setResourceField({ name: "", url: "" });
+	};
+
 	const removeLabel = (label: string) => {
-		setLabels((prev) => prev.filter((item) => item !== label));
+		const target = formatLabel(label);
+		setLabels((prev) =>
+			prev.filter(
+				(item) => formatLabel(item) !== target && item !== label,
+			),
+		);
+	};
+
+	const removeResource = (name: string) => {
+		setResources((prev) => prev.filter((item) => item.name !== name));
 	};
 
 	const toggleMember = (id: string) => {
@@ -206,7 +261,16 @@ export default function CreateProject({
 	const minDueDate = startDate ? new Date(startDate) : today;
 	minDueDate.setHours(0, 0, 0, 0);
 
-	const extractLabels = (value: string) => value.match(/#[\w-]+/g) ?? [];
+	const extractLabels = (value: string) => {
+		const hashTags = value.match(/#+[\w-]+/g);
+		if (hashTags && hashTags.length > 0) {
+			return hashTags;
+		}
+		return value
+			.split(/[\s,]+/)
+			.map((v) => v.trim())
+			.filter((v) => v.length > 0);
+	};
 	const triggerOpacity = (selected: boolean) =>
 		selected ? "opacity-100" : "opacity-60 md:opacity-100";
 	const router = useRouter();
@@ -223,6 +287,8 @@ export default function CreateProject({
 					projectMembers,
 					startDate: startDate!,
 					title,
+					visibility,
+					resources: resources,
 				},
 			});
 
@@ -239,26 +305,29 @@ export default function CreateProject({
 
 	return (
 		<div
-			className={`w-full ${isSubmitting ? "pointer-events-none opacity-70" : ""}`}
+			className={`w-full text-left ${isSubmitting ? "pointer-events-none opacity-70" : ""}`}
 		>
 			<div className="flex flex-col md:flex-row gap-4">
-				<div className="mt-[20px] grow">
+				<div className="mt-[20px] w-full md:w-[78%] shrink-0">
 					<input
 						disabled={isSubmitting}
 						value={title}
 						onChange={(e) => setTitle(e.target.value)}
 						autoFocus
-						placeholder="Project name"
-						className="w-full outline-none bg-transparent placeholder:text-2xl md:placeholder:text-[40px] placeholder:font-bold text-2xl md:text-[40px] font-bold border-0"
+						placeholder="Project title"
+						className="w-full outline-none bg-transparent placeholder:text-2xl md:placeholder:text-[40px] placeholder:font-bold text-2xl md:text-[40px] font-bold border-0 text-accent placeholder:text-accent/50"
 					/>
 					<Separator className="bg-secondary/20 my-[10px]" />
-					<div className="w-full">
-						<Textarea
+					<div className="w-full mt-2">
+						<WysiwygEditor
 							disabled={isSubmitting}
 							value={description}
-							onChange={(e) => setDescription(e.target.value)}
-							className="break-all w-full h-48 md:h-[500px] resize-none focus-visible:ring-0 border-0"
-							placeholder="Type a description..."
+							onChange={setDescription}
+							placeholder="Type a detailed description for your project..."
+							height="400px"
+							maxHeight="400px"
+							minHeight="350px"
+							textColor="text-accent"
 						/>
 					</div>
 				</div>
@@ -312,6 +381,80 @@ export default function CreateProject({
 									</div>
 								);
 							})}
+						</DropdownMenuContent>
+					</DropdownMenu>
+
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								disabled={isSubmitting}
+								className={`bg-accent text-[13px] hover:bg-accent text-primary rounded-full ${triggerOpacity(true)}`}
+							>
+								{visibility === "PUBLIC" ?
+									<>
+										<Globe className="w-4 h-4" />
+										<span className="md:inline hidden">
+											Public
+										</span>
+									</>
+								:	<>
+										<Lock className="w-4 h-4 text-amber-500" />
+										<span className="md:inline hidden text-amber-500 font-medium">
+											Private
+										</span>
+									</>
+								}
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent className="w-[190px] flex flex-col gap-1 border-0 bg-accent p-1.5">
+							<div
+								onClick={() =>
+									setVisibility("PUBLIC" as ProjectVisibility)
+								}
+								className={`${visibility === "PUBLIC" ? "bg-primary text-accent" : "bg-accent text-primary"} py-[6px] cursor-pointer transition-all rounded-[10px] px-[10px] hover:bg-primary hover:text-accent items-center justify-between flex`}
+							>
+								<div className="flex flex-col">
+									<div className="items-center gap-1.5 flex">
+										<Globe className="w-3.5 h-3.5" />
+										<p className="text-[13px] font-medium">
+											Public
+										</p>
+									</div>
+									<p
+										className={`text-[11px] ${visibility === "PUBLIC" ? "text-accent/80" : "text-primary/60"}`}
+									>
+										Visible to workspace
+									</p>
+								</div>
+								{visibility === "PUBLIC" && (
+									<Check className="w-3 h-3 shrink-0" />
+								)}
+							</div>
+							<div
+								onClick={() =>
+									setVisibility(
+										"PRIVATE" as ProjectVisibility,
+									)
+								}
+								className={`${visibility === "PRIVATE" ? "bg-primary text-accent" : "bg-accent text-primary"} py-[6px] cursor-pointer transition-all rounded-[10px] px-[10px] hover:bg-primary hover:text-accent items-center justify-between flex`}
+							>
+								<div className="flex flex-col">
+									<div className="items-center gap-1.5 flex">
+										<Lock className="w-3.5 h-3.5" />
+										<p className="text-[13px] font-medium">
+											Private
+										</p>
+									</div>
+									<p
+										className={`text-[11px] ${visibility === "PRIVATE" ? "text-accent/80" : "text-primary/60"}`}
+									>
+										Assigned members only
+									</p>
+								</div>
+								{visibility === "PRIVATE" && (
+									<Check className="w-3 h-3 shrink-0" />
+								)}
+							</div>
 						</DropdownMenuContent>
 					</DropdownMenu>
 
@@ -502,21 +645,16 @@ export default function CreateProject({
 								</p>
 							</Button>
 						</PopoverTrigger>
-						<PopoverContent className="rounded-[20px] bg-accent text-primary border-0">
+						<PopoverContent
+							className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden"
+							align="start"
+						>
 							<Calendar
 								mode="single"
 								selected={startDate}
 								onSelect={setStartDate}
 								disabled={{ before: today }}
-								className="bg-primary text-secondary"
-								classNames={{
-									root: "w-full",
-									month: "text-primary",
-									weekday: "w-full font-normal",
-									nav: "text-primary flex items-center gap-1 w-full absolute top-0 inset-x-0 justify-between",
-									day_button:
-										"text-primary data-[selected-single=true]:text-secondary data-[selected-single=true]:font-semibold",
-								}}
+								className="rounded-[20px] bg-primary text-secondary"
 							/>
 						</PopoverContent>
 					</Popover>
@@ -535,21 +673,16 @@ export default function CreateProject({
 								</p>
 							</Button>
 						</PopoverTrigger>
-						<PopoverContent className="rounded-[20px] bg-accent text-primary border-0">
+						<PopoverContent
+							className="w-fit p-0 bg-primary border border-secondary/20 text-secondary rounded-[20px] shadow-2xl overflow-hidden"
+							align="start"
+						>
 							<Calendar
 								mode="single"
 								selected={dueDate}
 								onSelect={setDueDate}
 								disabled={{ before: minDueDate }}
-								className="bg-primary text-secondary"
-								classNames={{
-									root: "w-full",
-									month: "text-primary",
-									weekday: "w-full font-normal",
-									nav: "text-primary flex items-center gap-1 w-full absolute top-0 inset-x-0 justify-between",
-									day_button:
-										"text-primary data-[selected-single=true]:text-secondary data-[selected-single=true]:font-semibold",
-								}}
+								className="rounded-[20px] bg-primary text-secondary"
 							/>
 						</PopoverContent>
 					</Popover>
@@ -574,7 +707,7 @@ export default function CreateProject({
 									<input
 										disabled={isSubmitting}
 										placeholder="Start typing with a hashtag..."
-										className="flex-1 h-9 rounded-md bg-primary text-secondary px-2 text-sm outline-none"
+										className="flex-1 h-9 rounded-md text-[12px] bg-primary text-secondary px-2 text-sm outline-none"
 										value={labelInput}
 										onChange={(e) =>
 											setLabelInput(e.currentTarget.value)
@@ -603,12 +736,12 @@ export default function CreateProject({
 									{labels.map((label) => (
 										<span
 											key={label}
-											className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-xs text-secondary"
+											className="inline-flex items-center gap-1 rounded-full bg-[#AD6B3D] px-2.5 py-0.5 text-xs text-white shadow-xs"
 										>
-											{label}
+											{formatLabel(label)}
 											<button
 												type="button"
-												className="text-secondary/70 hover:text-secondary"
+												className="text-white/80 hover:text-white"
 												disabled={isSubmitting}
 												onClick={() =>
 													removeLabel(label)
@@ -620,6 +753,79 @@ export default function CreateProject({
 									))}
 								</div>
 							</div>
+						</PopoverContent>
+					</Popover>
+
+					<Popover>
+						<PopoverTrigger asChild>
+							<Button
+								disabled={isSubmitting}
+								className={`text-[13px] bg-accent hover:bg-accent text-primary rounded-full ${triggerOpacity(resources.length > 0)}`}
+							>
+								<FolderSymlink className="w-4 h-4 shrink-0" />
+								<p className="md:inline hidden">
+									{resources.length > 0 ?
+										`Resources (${resources.length})`
+									:	"Resources"}
+								</p>
+							</Button>
+						</PopoverTrigger>
+						<PopoverContent className="w-[260px] flex flex-col gap-2 rounded-[20px] bg-accent border-0 p-3">
+							<p className="text-[11px] font-bold text-primary/60 uppercase">
+								Add Resource Link
+							</p>
+							<input
+								disabled={isSubmitting}
+								value={resourceField.name || ""}
+								onChange={(e) =>
+									setResourceField((prev) => ({
+										...prev,
+										name: e.target.value,
+									}))
+								}
+								placeholder="Resource name..."
+								className="outline-none bg-primary/10 rounded-[8px] p-2 text-xs text-primary placeholder:text-primary/40"
+							/>
+							<input
+								disabled={isSubmitting}
+								value={resourceField.url || ""}
+								onChange={(e) =>
+									setResourceField((prev) => ({
+										...prev,
+										url: e.target.value,
+									}))
+								}
+								placeholder="https://..."
+								className="outline-none bg-primary/10 rounded-[8px] p-2 text-xs text-primary placeholder:text-primary/40"
+							/>
+							<Button
+								type="button"
+								onClick={addResources}
+								className="bg-primary text-secondary hover:bg-primary/90 text-xs rounded-full py-1 mt-1"
+							>
+								Add Link
+							</Button>
+
+							{resources.length > 0 && (
+								<div className="flex flex-col gap-1.5 mt-2 max-h-[100px] overflow-y-auto custom-scrollbar border-t border-primary/10 pt-2">
+									{resources.map((r) => (
+										<div
+											key={r.name}
+											className="flex items-center justify-between text-xs text-primary bg-primary/5 p-1.5 rounded-[8px]"
+										>
+											<span className="truncate font-semibold max-w-[180px]">
+												{r.name}
+											</span>
+											<X
+												className="w-3.5 h-3.5 cursor-pointer text-primary/60 hover:text-primary"
+												onClick={() =>
+													removeResource(r.name)
+												}
+											/>
+										</div>
+									))}
+								</div>
+							)}
 						</PopoverContent>
 					</Popover>
 				</div>

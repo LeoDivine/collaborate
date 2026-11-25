@@ -57,47 +57,80 @@ export const { signIn, signOut, auth, handlers } = NextAuth({
 				const existingUser = await getUserByEmail(user.email);
 
 				if (!existingUser) {
+					const fullName =
+						user.name?.trim() || user.email.split("@")[0] || "User";
+					let baseUserName = user.email
+						.split("@")[0]
+						.toLowerCase()
+						.replace(/[^a-z0-9_.]/g, "");
+					if (baseUserName.length < 3) baseUserName = `user_${baseUserName}`;
+
+					let finalUserName = baseUserName;
+					const userWithSameName = await db.user.findUnique({
+						where: { userName: finalUserName },
+					});
+					if (userWithSameName) {
+						const randomSuffix = Math.random()
+							.toString(36)
+							.substring(2, 6);
+						finalUserName = `${baseUserName.slice(0, 15)}_${randomSuffix}`;
+					}
+
 					const newUser = await db.user.create({
 						data: {
 							email: user.email,
-							fullName: user.name!,
-							userName: user.email.split("@")[0],
+							fullName: fullName,
+							userName: finalUserName,
 						},
 					});
 
 					user.id = newUser.id;
 					user.userName = newUser.userName as string;
+					user.fullName = newUser.fullName;
 
-					const existingWorkspace = await db.workspace.findFirst({
-						where: { createdById: newUser.id },
+					workspace = await db.workspace.create({
+						data: {
+							mode: "INDIVIDUAL",
+							name: `${newUser.fullName}'s Personal Desk`,
+							slug: `${generateSlug(newUser.fullName)}-${newUser.id.slice(0, 6)}`,
+							createdById: newUser.id,
+							teamSize: "1",
+						},
 					});
 
-					if (!existingWorkspace) {
-						workspace = await db.workspace.create({
-							data: {
-								mode: "INDIVIDUAL",
-								name: `${newUser.fullName}'s Personal Desk`,
-								slug: `${generateSlug(newUser.fullName)}-${newUser.id.slice(0, 6)}`,
-								createdById: newUser.id,
-								teamSize: "1",
-							},
-						});
+					member = await db.member.create({
+						data: {
+							role: "OWNER",
+							userId: newUser.id,
+							workspaceId: workspace.id,
+						},
+					});
 
-						member = await db.member.create({
-							data: {
-								role: "OWNER",
-								userId: newUser.id,
-								workspaceId: workspace.id,
-							},
-						});
-					}
+					user.currentWorkspaceId = workspace.id;
+					user.currentWorkspaceMode = workspace.mode;
+					user.currentWorkspaceRole = member.role;
+					user.currentWorkspaceName = workspace.name;
+					user.currentMemberId = member.id;
 				} else {
 					user.id = existingUser.id;
 					user.userName = existingUser.userName as string;
+					user.fullName = existingUser.fullName;
+
+					const defaultMembership = await db.member.findFirst({
+						where: { userId: existingUser.id },
+						include: { workspace: true },
+						orderBy: { createdAt: "asc" },
+					});
+
+					if (defaultMembership?.workspace) {
+						user.currentWorkspaceId = defaultMembership.workspace.id;
+						user.currentWorkspaceMode = defaultMembership.workspace.mode;
+						user.currentWorkspaceRole = defaultMembership.role;
+						user.currentWorkspaceName = defaultMembership.workspace.name;
+						user.currentMemberId = defaultMembership.id;
+					}
 				}
 			}
-
-			// console.log({ account, user, workspace, member });
 
 			return true;
 		},

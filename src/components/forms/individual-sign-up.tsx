@@ -16,7 +16,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { AiOutlineGoogle } from "react-icons/ai";
-import { FaRegEyeSlash } from "react-icons/fa";
+import { FaGithub, FaRegEyeSlash } from "react-icons/fa";
 import { MdOutlineRemoveRedEye } from "react-icons/md";
 import { toast } from "sonner";
 import z from "zod";
@@ -25,11 +25,12 @@ import { Form, FormField, FormItem, FormMessage } from "../ui/form";
 export type SignUpValues = z.infer<typeof signUpSchema>;
 export default function IndividualSignUp() {
 	const searchParams = useSearchParams();
-	const [password, setPassword] = useState(false);
+	const [showPassword, setShowPassword] = useState(false);
+	const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 	const [loading, setLoading] = useState(false);
 
-	const urlFullName = searchParams.get("fullName");
-	const urlEmail = searchParams.get("email");
+	const urlFullName = searchParams.get("fullName")?.replace("null", "") || null;
+	const urlEmail = searchParams.get("email")?.replace("null", "") || null;
 	const urlRequestWorkspaceId = searchParams.get("requestWorkspace");
 
 	// console.log({ urlFullName, urlEmail, urlRequestWorkspaceId });
@@ -48,10 +49,6 @@ export default function IndividualSignUp() {
 	});
 
 	const router = useRouter();
-
-	const handlePassword = () => {
-		setPassword(!password);
-	};
 
 	const handleSubmit = async (values: SignUpValues) => {
 		setLoading(true);
@@ -82,6 +79,7 @@ export default function IndividualSignUp() {
 				currentWorkspaceMode: res.workspace?.mode,
 				currentWorkspaceRole: res.member?.role,
 				currentWorkspaceName: res.workspace?.name,
+				currentMemberId: res.member?.id,
 			});
 			form.reset();
 			router.push("/sign-up/individual-auth/username");
@@ -114,10 +112,10 @@ export default function IndividualSignUp() {
 						<FormItem className=" flex flex-col gap-2">
 							<Label className=" text-primary">Full Name</Label>
 							<Input
-								disabled={loading || urlFullName !== ""}
+								disabled={loading || Boolean(urlFullName)}
 								{...field}
 								placeholder="Enter your full name"
-								className=" text-primary py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
+								className=" text-primary py-[20px] rounded-[10px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
 							/>
 							<FormMessage />
 						</FormItem>
@@ -132,10 +130,10 @@ export default function IndividualSignUp() {
 								Email Address
 							</Label>
 							<Input
-								disabled={loading || urlEmail !== ""}
+								disabled={loading || Boolean(urlEmail)}
 								{...field}
 								placeholder="Enter your email address"
-								className=" text-primary py-[20px] rounded-[10px] text-[10px] border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
+								className=" text-primary py-[20px] rounded-[10px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 outline-0 focus-visible:ring-0 bg-white border-b-[4px] border-primary"
 							/>
 							<FormMessage />
 						</FormItem>
@@ -153,15 +151,15 @@ export default function IndividualSignUp() {
 								<Input
 									disabled={loading}
 									{...field}
-									type={!password ? "password" : "text"}
+									type={!showPassword ? "password" : "text"}
 									placeholder="Enter your password"
-									className=" text-primary  py-[20px] text-[10px] border-t-0 border-l-0 border-r-0 rounded-[10px] outline-0 focus-visible:ring-0 bg-white  border-b-[4px] border-primary"
+									className=" text-primary  py-[20px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 rounded-[10px] outline-0 focus-visible:ring-0 bg-white  border-b-[4px] border-primary"
 								/>
 								<div
-									onClick={handlePassword}
+									onClick={() => setShowPassword(!showPassword)}
 									className=" cursor-pointer"
 								>
-									{password ?
+									{showPassword ?
 										<MdOutlineRemoveRedEye className=" absolute right-0 top-1/2 w-[20px] h-[20px] -translate-y-1 mr-[10px] text-primary" />
 									:	<FaRegEyeSlash className="  absolute right-0 top-1/2 w-[20px] h-[20px] -translate-y-1 mr-[10px] text-primary" />
 									}
@@ -184,15 +182,15 @@ export default function IndividualSignUp() {
 									<Input
 										disabled={loading}
 										{...field}
-										type={!password ? "password" : "text"}
+										type={!showConfirmPassword ? "password" : "text"}
 										placeholder="Confirm your password"
-										className=" text-primary  py-[20px] text-[10px] border-t-0 border-l-0 border-r-0 rounded-[10px] outline-0 focus-visible:ring-0 bg-white  border-b-[4px] border-primary"
+										className=" text-primary  py-[20px] text-base sm:text-sm border-t-0 border-l-0 border-r-0 rounded-[10px] outline-0 focus-visible:ring-0 bg-white  border-b-[4px] border-primary"
 									/>
 									<div
-										onClick={handlePassword}
+										onClick={() => setShowConfirmPassword(!showConfirmPassword)}
 										className=" cursor-pointer"
 									>
-										{password ?
+										{showConfirmPassword ?
 											<MdOutlineRemoveRedEye className=" absolute right-0 top-1/2 w-[20px] h-[20px] -translate-y-1 mr-[10px] text-primary" />
 										:	<FaRegEyeSlash className="  absolute right-0 top-1/2 w-[20px] h-[20px] -translate-y-1 mr-[10px] text-primary" />
 										}
@@ -207,7 +205,7 @@ export default function IndividualSignUp() {
 						Already have an account?{" "}
 						<Link
 							className=" underline"
-							href={"/sign-in/individual-auth"}
+							href={"/sign-in"}
 						>
 							Login
 						</Link>
@@ -228,14 +226,24 @@ export default function IndividualSignUp() {
 						:	"Sign Up"}
 					</Button>
 					{!urlRequestWorkspaceId && (
-						<Button
-							onClick={() => handleOAuthUsage("google")}
-							type="button"
-							className=" py-[20px] bg-accent rounded-full text-secondary"
-						>
-							<AiOutlineGoogle className=" w-60 h-60" />
-							Sign in with Google
-						</Button>
+						<>
+							<Button
+								onClick={() => handleOAuthUsage("google")}
+								type="button"
+								className=" py-[20px] bg-[#575757] hover:bg-[#575757]/90 rounded-full text-secondary flex items-center justify-center gap-2"
+							>
+								<AiOutlineGoogle className="size-5 mr-1" />
+								Sign in with Google
+							</Button>
+							<Button
+								onClick={() => handleOAuthUsage("github")}
+								type="button"
+								className=" py-[20px] bg-[#24292e] hover:bg-[#24292e]/90 rounded-full text-secondary flex items-center justify-center gap-2"
+							>
+								<FaGithub className="size-5 mr-1" />
+								Sign in with GitHub
+							</Button>
+						</>
 					)}
 				</div>
 			</form>

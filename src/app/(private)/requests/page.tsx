@@ -7,7 +7,7 @@ export default async function Requests({
 }: {
 	searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-	const { query, page } = await searchParams;
+	const { query, page, status, inviteType, sort } = await searchParams;
 	const pageSize = 15;
 	const rawPage = Number(Array.isArray(page) ? page[0] : (page ?? "1"));
 	const currentPage = Number.isNaN(rawPage) ? 1 : rawPage;
@@ -17,18 +17,24 @@ export default async function Requests({
 		currentPage,
 		pageSize,
 		workspaceId!,
-		query as string,
+		typeof query === "string" ? query : undefined,
+		typeof status === "string" ? status : undefined,
+		typeof inviteType === "string" ? inviteType : undefined,
+		sort === "asc" ? "asc" : "desc",
 	);
 
 	return (
 		<div>
-			<p className=" text-[20px] font-bold text-primary">
-				Requests ({requestsData.stats?.pending ?? 0})
-			</p>
 			<RequestsView
 				requests={requestsData.requests}
 				totalItems={requestsData.total ?? 0}
 				pageSize={pageSize}
+				workspaceId={workspaceId}
+				stats={requestsData.stats}
+				currentStatus={typeof status === "string" ? status : "ALL"}
+				currentInviteType={typeof inviteType === "string" ? inviteType : "ALL"}
+				currentSort={sort === "asc" ? "asc" : "desc"}
+				initialQuery={typeof query === "string" ? query : ""}
 			/>
 		</div>
 	);

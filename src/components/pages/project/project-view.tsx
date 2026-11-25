@@ -1,59 +1,139 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
-import { MembersUsers, ProjectWithMembers } from "@/lib/types";
-import {
-	Clock,
-	GanttChartSquare,
-	LayoutGrid,
-	List,
-	Table2,
-} from "lucide-react";
+import type { MembersUsers, Projects } from "@/lib/types";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { JSX, useEffect, useState } from "react";
-import ProjectGanttView from "./project-gantt-view";
-import ProjectKanbanView from "./project-kanban-view";
-import ProjectListView from "./project-list-view";
-import ProjectTableView from "./project-table-view";
-import ProjectTimelineView from "./project-timeline-view";
+import { useEffect, useState } from "react";
 import ProjectViewHeader from "./project-view-header";
-import ProjectViewModes, { ProjectViewMode } from "./project-view-modes";
-
-const VIEW_MODE_STORAGE_KEY = "projectViewMode";
-const VIEW_MODES: ProjectViewMode[] = [
-	"list",
-	"kanban",
-	"table",
-	"timeline",
-	"gantt",
-];
-const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
-	year: "numeric",
-	month: "short",
-	day: "2-digit",
-	timeZone: "UTC",
-});
+import ProjectTable from "./project-table";
+import { useWorkspaceRealtime } from "@/hooks/use-pusher";
 
 export default function ProjectView({
 	isCreating,
-	members,
+	members = [],
 	workspaceId,
-	initialTotal,
-	projects,
-	projectsTotal,
+	initialTotal = 0,
+	projects = [],
+	projectsTotal = 0,
+	currentUserId,
+	currentMemberId,
+	pageSize = 20,
 }: {
 	isCreating: string;
 	members: MembersUsers[];
 	workspaceId: string;
 	initialTotal: number;
-	projects: ProjectWithMembers[];
+	projects: Projects[];
 	projectsTotal: number;
+	currentUserId?: string;
+	currentMemberId?: string;
+	pageSize?: number;
 }) {
 	const searchParams = useSearchParams();
 	const creating = searchParams.get("creating") || isCreating;
 
 	const [open, setOpen] = useState(creating === "false" ? false : true);
-	const [viewMode, setViewMode] = useState<ProjectViewMode>("list");
+	const [projectList, setProjectList] = useState<Projects[]>(projects || []);
+	const [total, setTotal] = useState<number>(projectsTotal || 0);
+
+	useEffect(() => {
+		setProjectList((prev) => {
+			const serverProjects = projects || [];
+			if (serverProjects.length === 0) return prev.length > 0 ? prev : [];
+			const serverIds = new Set(serverProjects.map((p) => p.id));
+			const localOnly = prev.filter((p) => !serverIds.has(p.id));
+			return [...localOnly, ...serverProjects];
+		});
+		setTotal(projectsTotal || 0);
+	}, [projects, projectsTotal]);
+
+	useWorkspaceRealtime(workspaceId, {
+		onProjectCreated: (data: any) => {
+			const newProject = data?.project || data;
+			if (newProject && newProject.id) {
+				setProjectList((prev) => {
+					if (prev.some((p) => p.id === newProject.id)) {
+						return prev.map((p) => (p.id === newProject.id ? { ...p, ...newProject } : p));
+					}
+					return [newProject, ...prev];
+				});
+				setTotal((prev) => prev + 1);
+			}
+		},
+		onProjectUpdated: (data: any) => {
+			const projectId = data?.projectId || data?.project?.id || data?.id;
+			const updatedProject = data?.project;
+			const updates = data?.updates || (data?.project ? undefined : data);
+			if (projectId) {
+				setProjectList((prev) =>
+					prev.map((p) => {
+						if (p.id === projectId) {
+							return updatedProject ?
+									{ ...p, ...updatedProject }
+								:	{ ...p, ...(updates || {}) };
+						}
+						return p;
+					}),
+				);
+			}
+		},
+		onProjectDeleted: (data: any) => {
+			const projectId = data?.projectId || data?.id;
+			if (projectId) {
+				setProjectList((prev) => prev.filter((p) => p.id !== projectId));
+				setTotal((prev) => Math.max(0, prev - 1));
+			}
+		},
+		onTaskCreated: (data: any) => {
+			const newTask = data?.task || data;
+			if (newTask && newTask.projectId) {
+				setProjectList((prev) =>
+					prev.map((p) => {
+						if (p.id === newTask.projectId) {
+							const existingTasks = p.tasks || [];
+							if (existingTasks.some((t: any) => t.id === newTask.id)) return p;
+							return { ...p, tasks: [newTask, ...existingTasks] };
+						}
+						return p;
+					}),
+				);
+			}
+		},
+		onTaskUpdated: (data: any) => {
+			const taskId = data?.taskId || data?.task?.id || data?.id;
+			const updatedTask = data?.task;
+			const updates = data?.updates;
+			if (taskId) {
+				setProjectList((prev) =>
+					prev.map((p) => {
+						if (!p.tasks || !p.tasks.some((t: any) => t.id === taskId)) return p;
+						return {
+							...p,
+							tasks: p.tasks.map((t: any) => {
+								if (t.id === taskId) {
+									return updatedTask ? { ...t, ...updatedTask } : { ...t, ...(updates || {}) };
+								}
+								return t;
+							}),
+						};
+					}),
+				);
+			}
+		},
+		onTaskDeleted: (data: any) => {
+			const taskId = data?.taskId || data?.id;
+			if (taskId) {
+				setProjectList((prev) =>
+					prev.map((p) => {
+						if (!p.tasks || !p.tasks.some((t: any) => t.id === taskId)) return p;
+						return {
+							...p,
+							tasks: p.tasks.filter((t: any) => t.id !== taskId),
+						};
+					}),
+				);
+			}
+		},
+	});
 
 	useEffect(() => {
 		if (creating === "false") {
@@ -63,84 +143,8 @@ export default function ProjectView({
 		}
 	}, [creating]);
 
-	useEffect(() => {
-		if (typeof window === "undefined") return;
-		const storedMode = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
-		if (storedMode && VIEW_MODES.includes(storedMode as ProjectViewMode)) {
-			setViewMode(storedMode as ProjectViewMode);
-		}
-	}, []);
-
-	useEffect(() => {
-		if (typeof window === "undefined") return;
-		window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
-	}, [viewMode]);
-
 	const router = useRouter();
 	const pathname = usePathname();
-
-	const statusLabels: Record<string, string> = {
-		TODO: "To Do",
-		IN_PROGRESS: "In Progress",
-		ON_HOLD: "On Hold",
-		COMPLETED: "Completed",
-		CANCELLED: "Cancelled",
-	};
-
-	const modeIcons: Record<ProjectViewMode, JSX.Element> = {
-		list: <List className=" h-4 w-4" />,
-		kanban: <LayoutGrid className=" h-4 w-4" />,
-		table: <Table2 className=" h-4 w-4" />,
-		timeline: <Clock className=" h-4 w-4" />,
-		gantt: <GanttChartSquare className=" h-4 w-4" />,
-	};
-
-	const getTaskProgress = (project: ProjectWithMembers) => {
-		const totalTasks = project.tasks.length;
-		if (totalTasks === 0) return 0;
-		const completedTasks = project.tasks.filter(
-			(task) => task.status === "COMPLETED",
-		).length;
-		return Math.round((completedTasks / totalTasks) * 100);
-	};
-
-	const formatDate = (value: Date | string | null) => {
-		if (!value) return "N/A";
-		return DATE_FORMATTER.format(new Date(value));
-	};
-
-	const toDate = (value: Date | string) => new Date(value);
-
-	const sortedByStart = [...projects].sort((a, b) => {
-		return (
-			toDate(a.startPeriod).getTime() - toDate(b.startPeriod).getTime()
-		);
-	});
-
-	const minStart =
-		sortedByStart.length > 0 ?
-			toDate(sortedByStart[0].startPeriod).getTime()
-		:	0;
-	const maxEnd =
-		sortedByStart.length > 0 ?
-			Math.max(
-				...sortedByStart.map((project) =>
-					toDate(project.endPeriod).getTime(),
-				),
-			)
-		:	0;
-	const totalRange = maxEnd - minStart || 1;
-
-	const getBarStyle = (project: ProjectWithMembers) => {
-		const start = toDate(project.startPeriod).getTime();
-		const end = toDate(project.endPeriod).getTime();
-		const left = ((start - minStart) / totalRange) * 100;
-		const width = ((end - start) / totalRange) * 100;
-		return {
-			left: `${left}%`,
-			width: `${Math.max(width, 2)}%`,
-		};
-	};
 
 	const handleOpenDialog = () => {
 		const params = new URLSearchParams(searchParams.toString());
@@ -163,7 +167,7 @@ export default function ProjectView({
 	return (
 		<div>
 			<ProjectViewHeader
-				projectsTotal={projectsTotal}
+				projectsTotal={total}
 				open={open}
 				members={members}
 				workspaceId={workspaceId}
@@ -171,54 +175,15 @@ export default function ProjectView({
 				onOpenDialog={handleOpenDialog}
 				onDialogChange={handleDialogChange}
 			/>
-
-			<div className=" mt-[20px] flex gap-4 flex-col">
-				<ProjectViewModes
-					modes={VIEW_MODES}
-					viewMode={viewMode}
-					modeIcons={modeIcons}
-					onModeChange={setViewMode}
-				/>
-				<Input
-					className=" bg-primary rounded-[15px] border-0"
-					placeholder="Search with project name...."
-				/>
-				{viewMode === "list" && (
-					<ProjectListView
-						projects={projects}
-						getTaskProgress={getTaskProgress}
-						formatDate={formatDate}
-					/>
-				)}
-				{viewMode === "kanban" && (
-					<ProjectKanbanView
-						projects={projects}
-						statusLabels={statusLabels}
-						getTaskProgress={getTaskProgress}
-						formatDate={formatDate}
-					/>
-				)}
-				{viewMode === "table" && (
-					<ProjectTableView
-						projects={projects}
-						getTaskProgress={getTaskProgress}
-						formatDate={formatDate}
-					/>
-				)}
-				{viewMode === "timeline" && (
-					<ProjectTimelineView
-						projects={sortedByStart}
-						formatDate={formatDate}
-					/>
-				)}
-				{viewMode === "gantt" && (
-					<ProjectGanttView
-						projects={sortedByStart}
-						formatDate={formatDate}
-						getBarStyle={getBarStyle}
-					/>
-				)}
-			</div>
+			<ProjectTable
+				project={projectList}
+				totalItems={total}
+				members={members}
+				workspaceId={workspaceId}
+				currentUserId={currentUserId}
+				currentMemberId={currentMemberId}
+				pageSize={pageSize}
+			/>
 		</div>
 	);
 }

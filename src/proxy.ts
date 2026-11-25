@@ -7,6 +7,7 @@ import {
 	protectedRoutes,
 	publicRoutes,
 	userNameRoutes,
+	workspaceOnlyRoutes,
 } from "../routes";
 
 export default auth((req) => {
@@ -20,10 +21,13 @@ export default auth((req) => {
 
 	const isApiRoute = pathname.startsWith(apiAuthPrefix);
 	const isPublicRoute = publicRoutes.includes(pathname);
-	const isAuthRoute = authRoutes.includes(pathname);
-	const isProtectedRoute = protectedRoutes.includes(pathname);
 	const isExtendedRoute = extendedRoutes.includes(pathname);
 	const isUserNameRoute = userNameRoutes.includes(pathname);
+	const isAuthRoute =
+		!isExtendedRoute && !isUserNameRoute && authRoutes.includes(pathname);
+	const isProtectedRoute = protectedRoutes.some(
+		(route) => pathname === route || pathname.startsWith(`${route}/`),
+	);
 
 	if (isApiRoute) {
 		return null;
@@ -40,15 +44,11 @@ export default auth((req) => {
 		return null;
 	}
 
-	if (isLoggedIn && isAuthRoute) {
-		return Response.redirect(new URL(DEFAULT_LOGIN_REDIRECT, nextUrl));
-	}
-
 	if (!isLoggedIn && !isPublicRoute) {
 		return Response.redirect(new URL("/sign-in", nextUrl));
 	}
 
-	if (isLoggedIn && isPublicRoute) {
+	if (isLoggedIn && pathname === "/") {
 		return Response.redirect(new URL("/dashboard", nextUrl));
 	}
 
@@ -56,7 +56,15 @@ export default auth((req) => {
 		return Response.redirect(new URL("/sign-in/my-workspaces", nextUrl));
 	}
 
-	if (isExtendedRoute && user?.currentWorkspaceId) {
+	const isWorkspaceOnlyRoute = workspaceOnlyRoutes.some(
+		(route) => pathname === route || pathname.startsWith(`${route}/`),
+	);
+
+	if (
+		isLoggedIn &&
+		user?.currentWorkspaceMode === "INDIVIDUAL" &&
+		isWorkspaceOnlyRoute
+	) {
 		return Response.redirect(new URL("/dashboard", nextUrl));
 	}
 

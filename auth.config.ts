@@ -15,6 +15,7 @@ export default {
 			clientId: process.env.GITHUB_CLIENT_ID,
 			clientSecret: process.env.GITHUB_CLIENT_SECRET,
 			allowDangerousEmailAccountLinking: true,
+			issuer: "https://github.com/login/oauth",
 		}),
 		Google({
 			clientId: process.env.GOOGLE_CLIENT_ID!,

@@ -17,7 +17,7 @@ export default function RequestAcceptedEmail({
 		<div
 			style={{
 				fontFamily: "Arial, sans-serif",
-				backgroundColor: "#f4f4f5",
+				backgroundColor: "#c5bebe",
 				padding: "40px 0",
 				minHeight: "100vh",
 			}}
@@ -29,7 +29,7 @@ export default function RequestAcceptedEmail({
 					backgroundColor: "#ffffff",
 					borderRadius: "12px",
 					overflow: "hidden",
-					boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+					boxShadow: "0 2px 8px rgba(34,34,34,0.08)",
 				}}
 			>
 				{/* Header */}
@@ -50,23 +50,6 @@ export default function RequestAcceptedEmail({
 
 				{/* Body */}
 				<div style={{ padding: "40px 40px 32px" }}>
-					{/* Badge */}
-					<div
-						style={{
-							display: "inline-block",
-							backgroundColor: "#f0fdf4",
-							color: "#16a34a",
-							fontSize: "13px",
-							fontWeight: "600",
-							padding: "4px 12px",
-							borderRadius: "999px",
-							marginBottom: "24px",
-							border: "1px solid #bbf7d0",
-						}}
-					>
-						Request Accepted
-					</div>
-
 					<h2
 						style={{
 							fontSize: "24px",
@@ -165,7 +148,7 @@ export default function RequestAcceptedEmail({
 				{/* Footer */}
 				<div
 					style={{
-						borderTop: "1px solid #f4f4f5",
+						borderTop: "1px solid #c5bebe",
 						padding: "20px 40px",
 						backgroundColor: "#18181b",
 						textAlign: "center" as const,

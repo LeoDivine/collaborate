@@ -5,7 +5,7 @@ import { DeskMode } from "../../../../../generated/prisma/enums";
 
 export default function SideDisplay({ mode }: { mode: DeskMode }) {
 	return (
-		<div className=" text-a px-[40px] py-[20px] hidden md:inline  rounded-xl shadow w-[30%] bg-linear-to-br from-[#222222] to-[#383838]">
+		<div className=" text-secondary px-[40px] py-[20px] hidden md:inline  rounded-xl shadow w-[30%] bg-linear-to-br from-[#222222] to-[#383838]">
 			<div className=" flex justify-between flex-col items-center h-full">
 				<Image
 					className=" w-[50%] object-cover"
@@ -30,13 +30,13 @@ export default function SideDisplay({ mode }: { mode: DeskMode }) {
 				{mode === "INDIVIDUAL" ?
 					<span className=" text-accent text-[11px] gap-2 flex ">
 						<p>Want to create a workspace account instead? </p>
-						<Link className=" underline" href={""}>
+						<Link className=" underline" href={"/sign-up/workspace-auth"}>
 							Create account
 						</Link>
 					</span>
 				:	<span className=" text-accent text-[11px] gap-2 flex ">
 						<p>Want to create an individual account instead? </p>
-						<Link className=" underline" href={""}>
+						<Link className=" underline" href={"/sign-up/individual-auth"}>
 							Create account
 						</Link>
 					</span>

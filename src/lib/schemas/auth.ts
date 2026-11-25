@@ -46,3 +46,23 @@ export const signInSchema = z.object({
 		.string({ error: "Password is required" })
 		.min(2, { error: "Password should be greater than two characters" }),
 });
+
+export const forgotPasswordSchema = z.object({
+	email: z.string().email({ message: "Enter a valid email address" }),
+});
+
+export const resetPasswordSchema = z
+	.object({
+		password: z
+			.string()
+			.regex(
+				/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+				"Password must be at least 8 characters and include uppercase, lowercase, number, and special character",
+			),
+		confirmPassword: z.string(),
+	})
+	.refine((data) => data.password === data.confirmPassword, {
+		message: "Passwords do not match",
+		path: ["confirmPassword"],
+	});
+

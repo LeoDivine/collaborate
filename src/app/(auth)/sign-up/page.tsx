@@ -5,7 +5,7 @@ import { HiOutlineArrowNarrowRight } from "react-icons/hi";
 
 export default function SignUp() {
 	return (
-		<div className=" bg-primary flex justify-center gap-10  flex-col items-center  h-screen w-full">
+		<div className="bg-primary flex justify-center gap-8 sm:gap-10 flex-col items-center min-h-screen py-8 px-4 w-full overflow-y-auto">
 			<Image
 				className=" md:w-[15%] w-[40%] object-cover"
 				src={"/resources/logo.png"}
@@ -21,14 +21,14 @@ export default function SignUp() {
 				<div className=" flex-row flex gap-3">
 					<Button
 						asChild
-						className="text-[13px] px-[20px] py-[20px] rounded-full"
+						className="text-[13px] px-[20px] py-[20px] rounded-full bg-[#C4BEBE] text-primary hover:bg-[#C4BEBE]/90"
 						variant={"secondary"}
 					>
 						<Link href={"/sign-up/workspace-auth"}>Workspace</Link>
 					</Button>
 					<Button
 						asChild
-						className=" text-[13px] px-[20px] py-[20px] rounded-full"
+						className="text-[13px] px-[20px] py-[20px] rounded-full bg-[#C4BEBE] text-primary hover:bg-[#C4BEBE]/90"
 						variant={"secondary"}
 					>
 						<Link href={"/sign-up/individual-auth"}>
